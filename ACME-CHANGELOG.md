@@ -823,6 +823,17 @@ real regression; if it fails repeatedly, get real logs via
 `az rest --method post .../runs/<id>/listLogSasUrl?api-version=2019-06-01-preview`
 + `curl` (`az acr task logs` hangs/mis-renders on this Windows machine).
 
+**Correction, 2026-09-16:** "flakiness" was the wrong call. This was almost
+certainly the same failure mode root-caused (after an initial wrong theory
+of its own) in the 2026-09-16 entry below: a stale generated Prisma client
+missing enums, produced when something re-runs `@prisma/client`'s
+postinstall before `schema.prisma` is genuinely in place. Whether that
+mid-build re-verification fires can plausibly vary run to run, which is
+exactly what made this look intermittent. A "retry until it passes" build
+is not reliable; see that entry (and its own correction) for the real
+finding and the still-open question of exactly what triggers the
+re-verification.
+
 **Deployment status:** Live. Built via `az acr build` (`bigpool`, run `dtm`,
 16m01s) and deployed via `kubectl rollout restart deployment/langfuse-web -n
 langfuse` — new pod healthy, clean startup logs, no errors.
@@ -1134,6 +1145,107 @@ introduced by this change). Not yet built into an image or deployed to
 - Remove this nav entry and page once the real Asset Inventory and
   Assurance features ship — it exists to validate a concept, not to become
   a second, permanent, competing version of either.
+
+---
+
+## 2026-09-16 — Production build fixed: stale Prisma client during "Collecting page data" (not a network/infra issue, despite this entry's first theory)
+
+**What was wrong:** every `az acr build` of `web` — on the default ACR agent,
+on a purpose-built larger `bigpool` (S2, 4vCPU/8GB) agent, and on a clean,
+unmodified `main` control build (ruling out any feature-branch cause) —
+compiled successfully and then died silently and identically at Next.js's
+"Collecting page data" step: zero error output, `[ELIFECYCLE]` exit 1. This
+blocked shipping any new production image.
+
+**Root cause:** `az acr build` (including a dedicated agent pool created
+without VNet injection, as `bigpool` was) runs in Microsoft's shared ACR
+Tasks infrastructure, **outside the AKS VNet entirely**. It has no network
+route to `10.224.0.6:5432` (Postgres' private IP), `langfuse-clickhouse-headless`
+(a cluster-internal Kubernetes DNS name, unresolvable outside the cluster),
+or the private Redis endpoint. Something in the build path (module-level
+setup in `@langfuse/shared` and/or a client eagerly touched while Next.js
+imports page modules to collect their data) reaches for one of these during
+that step. This explains every observed symptom: identical failure point
+regardless of agent size (not compute-bound — a bigger/faster agent just
+reaches the same unreachable network call sooner), and no clean error
+output (a TCP attempt to a dead private IP times out inside a worker
+thread — "Collecting page data using N workers" — whose failure doesn't
+always surface a stack trace to the parent process).
+
+**How this was proven, not just theorized:** ran the exact `web` production
+build (`DOCKER_BUILD=1`, `NEXT_IGNORE_BUILD_ERRORS=true`,
+`NEXT_MANUAL_SIG_HANDLE=true` — the same flags `web/Dockerfile` sets in its
+builder stage) by hand inside a throwaway pod running **inside the AKS
+cluster's own VNet**, using the already-built `dev-demo` image as a base so
+no new ACR build was needed for the test. It completed end-to-end: full
+page manifest printed, exit code 0, including
+`/project/[projectId]/acme-enhancements/assurance-demo`. Same build,
+same flags, same source — the only variable that changed was network
+reachability to the VNet-private data stores. Confirms the code and the
+build step are not broken; the build *environment* structurally cannot
+reach what the build needs.
+
+**Fix, not yet applied (deliberately — this is a billable, semi-permanent
+infra change, held for a clear-headed session rather than done at
+1am/2am):**
+1. Provision a **VNet-injected dedicated ACR agent pool** (Premium-tier ACR
+   feature) peered into the AKS VNet, and point `az acr build`/CI at it
+   instead of the default or a non-injected dedicated pool, **or**
+2. Build from somewhere that already has VNet access — e.g. a self-hosted
+   GitHub Actions runner living in-cluster, or an in-cluster build
+   Job/Pod (the same mechanism used to prove this root cause), promoted
+   from a one-off diagnostic to the actual CI build path.
+
+**Impact while unresolved (prior to the fix below):** no new production
+image could be built via the current `az acr build`-based pipeline. This
+had been the actual blocker on shipping a separate, not-yet-merged
+Assurance (Preview) demo feature.
+
+**CORRECTION (same day, later): the above root cause was wrong.** Further
+bisection disproved the VNet-network-reachability theory entirely. Stripping
+the build's environment down to zero secrets — no `DATABASE_URL`, no
+ClickHouse, no Redis, nothing beyond `DOCKER_BUILD=1` and the other flags
+`web/Dockerfile` sets — reproduced the identical crash, ruling out any
+network call to a private endpoint. Resolving the crash location through
+the build's own source map (`.next/server/chunks/ssr/*.js.map`, read with
+the `source-map` package already vendored in `node_modules`) pointed
+precisely at `packages/shared/src/features/monitors/types.ts:39` —
+`z.enum(PrismaMonitorSeverity)`, where `PrismaMonitorSeverity` comes from
+the generated `@prisma/client`. Directly checking that generated client
+in the same pod showed `MonitorSeverity: undefined` — a **stale/stub
+Prisma client**, missing enums that are genuinely declared in
+`schema.prisma`. `z.enum(undefined)` calls `Object.values(undefined)`
+internally, producing exactly the observed `TypeError: Cannot convert
+undefined or null to object`. Running `prisma generate` fresh, then
+rerunning the *same* zero-secrets build, completed cleanly end-to-end —
+full page manifest, exit 0. This conclusively confirms a stale generated
+Prisma client as the real cause, not network isolation.
+
+**Confirmed mechanism, then fixed:** isolated the exact trigger by
+unsetting *only* `pnpm_config_verify_deps_before_run` (everything else
+identical, starting from a known-good client) — `web/Dockerfile` sets this
+flag specifically to stop pnpm re-verifying/re-linking dependencies
+against cached layers mid-build (see that `ENV` line's own comment). With
+it unset, `pnpm exec next build` re-triggered dependency
+verification/relinking mid-build and didn't just stub the Prisma client —
+it broke `.prisma/client/*` module resolution entirely
+(`Cannot find module '.prisma/client/default'`). Likely real-world trigger
+in `az acr build`: the Dockerfile runs `pnpm install` at line 56, then
+copies the full source — including a duplicate `pnpm-lock.yaml` — at line
+125, giving the lockfile a newer mtime than the already-installed
+`node_modules`, exactly the staleness signal this verify-deps check
+watches for.
+
+**Fix applied:** added an explicit
+`RUN pnpm --filter @langfuse/shared exec prisma generate --schema=./prisma/schema.prisma`
+in `web/Dockerfile` immediately before the `turbo run build` line, so
+client freshness no longer depends on pnpm's re-verification behavior at
+all — it's regenerated unconditionally, right before it's needed.
+**Verified end-to-end**: reran the full production build under the exact
+adversarial condition that broke it (verify-deps flag unset, zero runtime
+secrets) with this fix in place — completed cleanly, full page manifest,
+and the Prisma client (`MonitorSeverity` enum present) survived intact
+after the entire build.
 
 ---
 

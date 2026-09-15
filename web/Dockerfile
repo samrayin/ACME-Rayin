@@ -141,6 +141,16 @@ ENV NEXT_MANUAL_SIG_HANDLE true
 # set the CI flag to true to get CI specific logs
 ENV CI true
 
+# The full-source COPY above re-copies pnpm-lock.yaml with a newer mtime than
+# the node_modules installed earlier in this stage. If pnpm's verify-deps
+# check ever fires on that mismatch despite pnpm_config_verify_deps_before_run
+# above, it can silently relink/reinstall and leave a stale or fully broken
+# @prisma/client (missing enums, or ".prisma/client/*" unresolvable) with no
+# build error until Next.js crashes on it much later, deep in a minified
+# chunk, during "Collecting page data". Regenerating explicitly here makes
+# client freshness independent of that pnpm behavior entirely.
+RUN pnpm --filter @langfuse/shared exec prisma generate --schema=./prisma/schema.prisma
+
 RUN NODE_OPTIONS='--max-old-space-size-percentage=75' turbo run build --filter=web...
 
 # Production image, copy all the files and run next
