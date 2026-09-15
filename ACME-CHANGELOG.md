@@ -1249,7 +1249,47 @@ after the entire build.
 
 ---
 
+## 2026-09-16 — Resolved the guardrails implementation collision
+
+**What was wrong:** a second, parallel guardrails implementation
+(`rayin/enhanced/`, branch `feat/rayin-guardrails-clean`) had been built
+independently, overlapping heavily with the already-fixed `rayin-guardrails`
+service (separate repo) — duplicating its job (PII redaction, jailbreak
+detection, topical boundaries) with a less mature approach: keyword/regex
+matching instead of real NeMo+LLM judgment, regex instead of Presidio, and
+no request-level authentication at all (its own handoff doc flagged this as
+its #1 gap). Never merged, never deployed, but a real risk of both getting
+deployed to the same namespace unreconciled.
+
+**Decision:** `rayin-guardrails` (NeMo-based) is the one live
+implementation — more mature, already fixed and live-verified blocking a
+real jailbreak attempt (see the 2026-09-12 entry). `rayin/enhanced` is
+retired.
+
+**What was preserved:** `enhanced_rayin_server.py` contains a genuinely
+well-built `ConversationStateStore` — Redis-backed multi-turn dialog state
+with graceful in-memory fallback and retry backoff if Redis drops
+mid-session. Not present in `rayin-guardrails` today. Rather than cherry-pick
+it in under this same change (real scope — needs extracting into a
+standalone module and wiring into the NeMo flow properly), it's logged
+below as a future enhancement so the idea isn't lost.
+
+**Action taken:** renamed `feat/rayin-guardrails-clean` to
+`archive/rayin-guardrails-clean-2026-09` on `origin` (same commit, nothing
+deleted) and removed the original branch name, so nothing treats it as
+active or mergeable going forward.
+
+---
+
 ## Outstanding, not yet done
+
+- **Port `ConversationStateStore`'s Redis-backed multi-turn dialog state
+  into `rayin-guardrails`** — see the 2026-09-16 collision-resolution entry
+  above for where the reference implementation now lives
+  (`archive/rayin-guardrails-clean-2026-09` branch,
+  `rayin/enhanced/enhanced_rayin_server.py`). Needs extracting into a
+  standalone module, not a wholesale copy of the retired service.
+
 
 - **Terraform state reconciliation — paused 2026-09-11, ~half done, safe to
   leave as-is.** Goal: get `deploy/azure`'s Terraform state to recognize the
