@@ -1112,6 +1112,42 @@ merge) before being moved; that branch's own commits were never touched.
 
 ---
 
+## 2026-09-15 — Assurance (Preview): fast demo, not the production feature
+
+**What:** New nav item and page, `web/src/features/acme-enhancements/{server/acmeAssuranceDemoRouter.ts, components/AcmeAssuranceDemoTable.tsx, pages/AcmeAssuranceDemoPage.tsx}` + page shim + `root.ts`/`routes.tsx` registration.
+
+**Why this approach was chosen:** two much larger features were scoped this
+session — an AI Asset Inventory (declared "Inherent Risk" per asset) and an
+Assurance/Risk-Score system (measured "Residual Assurance", gated on real
+evidence). Both are multi-week builds with real schema/migration work.
+Before committing to either, the open product question was whether pairing
+a *declared* risk classification with a *measured* assurance signal on one
+screen actually makes sense to a customer, or reads as two disconnected,
+confusing numbers. This demo answers that cheaply: hardcoded, illustrative
+risk classifications for the 8 real IT Ops prompts already seeded into this
+project, shown next to a **real, live** call to `rayin-guardrails`' own
+`GET /v1/config` — not faked, not cached. No database schema, no migration,
+nothing persisted; the entire "Inherent Risk" half is a constant array in
+the router file, explicitly not the production Asset Inventory.
+
+**Deployment status:** committed, typecheck-clean (verified via
+`npx tsc --noEmit` — the only errors present are the 4 pre-existing ones in
+`AcmeAuditLogsTable.tsx`/`acmeChatRouter.ts` already tracked in PR #6, none
+introduced by this change). Not yet built into an image or deployed to
+`langfuse-dev.aiatacme.com` as of this entry.
+
+**Known-incomplete / by design:**
+- Assurance is shown at the deployment level, matching reality —
+  `rayin-guardrails` has no per-asset concept yet, so this doesn't fake one.
+- The "Inherent Risk" tier is a simple, transparent qualitative rule (not
+  the weighted-points formula from the real Asset Inventory scoping doc) —
+  deliberately not dressed up with false precision for a demo.
+- Remove this nav entry and page once the real Asset Inventory and
+  Assurance features ship — it exists to validate a concept, not to become
+  a second, permanent, competing version of either.
+
+---
+
 ## 2026-09-16 — Production build fixed: stale Prisma client during "Collecting page data" (not a network/infra issue, despite this entry's first theory)
 
 **What was wrong:** every `az acr build` of `web` — on the default ACR agent,
