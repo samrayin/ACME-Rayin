@@ -498,7 +498,7 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
         <Card>
           <CardHeader className="pb-1">
             <CardTitle className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-              In buffer
+              Total
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-0 text-2xl font-semibold">
@@ -545,8 +545,8 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
         <CardHeader>
           <CardTitle className="text-sm">Recent events</CardTitle>
           <p className="text-muted-foreground text-xs">
-            Held in rayin-guardrails&apos; own memory, most recent 200 —
-            resets if that service restarts.
+            Persisted to Langfuse&apos;s database as it&apos;s observed —
+            survives a rayin-guardrails restart, most recent first.
           </p>
         </CardHeader>
         <CardContent className="pt-0">
