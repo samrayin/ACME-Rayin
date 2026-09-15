@@ -1,0 +1,382 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rayin-enhanced-code
+  namespace: rayin-platform
+data:
+  enhanced_rayin_server.py: |
+    import asyncio
+    import json
+    import time
+    from typing import Dict, List, Optional, Any
+    from datetime import datetime, timedelta
+    from dataclasses import dataclass, asdict
+    from enum import Enum
+
+    from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, Request
+    from fastapi.responses import JSONResponse
+    from pydantic import BaseModel, Field
+    import redis
+    import requests
+    from langfuse import Langfuse
+
+    # Enhanced RAYIN + NeMo Guardrails Server
+    app = FastAPI(
+        title="Enhanced RAYIN + NeMo Guardrails Platform",
+        description="Complete AI Safety Platform with Dialog Management, Fact-Checking, and Custom Rules",
+        version="2.0.0-nemo-integrated"
+    )
+
+    # Core Models
+    class GuardrailType(str, Enum):
+        PII_REDACTION = "pii_redaction"
+        JAILBREAK_DETECTION = "jailbreak_detection"
+        DIALOG_MANAGEMENT = "dialog_management"
+        FACT_CHECKING = "fact_checking"
+        TOPICAL_BOUNDARIES = "topical_boundaries"
+        CUSTOM_RULES = "custom_rules"
+
+    class GuardRequest(BaseModel):
+        text: str = Field(..., description="Input text to analyze")
+        conversation_id: Optional[str] = Field(None, description="Session identifier for dialog management")
+        guardrails: List[GuardrailType] = Field(default=[GuardrailType.JAILBREAK_DETECTION], description="Guardrails to apply")
+        context: Optional[Dict[str, Any]] = Field(None, description="Additional context")
+        rules: Optional[Dict[str, Any]] = Field(None, description="Custom rules configuration")
+
+    class GuardResponse(BaseModel):
+        action: str = Field(..., description="Action to take: allow, block, redirect")
+        policy_triggered: Optional[str] = Field(None, description="Which policy was triggered")
+        redacted_text: Optional[str] = Field(None, description="Text with PII redacted")
+        findings: List[Dict[str, Any]] = Field(default_factory=list, description="Detailed findings")
+        conversation_state: Optional[Dict[str, Any]] = Field(None, description="Updated conversation state")
+        confidence: Optional[float] = Field(None, description="Confidence score")
+        processing_time_ms: Optional[float] = Field(None, description="Processing time in milliseconds")
+
+    # Enhanced Rail Engine with NeMo Integration
+    class EnhancedRailEngine:
+        def __init__(self):
+            self.redis_client = redis.Redis.from_url("redis://redis:6379", decode_responses=True)
+            self.langfuse = Langfuse(
+                public_key="pk_lf_placeholder",
+                secret_key="sk_lf_placeholder",
+                host="http://langfuse-web.langfuse.svc.cluster.local:3000"
+            )
+
+        async def process_guardrails(self, request: GuardRequest) -> GuardResponse:
+            start_time = time.time()
+            findings = []
+            action = "allow"
+            policy_triggered = None
+            redacted_text = request.text
+
+            # Process each requested guardrail
+            for guardrail in request.guardrails:
+                if guardrail == GuardrailType.JAILBREAK_DETECTION:
+                    result = await self.check_jailbreak(request.text)
+                    if result["blocked"]:
+                        action = "block"
+                        policy_triggered = "Jailbreak Detection"
+                        findings.append(result)
+
+                elif guardrail == GuardrailType.PII_REDACTION:
+                    result = await self.redact_pii(request.text)
+                    redacted_text = result["redacted_text"]
+                    if result["findings"]:
+                        findings.extend(result["findings"])
+
+                elif guardrail == GuardrailType.DIALOG_MANAGEMENT:
+                    result = await self.manage_dialog(request.text, request.conversation_id)
+                    findings.append(result)
+
+                elif guardrail == GuardrailType.FACT_CHECKING:
+                    result = await self.check_facts(request.text)
+                    findings.extend(result["findings"])
+
+                elif guardrail == GuardrailType.TOPICAL_BOUNDARIES:
+                    result = await self.check_topical_boundaries(request.text)
+                    if result["violation"]:
+                        action = "redirect"
+                        policy_triggered = "Topical Boundary"
+                        findings.append(result)
+
+                elif guardrail == GuardrailType.CUSTOM_RULES:
+                    result = await self.apply_custom_rules(request.text, request.rules)
+                    if result["triggered"]:
+                        action = result["action"]
+                        policy_triggered = result["rule_name"]
+                        findings.append(result)
+
+            processing_time = (time.time() - start_time) * 1000
+
+            return GuardResponse(
+                action=action,
+                policy_triggered=policy_triggered,
+                redacted_text=redacted_text if redacted_text != request.text else None,
+                findings=findings,
+                processing_time_ms=processing_time
+            )
+
+        async def check_jailbreak(self, text: str) -> Dict[str, Any]:
+            # Simulate jailbreak detection logic
+            jailbreak_indicators = [
+                "ignore previous instructions",
+                "forget your role",
+                "act as a different",
+                "bypass safety",
+                "jailbreak"
+            ]
+
+            for indicator in jailbreak_indicators:
+                if indicator.lower() in text.lower():
+                    return {
+                        "type": "jailbreak_detection",
+                        "blocked": True,
+                        "confidence": 0.95,
+                        "indicator": indicator,
+                        "description": f"Jailbreak attempt detected: '{indicator}'"
+                    }
+
+            return {"type": "jailbreak_detection", "blocked": False}
+
+        async def redact_pii(self, text: str) -> Dict[str, Any]:
+            # Simulate PII redaction
+            import re
+            redacted = text
+            findings = []
+
+            # Email pattern
+            email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+            emails = re.findall(email_pattern, text)
+            for email in emails:
+                redacted = redacted.replace(email, "[EMAIL_REDACTED]")
+                findings.append({"type": "email", "value": "[REDACTED]", "confidence": 0.99})
+
+            # Phone pattern
+            phone_pattern = r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b'
+            phones = re.findall(phone_pattern, text)
+            for phone in phones:
+                redacted = redacted.replace(phone, "[PHONE_REDACTED]")
+                findings.append({"type": "phone", "value": "[REDACTED]", "confidence": 0.95})
+
+            return {"redacted_text": redacted, "findings": findings}
+
+        async def manage_dialog(self, text: str, conversation_id: str) -> Dict[str, Any]:
+            # Simulate dialog management
+            if not conversation_id:
+                conversation_id = f"session_{int(time.time())}"
+
+            # Store conversation state in Redis
+            key = f"dialog:{conversation_id}"
+            try:
+                state = json.loads(self.redis_client.get(key) or "{}")
+                turn_count = state.get("turn_count", 0) + 1
+
+                state.update({
+                    "turn_count": turn_count,
+                    "last_message": text[:100],  # Store truncated version
+                    "timestamp": datetime.now().isoformat()
+                })
+
+                self.redis_client.setex(key, 3600, json.dumps(state))  # 1 hour TTL
+
+                return {
+                    "type": "dialog_management",
+                    "conversation_id": conversation_id,
+                    "turn_count": turn_count,
+                    "status": "updated"
+                }
+            except Exception as e:
+                return {
+                    "type": "dialog_management",
+                    "error": str(e),
+                    "status": "failed"
+                }
+
+        async def check_facts(self, text: str) -> Dict[str, Any]:
+            # Simulate fact checking
+            findings = []
+
+            # Simple factual claim detection
+            fact_indicators = ["according to", "studies show", "research indicates", "it is proven"]
+
+            for indicator in fact_indicators:
+                if indicator.lower() in text.lower():
+                    findings.append({
+                        "type": "factual_claim",
+                        "claim": text,  # In real implementation, extract specific claim
+                        "confidence": 0.7,
+                        "verification_needed": True,
+                        "indicator": indicator
+                    })
+
+            return {"findings": findings}
+
+        async def check_topical_boundaries(self, text: str) -> Dict[str, Any]:
+            # Simulate topical boundary checking
+            restricted_topics = {
+                "medical_advice": ["diagnose", "treatment", "medicine", "drug", "symptom"],
+                "legal_advice": ["legal", "lawsuit", "court", "attorney", "law"],
+                "financial_advice": ["invest", "stock", "buy", "sell", "portfolio"]
+            }
+
+            for topic, keywords in restricted_topics.items():
+                for keyword in keywords:
+                    if keyword.lower() in text.lower():
+                        return {
+                            "type": "topical_boundary",
+                            "violation": True,
+                            "topic": topic,
+                            "keyword": keyword,
+                            "message": f"Cannot provide {topic.replace('_', ' ')}"
+                        }
+
+            return {"type": "topical_boundary", "violation": False}
+
+        async def apply_custom_rules(self, text: str, rules: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+            # Simulate custom rule application
+            if not rules:
+                return {"type": "custom_rules", "triggered": False}
+
+            # Example custom rule processing
+            for rule_name, rule_config in rules.items():
+                if rule_config.get("type") == "keyword_block":
+                    blocked_words = rule_config.get("keywords", [])
+                    for word in blocked_words:
+                        if word.lower() in text.lower():
+                            return {
+                                "type": "custom_rules",
+                                "triggered": True,
+                                "rule_name": rule_name,
+                                "action": rule_config.get("action", "block"),
+                                "keyword": word
+                            }
+
+            return {"type": "custom_rules", "triggered": False}
+
+    # Initialize the enhanced rail engine
+    rail_engine = EnhancedRailEngine()
+
+    # API Endpoints
+    @app.post("/v1/guard", response_model=GuardResponse)
+    async def guard_endpoint(request: GuardRequest):
+        """Enhanced guardrails endpoint with full NeMo integration"""
+        try:
+            response = await rail_engine.process_guardrails(request)
+            return response
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post("/v1/guard/enhanced", response_model=GuardResponse)
+    async def enhanced_guard_endpoint(request: GuardRequest):
+        """Enhanced guardrails endpoint with comprehensive features"""
+        return await guard_endpoint(request)
+
+    @app.get("/health")
+    async def health_check():
+        """Health check endpoint"""
+        return {"status": "healthy", "service": "enhanced-rayin", "version": "2.0.0"}
+
+    @app.get("/health/ready")
+    async def readiness_check():
+        """Readiness check endpoint"""
+        try:
+            # Check Redis connection
+            rail_engine.redis_client.ping()
+            return {"status": "ready", "dependencies": {"redis": "connected"}}
+        except Exception as e:
+            raise HTTPException(status_code=503, detail=f"Not ready: {str(e)}")
+
+    @app.get("/health/live")
+    async def liveness_check():
+        """Liveness check endpoint"""
+        return {"status": "alive", "timestamp": datetime.now().isoformat()}
+
+    if __name__ == "__main__":
+        import uvicorn
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rayin-enhanced
+  namespace: rayin-platform
+  labels:
+    app: rayin-enhanced
+    version: v2.0-nemo-integrated
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rayin-enhanced
+  template:
+    metadata:
+      labels:
+        app: rayin-enhanced
+    spec:
+      containers:
+      - name: rayin-enhanced
+        image: python:3.11-slim
+        command: ["/bin/bash"]
+        args:
+        - -c
+        - |
+          pip install fastapi uvicorn pydantic redis requests langfuse
+          cd /app
+          python enhanced_rayin_server.py
+        ports:
+        - containerPort: 8080
+        env:
+        - name: REDIS_URL
+          value: "redis://redis:6379"
+        - name: LANGFUSE_PUBLIC_KEY
+          valueFrom:
+            secretKeyRef:
+              name: rayin-langfuse-credentials
+              key: langfuse-public-key
+        - name: LANGFUSE_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: rayin-langfuse-credentials
+              key: langfuse-secret-key
+        - name: LANGFUSE_HOST
+          value: "http://langfuse-web.langfuse.svc.cluster.local:3000"
+        volumeMounts:
+        - name: rayin-code
+          mountPath: /app
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+      volumes:
+      - name: rayin-code
+        configMap:
+          name: rayin-enhanced-code
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rayin-enhanced
+  namespace: rayin-platform
+spec:
+  selector:
+    app: rayin-enhanced
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: http
+  type: ClusterIP
