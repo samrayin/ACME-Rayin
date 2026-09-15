@@ -1,0 +1,56 @@
+# TEMPORARY, NOT COMMITTED FOR PRODUCTION USE.
+#
+# Stops right before the broken `turbo run build` step in web/Dockerfile
+# (production build silently dies at Next.js's "Collecting page data" step
+# on both a small and a large ACR build agent, confirmed pre-existing on
+# unmodified `main` too -- not caused by any feature branch). Runs `next
+# dev` instead, which doesn't go through that same static page-collection
+# path. Purely a way to demo real, live code against real, live backend
+# data today while the production build issue gets root-caused separately.
+# Delete this file once that's fixed -- it is not a replacement for a
+# working production image.
+
+FROM node:24-alpine AS alpine
+RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libc6-compat busybox ssl_client zlib
+
+FROM alpine AS build-base
+RUN npm install turbo@2.10.5 --global
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+ARG NODE_USE_ENV_PROXY
+RUN npm install --global corepack@0.36.0 \
+    && corepack enable \
+    && corepack prepare pnpm@12.3.1 --activate
+
+FROM build-base AS pruner
+WORKDIR /app
+COPY . .
+RUN turbo prune --scope=web --docker
+
+FROM build-base AS dev
+WORKDIR /app
+
+COPY --from=pruner /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
+COPY --from=pruner /app/out/pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY --from=pruner /app/out/json/ .
+RUN pnpm install --frozen-lockfile
+
+ENV pnpm_config_verify_deps_before_run=false
+
+COPY --from=pruner /app/out/full/ .
+
+RUN set -eu; \
+    node ./packages/shared/clickhouse/scripts/prepare-migrations.mjs materialize ./packages/shared/clickhouse/migrations; \
+    chmod 755 ./packages/shared/clickhouse/migrations/clustered ./packages/shared/clickhouse/migrations/unclustered
+
+RUN rm -f ./web/src/middleware.ts
+
+# `web`'s dev script does `dotenv -e ../.env`, which errors if the file is
+# entirely missing -- real values come from the k8s Deployment's own env,
+# this just satisfies dotenv-cli's existence check.
+RUN touch /app/.env
+
+ENV NEXT_TELEMETRY_DISABLED=1
+EXPOSE 3000
+
+CMD ["pnpm", "--filter", "web", "dev"]
