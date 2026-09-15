@@ -43,6 +43,7 @@ import { experimentsRouter } from "@/src/features/experiments/server/router";
 import { mediaRouter } from "@/src/server/api/routers/media";
 import { backgroundMigrationsRouter } from "@/src/features/background-migrations/server/background-migrations-router";
 import { auditLogsRouter } from "./routers/auditLogs";
+import { acmeAssuranceDemoRouter } from "@/src/features/acme-enhancements/server/acmeAssuranceDemoRouter";
 import { acmeAuditLogsRouter } from "@/src/features/acme-enhancements/server/acmeAuditLogsRouter";
 import { acmeChatRouter } from "@/src/features/acme-enhancements/server/acmeChatRouter";
 import { acmeGuardrailsRouter } from "@/src/features/acme-enhancements/server/acmeGuardrailsRouter";
@@ -120,6 +121,7 @@ export const appRouter = createTRPCRouter({
   media: mediaRouter,
   backgroundMigrations: backgroundMigrationsRouter,
   auditLogs: auditLogsRouter,
+  acmeAssuranceDemo: acmeAssuranceDemoRouter,
   acmeAuditLogs: acmeAuditLogsRouter,
   acmeChat: acmeChatRouter,
   acmeGuardrails: acmeGuardrailsRouter,

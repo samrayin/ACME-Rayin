@@ -23,6 +23,7 @@ import {
   ShieldCheck,
   ShieldAlert,
   Palette,
+  Gauge,
 } from "lucide-react";
 import { type ReactNode } from "react";
 import { type Entitlement } from "@/src/features/entitlements/constants/entitlements";
@@ -127,6 +128,18 @@ export const ROUTES: Route[] = [
     title: "Guardrails",
     pathname: `/project/[projectId]/acme-enhancements/guardrails`,
     icon: ShieldAlert,
+    projectRbacScopes: ["projectGuardrails:read"],
+    section: RouteSection.Main,
+  },
+  {
+    // ACME PREVIEW — a deliberately thin demo (acmeAssuranceDemoRouter.ts),
+    // not the production Asset Inventory / Assurance features it's meant to
+    // validate the concept for. Remove this nav entry (and the demo page)
+    // once those real features ship, rather than let a demo linger as if
+    // it were the shipped thing.
+    title: "Assurance (Preview)",
+    pathname: `/project/[projectId]/acme-enhancements/assurance-demo`,
+    icon: Gauge,
     projectRbacScopes: ["projectGuardrails:read"],
     section: RouteSection.Main,
   },
