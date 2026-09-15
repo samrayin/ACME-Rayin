@@ -1,0 +1,61 @@
+# CI gate for the Terraform configs under deploy/azure and
+# deploy/customer-template (see ACME-DEVELOPMENT-FRAMEWORK.md §4).
+#
+# This only runs `terraform fmt -check` and `terraform validate` — both are
+# purely local/static checks that don't need cloud credentials or a real
+# backend. `terraform init -backend=false` is used deliberately so the job
+# never tries to reach the real Azure state backend (which needs Azure AD
+# credentials this workflow does not have and should not have).
+#
+# `terraform plan` is intentionally NOT run here — that needs real
+# credentials and is out of scope for this gate.
+name: Terraform Validate
+
+on:
+  pull_request:
+    paths:
+      - "deploy/azure/**"
+      - "deploy/customer-template/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  terraform-validate:
+    name: terraform fmt/validate (${{ matrix.dir }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        dir:
+          - deploy/azure
+          - deploy/customer-template
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_wrapper: false
+
+      - name: terraform fmt -check
+        run: terraform fmt -check -recursive
+
+      # No backend configured: this only downloads providers/modules, it
+      # never touches the real Azure-backed remote state and needs no
+      # credentials.
+      - name: terraform init (no backend)
+        run: terraform init -backend=false -input=false
+
+      - name: terraform validate
+        run: terraform validate

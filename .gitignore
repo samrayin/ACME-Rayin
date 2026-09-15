@@ -118,3 +118,9 @@ web/test-results/*
 
 # Superset config
 .superset/
+
+# Terraform local state and provider/plugin caches (deploy/azure, deploy/customer-template, etc.)
+# Never commit these — a prior branch had to be abandoned after 60-219MB of
+# provider binaries landed in git history with no .gitignore protection.
+.terraform/
+*.tfstate*
