@@ -21,6 +21,7 @@ import helmet from "helmet";
 import { cloudUsageMeteringQueueProcessor } from "./queues/cloudUsageMeteringQueue";
 import { cloudSpendAlertQueueProcessor } from "./queues/cloudSpendAlertQueue";
 import { cloudFreeTierUsageThresholdQueueProcessor } from "./queues/cloudFreeTierUsageThresholdQueue";
+import { acmePromptReviewQueueProcessor } from "./queues/acmePromptReviewQueue";
 import { monitorQueueProcessor } from "./queues/monitorQueue";
 import { inAppAgentRunQueueProcessor } from "./queues/inAppAgentRunQueue";
 import { WorkerManager } from "./queues/workerManager";
@@ -41,6 +42,7 @@ import {
   TraceUpsertQueue,
   CloudFreeTierUsageThresholdQueue,
   CloudUsageMeteringQueue,
+  AcmePromptReviewQueue,
   V4LegacyApiUsageQueue,
   EventPropagationQueue,
   EvalExecutionQueue,
@@ -416,6 +418,17 @@ if (
         duration: 30_000,
       },
     },
+  );
+}
+
+if (env.QUEUE_CONSUMER_ACME_PROMPT_REVIEW_QUEUE_IS_ENABLED === "true") {
+  // Instantiate the queue to trigger the nightly scheduled scan
+  AcmePromptReviewQueue.getInstance();
+
+  WorkerManager.register(
+    QueueName.AcmePromptReviewQueue,
+    acmePromptReviewQueueProcessor,
+    { concurrency: 1 },
   );
 }
 

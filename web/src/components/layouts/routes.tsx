@@ -24,6 +24,7 @@ import {
   ShieldAlert,
   Palette,
   Gauge,
+  CalendarClock,
 } from "lucide-react";
 import { type ReactNode } from "react";
 import { type Entitlement } from "@/src/features/entitlements/constants/entitlements";
@@ -141,6 +142,16 @@ export const ROUTES: Route[] = [
     pathname: `/project/[projectId]/acme-enhancements/assurance-demo`,
     icon: Gauge,
     projectRbacScopes: ["projectGuardrails:read"],
+    section: RouteSection.Main,
+  },
+  {
+    // ACME addition: review-date management for prompts (Prompt.config.
+    // reviewDate, no migration). Gated on the existing prompts:read scope
+    // rather than a new one -- see acmePromptReviewRouter.ts.
+    title: "Prompt Reviews",
+    pathname: `/project/[projectId]/acme-enhancements/prompt-reviews`,
+    icon: CalendarClock,
+    projectRbacScopes: ["prompts:read"],
     section: RouteSection.Main,
   },
   {
