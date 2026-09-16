@@ -7,6 +7,7 @@ import { createUnknownSdkIngestionAttribution } from "../ingestion/ingestionAttr
 import { logger } from "../logger";
 import { traceException } from "../instrumentation";
 import { publishAiFeatureTraceViaOtelIngestion } from "../otel/internalAiFeatureOtelWriter";
+import { maskPii } from "./piiMask";
 
 export function prepareInternalTraceEvents(params: {
   events: Array<{
@@ -87,6 +88,7 @@ export function getInternalTracingHandler(traceSinkParams: TraceSinkParams): {
       environment,
       persistence: "memory",
       sdkIntegration: "LANGCHAIN",
+      mask: maskPii,
     }),
   };
 
