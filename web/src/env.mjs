@@ -74,6 +74,19 @@ export const env = createEnv({
     // path. Never exposed to the client. Left unset, every call refuses
     // to authenticate rather than silently failing.
     RAYIN_GUARDRAILS_CONFIG_SECRET: z.string().optional(),
+    // ACME addition: A/B prompt testing & canary rollout for the ACME AI
+    // chat widget (acmePromptVariant.ts). All optional -- unset behaves
+    // exactly as before this feature existed (the router's own hardcoded
+    // default system prompt, no variant tagging).
+    // ACME_CHAT_PROMPT_LABEL: the Langfuse prompt label read as the "chat
+    // production" system prompt, if a text-type prompt exists at it.
+    ACME_CHAT_PROMPT_LABEL: z.string().optional(),
+    // ACME_CHAT_PROMPT_CANARY_LABEL: an optional second label to weighted-
+    // route a fraction of requests to instead.
+    ACME_CHAT_PROMPT_CANARY_LABEL: z.string().optional(),
+    // ACME_CHAT_PROMPT_CANARY_WEIGHT: fraction (0-1) of requests routed to
+    // the canary label when it's set. "0.1" == roughly 1 in 10 requests.
+    ACME_CHAT_PROMPT_CANARY_WEIGHT: z.string().optional(),
     NEXTAUTH_SECRET:
       process.env.NODE_ENV === "production"
         ? z.string().min(1)
@@ -772,6 +785,9 @@ export const env = createEnv({
     RAYIN_CHAT_LLM_MODEL: process.env.RAYIN_CHAT_LLM_MODEL,
     RAYIN_GUARDRAILS_URL: process.env.RAYIN_GUARDRAILS_URL,
     RAYIN_GUARDRAILS_CONFIG_SECRET: process.env.RAYIN_GUARDRAILS_CONFIG_SECRET,
+    ACME_CHAT_PROMPT_LABEL: process.env.ACME_CHAT_PROMPT_LABEL,
+    ACME_CHAT_PROMPT_CANARY_LABEL: process.env.ACME_CHAT_PROMPT_CANARY_LABEL,
+    ACME_CHAT_PROMPT_CANARY_WEIGHT: process.env.ACME_CHAT_PROMPT_CANARY_WEIGHT,
     SEED_SECRET_KEY: process.env.SEED_SECRET_KEY,
     NEXT_PUBLIC_DEMO_PROJECT_ID: process.env.NEXT_PUBLIC_DEMO_PROJECT_ID,
     NEXT_PUBLIC_DEMO_ORG_ID: process.env.NEXT_PUBLIC_DEMO_ORG_ID,
