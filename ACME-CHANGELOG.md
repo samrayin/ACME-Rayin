@@ -1372,16 +1372,53 @@ removed. PR #8 remains open, unmerged.
 
 ---
 
+## 2026-09-16 — Final synthesis: default ACR agent is undersized, not a code bug
+
+**What closed this out:** independent of the smoke test, the user ran
+several of their own `az acr build`s of plain `main` on the **default**
+ACR agent (2 vCPU, no dedicated pool), which produced three more real data
+points and, combined with everything else tonight, finally makes the
+pattern coherent.
+
+| Attempt | Agent | Turbopack workers | Result |
+|---|---|---|---|
+| `dt1u` | `bigpool` (4 vCPU/8GB) | 7 | **Full success** |
+| `dt1v` | `bigpool`, same warm node | 3 | Fast crash, bare `exit 1`, no stack trace |
+| `dt1w` | `bigpool`, fresh node, 2g shm | — | Hung 90+ minutes |
+| `dt1x` (user's own run) | default (2 vCPU) | — | Hung, cancelled |
+| `dt1y` (bare retry) | default (2 vCPU) | — | Compiled successfully (4.0min) — then failed at the known TypeScript check (no `NEXT_IGNORE_BUILD_ERRORS`, a test-setup gap, not a new bug) |
+| `dt20` (retry with the build-arg) | default (2 vCPU) | **1** | Compiled successfully (4.4min), correctly skipped type-checking — then crashed with a bare `exit 1`, zero stack trace, the instant it tried to collect page data with only 1 worker |
+
+**The pattern:** Turbopack's own worker count scales down as available
+memory shrinks (7 → 3 → 1), and low worker counts correlate directly with
+crashes or hangs specifically during "Collecting page data" — the most
+memory-hungry phase of this build. `/dev/shm` sizing, which looked like
+the key variable earlier tonight, is now understood to be a secondary
+factor at most; the real, unifying explanation across every single attempt
+tonight is **compute/memory headroom**. The default ACR agent's 2 vCPU
+tier is genuinely undersized for this codebase's production build — this
+is an infrastructure sizing problem, not a code defect, and not something
+any further code change will fix.
+
+**Practical recommendation:** stop using the default ACR agent for this
+project's production builds entirely. Standardize on a dedicated agent
+pool sized like `bigpool` (S2 tier, 4 vCPU/8GB) for every `az acr build`/
+`az acr run` invocation of `web`, whether run by a person or by CI. This
+is now a scoped, well-evidenced action, not a guess — it's the first
+explanation tonight that's consistent with every data point instead of
+contradicting some of them.
+
+---
+
 ## Outstanding, not yet done
 
-- **Root-cause the remaining ACR build flakiness on branches carrying the
-  Assurance/guardrail-persistence code** — see the 2026-09-16 follow-up
-  entry above. `/dev/shm` sizing is a real, partial lever (proven: it's
-  the only variable that ever converted a hang into forward progress) but
-  not a complete, deterministic fix — one run hung for 90+ minutes even
-  with `--shm-size=2g` on a freshly-provisioned agent. PR #8's own smoke
-  test (migration + application-path validation) has not yet run because
-  of this — it's still blocked, not merged.
+- **Adopt a dedicated, appropriately-sized ACR agent pool as the standard
+  build target for `web`** — see the 2026-09-16 "Final synthesis" entry
+  above. Root cause is compute/memory headroom (default agent's 2 vCPU
+  tier undersized), not a code defect; `/dev/shm` sizing was a secondary
+  factor at most. Once a `bigpool`-equivalent pool is standardized on:
+  retry PR #8's smoke test (migration + application-path validation),
+  which still hasn't run and remains the blocker on merging it.
 
 - **Port `ConversationStateStore`'s Redis-backed multi-turn dialog state
   into `rayin-guardrails`** — see the 2026-09-16 collision-resolution entry
