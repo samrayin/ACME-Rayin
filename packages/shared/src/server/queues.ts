@@ -443,6 +443,9 @@ export enum QueueName {
   MonitorQueue = "monitor-queue",
   InAppAgentRunQueue = "in-app-agent-run-queue",
   V4LegacyApiUsageQueue = "v4-legacy-api-usage-queue",
+  // ACME addition: nightly scan for prompts past their configured review
+  // date (Prompt.config.reviewDate). See acmePromptReviewQueue.ts.
+  AcmePromptReviewQueue = "acme-prompt-review-queue",
 }
 
 export enum QueueJobs {
@@ -482,6 +485,7 @@ export enum QueueJobs {
   MonitorJob = "monitor-job",
   InAppAgentRunJob = "in-app-agent-run-job",
   V4LegacyApiUsageJob = "v4-legacy-api-usage-job",
+  AcmePromptReviewJob = "acme-prompt-review-job",
 }
 
 export type TQueueJobTypes = {

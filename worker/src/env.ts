@@ -32,6 +32,13 @@ const EnvSchema = z.object({
 
   STRIPE_SECRET_KEY: z.string().optional(),
 
+  // ACME addition: optional webhook (Slack incoming-webhook-compatible JSON
+  // POST) the nightly prompt-review-date scan notifies. Unset = the scan
+  // still runs and logs, it just has nowhere to post to -- the ACME
+  // Enhancements "Prompt Reviews" page is the always-available surface
+  // regardless of this being configured.
+  ACME_PROMPT_REVIEW_WEBHOOK_URL: z.string().optional(),
+
   // ClickHouse Billing cutoff, shared with web via the provider resolver in
   // @langfuse/shared (getBillingProvider). The worker only consults it in the
   // defensive usage-metering guard; unset = CHB routing off. Date-only
@@ -269,6 +276,9 @@ const EnvSchema = z.object({
     .string()
     .optional(),
   QUEUE_CONSUMER_CLOUD_USAGE_METERING_QUEUE_IS_ENABLED: z
+    .enum(["true", "false"])
+    .default("true"),
+  QUEUE_CONSUMER_ACME_PROMPT_REVIEW_QUEUE_IS_ENABLED: z
     .enum(["true", "false"])
     .default("true"),
   QUEUE_CONSUMER_CLOUD_SPEND_ALERT_QUEUE_IS_ENABLED: z
