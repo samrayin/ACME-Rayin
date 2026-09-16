@@ -974,6 +974,38 @@ model AcmeGuardrailEvent {
   @@map("acme_guardrail_events")
 }
 
+enum AcmePromptApprovalStatus {
+  PENDING  @map("pending")
+  APPROVED @map("approved")
+  REJECTED @map("rejected")
+}
+
+// Request/approve/reject trail for pushing a prompt version to a label
+// (e.g. "production") before go-live. Sits alongside Langfuse's own
+// promptProtectedLabels (Enterprise-gated) rather than replacing it -- this
+// is a named-approver audit trail, not a permission check. No FK constraint,
+// same reasoning as AuditLog/AcmeGuardrailEvent above: an approval record
+// must outlive the project it was recorded against.
+model AcmePromptApproval {
+  id             String                   @id @default(cuid())
+  projectId      String                   @map("project_id")
+  promptId       String                   @map("prompt_id")
+  promptName     String                   @map("prompt_name")
+  promptVersion  Int                      @map("prompt_version")
+  targetLabel    String                   @map("target_label")
+  status         AcmePromptApprovalStatus @default(PENDING)
+  requestedBy    String                   @map("requested_by")
+  requestedAt    DateTime                 @default(now()) @map("requested_at")
+  requestComment String?                  @map("request_comment")
+  reviewedBy     String?                  @map("reviewed_by")
+  reviewedAt     DateTime?                @map("reviewed_at")
+  reviewComment  String?                  @map("review_comment")
+
+  @@index([projectId, status])
+  @@index([projectId, promptName])
+  @@map("acme_prompt_approvals")
+}
+
 model EvalTemplate {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now()) @map("created_at")

@@ -25,6 +25,7 @@ import {
   Palette,
   Gauge,
   CalendarClock,
+  CheckCircle2,
 } from "lucide-react";
 import { type ReactNode } from "react";
 import { type Entitlement } from "@/src/features/entitlements/constants/entitlements";
@@ -151,6 +152,15 @@ export const ROUTES: Route[] = [
     title: "Prompt Reviews",
     pathname: `/project/[projectId]/acme-enhancements/prompt-reviews`,
     icon: CalendarClock,
+    projectRbacScopes: ["prompts:read"],
+    section: RouteSection.Main,
+  },
+  {
+    // ACME addition: request/approve/reject trail for pushing a prompt
+    // version to a label -- see acmePromptApprovalRouter.ts.
+    title: "Prompt Approvals",
+    pathname: `/project/[projectId]/acme-enhancements/prompt-approvals`,
+    icon: CheckCircle2,
     projectRbacScopes: ["prompts:read"],
     section: RouteSection.Main,
   },
