@@ -176,13 +176,13 @@ function CloneFirstDialogContent({
             <span className="text-foreground font-bold">
               &ldquo;{dashboardName}&rdquo;
             </span>{" "}
-            is maintained by RayIn and can&rsquo;t be edited directly.
+            is maintained by Cairo and can&rsquo;t be edited directly.
             We&rsquo;ll create your own editable copy in this project
             {pendingDefinition ? " with your change applied" : ""}
             {setAsHome ? " and show it on your Home page from now on" : ""}.
           </p>
           <p>
-            RayIn-maintained tiles on the copy can be rearranged or removed;
+            Cairo-maintained tiles on the copy can be rearranged or removed;
             editing their content will become available in a future release.
           </p>
           {existingClone && (

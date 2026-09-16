@@ -123,10 +123,10 @@ export function DashboardTable() {
       cell: (row) => {
         return row.row.original.owner === "LANGFUSE" ? (
           <span className="flex gap-1 px-2 py-0.5 text-xs">
-            <span role="img" aria-label="RayIn">
+            <span role="img" aria-label="Cairo">
               🪢
             </span>
-            RayIn
+            Cairo
           </span>
         ) : (
           <span className="flex gap-1 px-2 py-0.5 text-xs">
