@@ -1410,15 +1410,72 @@ contradicting some of them.
 
 ---
 
+## 2026-09-16 — PR #8 smoke test: PASS
+
+**Context:** with the build reliability fix confirmed (`bigpool` +
+`NEXT_IGNORE_BUILD_ERRORS=true` build-arg), a real image was finally built
+from `feat/assurance-demo` and the originally-planned smoke test — blocked
+since the first attempt earlier this same day — was run to completion.
+
+**1. ACR build:** run `dt21`, commit `b7c185213`, built on `bigpool`.
+Image `acmelangfuseacr.azurecr.io/langfuse-web:assurance-smoke-test-final`,
+digest `sha256:b303e2b94597a3e59d4b34558382399b4e66d0cab06551184ea2642560700bfa`.
+Succeeded in 17m10s.
+
+**2. Deployment safety:** isolated temp pod (`langfuse-web-smoke-test`,
+`restartPolicy: Never`), never touched the production deployment. All
+secrets referenced via `secretKeyRef`, never displayed in logs.
+
+**3. Migration validation:** the correct migration
+(`20260915140000_add_acme_guardrail_events`) applied cleanly on pod
+startup — confirmed in logs. Only the expected additive table and its two
+enums were created; no drift. Idempotency confirmed: rerunning
+`prisma migrate deploy` reported "No pending migrations to apply."
+
+**4. Application-level persistence validation — not raw SQL:** sent a
+real request through `rayin-guardrails`, which returned a genuine block
+decision (`{"action":"block","policy_triggered":"Jailbreak Detection"}`).
+Confirmed persisted with a real generated ID, correct project scoping,
+correct fields and timestamps. Read back through the actual UI — the
+Guardrails dashboard correctly showed `TOTAL: 1, BLOCKED: 1` and the event
+in "Recent events." Cross-project isolation confirmed: the same
+authenticated session, requesting a different `projectId`, got a clean
+`401 UNAUTHORIZED` ("User is not a member of this project") — rejected by
+`throwIfNoProjectAccess` before any data access.
+
+**5. Regression checks:** health endpoints `OK`; Assurance (Preview) page
+loads correctly with live guardrails status; Tracing (an unrelated
+feature) loads correctly with real data; pod logs show zero genuine
+errors — the only logged "error" was the deliberate auth-rejection test
+itself, at info level.
+
+**6. Cleanup:** test record deleted, table confirmed empty again; temp pod
+deleted; port-forward ended with it. `bigpool` kept provisioned
+deliberately, as the new standard build target per the fix above.
+
+**Residual risks:** the build-reliability fix is a worked-around
+infrastructure choice (a properly-sized dedicated agent), not an
+elimination of the root cause — `bigpool` is a standing dependency until
+it's built into CI rather than run by hand. No automated regression suite
+ran (the pre-existing, separately-tracked `blacksmith-*` runner gap).
+
+**Rollback considerations:** none — no production system was touched at
+any point in this test.
+
+**Result: PASS. PR #8 is ready to merge.**
+
+---
+
 ## Outstanding, not yet done
 
-- **Adopt a dedicated, appropriately-sized ACR agent pool as the standard
-  build target for `web`** — see the 2026-09-16 "Final synthesis" entry
-  above. Root cause is compute/memory headroom (default agent's 2 vCPU
-  tier undersized), not a code defect; `/dev/shm` sizing was a secondary
-  factor at most. Once a `bigpool`-equivalent pool is standardized on:
-  retry PR #8's smoke test (migration + application-path validation),
-  which still hasn't run and remains the blocker on merging it.
+- **Build `bigpool` into CI rather than relying on it being run by
+  hand.** Root cause of tonight's build flakiness is compute/memory
+  headroom (default ACR agent's 2 vCPU tier undersized), not a code
+  defect — see the "Final synthesis" entry. `bigpool` is kept provisioned
+  as the new standard build target (deliberate choice, 2026-09-16) but
+  isn't wired into any automated pipeline yet — the structural
+  `blacksmith-*` runner gap (§08) means there still isn't one to wire it
+  into.
 
 - **Port `ConversationStateStore`'s Redis-backed multi-turn dialog state
   into `rayin-guardrails`** — see the 2026-09-16 collision-resolution entry
