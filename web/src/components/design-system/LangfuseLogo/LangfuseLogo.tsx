@@ -53,7 +53,7 @@ export const LangfuseLogo = ({
         />
       </div>
       <span className="ml-2 truncate text-base font-extrabold tracking-wide text-white group-data-[collapsible=icon]:hidden">
-        RAY<span className="text-sidebar-accent-foreground">IN</span>
+        CAI<span className="text-sidebar-accent-foreground">RO</span>
       </span>
       <div className="hidden scale-120 group-data-[collapsible=icon]:block">
         <LangfuseIcon size={28} />

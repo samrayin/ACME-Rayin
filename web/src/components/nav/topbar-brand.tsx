@@ -77,7 +77,7 @@ export const TopbarBrand = ({
             />
           </div>
           <span className="text-foreground text-sm font-extrabold tracking-wide">
-            RAY<span className="text-primary">IN</span>
+            CAI<span className="text-primary">RO</span>
           </span>
         </>
       ) : (

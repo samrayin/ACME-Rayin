@@ -62,7 +62,7 @@ export function HomeDashboardSelect({
           ]
         : []),
       {
-        heading: "RayIn-maintained",
+        heading: "Cairo-maintained",
         options: curated.map(toOption),
       },
     ];
