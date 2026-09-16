@@ -1281,6 +1281,57 @@ active or mergeable going forward.
 
 ---
 
+## 2026-09-16 — PR #8 smoke test: ACR build timeout (Fail, not merged)
+
+**Context:** before approving PR #8 (Assurance Preview demo + the new
+`acme_guardrail_events` persistence path — a real Prisma migration and a
+`createMany`/`findMany` read/write flow added to `acmeGuardrailsRouter`),
+a smoke test was run given the structural CI gap documented below (§08 —
+the inherited pipeline's heavy jobs never execute on this fork). Plan: a
+real `az acr build` of this branch, deployed to an isolated temp pod, then
+exercise the migration and the actual application read/write path,
+followed by a cross-project authorization check and a regression pass —
+not direct SQL alone.
+
+**Result: Fail, at step 1 (ACR build).** `az acr build` of `feat/assurance-demo`
+(commit `6721a4b5e5bbfd2a8c14f39a5c0e2bbe792d0fe2`, run id `dt1h`) never
+completed. Two attempts (the run appears to have been preempted/retried
+once — `createTime` 23:26:49 UTC vs. actual `startTime` 00:19:25 UTC) both
+froze at the identical point: `Step 78/114`, `turbo run build
+--filter=web...`, immediately after Turborepo's startup banner, with zero
+further output for the entire 60-minute QuickRun window before Azure
+killed it (`runErrorMessage: "the run timed out, err: context deadline
+exceeded"`). The fix's own `prisma generate` step (Step 77/114) ran
+cleanly on both attempts — this is not a regression of the 2026-09-16
+build fix itself.
+
+**No image was ever produced**, so no pod was deployed, no migration was
+applied, and none of the planned application-level or authorization checks
+could run. The live production deployment was untouched throughout — there
+was nothing to roll back.
+
+**Assessment:** the default QuickRun agent (`cpu: 2`, no dedicated pool)
+most likely cannot complete this branch's build within the 60-minute
+ceiling now that it carries more code (the migration, the persistence
+router, the demo UI) than whatever last built successfully on this agent
+class — consistent with, though not yet proven identical to, the resource
+constraints already suspected in the build-fix work above. Whether this is
+purely a resource/agent-size problem or something specific to the new code
+is not yet distinguished, since the build never produced enough output to
+tell.
+
+**Residual risk worth naming plainly:** the 2026-09-16 build fix itself
+(merged to `main` via PR #9) has still never been confirmed via a real ACR
+build either — only via manual in-cluster reproduction. `main` currently
+carries a fix validated by simulation, not by the CI/build pipeline
+actually succeeding end to end.
+
+**Decision:** PR #8 is **not merged**. Next step, pending approval, is
+retrying the build on a larger dedicated agent pool (the same `bigpool`
+pattern used earlier this session) before re-attempting the smoke test.
+
+---
+
 ## Outstanding, not yet done
 
 - **Port `ConversationStateStore`'s Redis-backed multi-turn dialog state
