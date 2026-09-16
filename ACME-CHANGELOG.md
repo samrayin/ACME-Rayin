@@ -1332,7 +1332,56 @@ pattern used earlier this session) before re-attempting the smoke test.
 
 ---
 
+## 2026-09-16 — Follow-up: ACR build flakiness on this branch is real, but not fully solved
+
+**What was investigated:** a candidate root cause for the timeout above —
+Docker's default 64MB `/dev/shm` allocation for `RUN` build steps
+(unconfigurable via the Dockerfile itself), suspected to starve
+Turbopack's native worker-thread pool (`"Collecting page data using N
+workers"`) during `turbo run build`. Confirmed directly: a diagnostic
+build on the `bigpool` agent showed exactly `shm 64.0M ... /dev/shm`, and
+`az acr build` has no flag to change it — only ACR's multi-step Task YAML
+format (`az acr run -f task.yaml`, whose `build:` line passes straight to
+`docker build`) accepts `--shm-size`.
+
+**Confirmed as a real, contributing factor — but not the complete
+explanation.** Four attempts on the actual `feat/assurance-demo` branch,
+same commit, same agent pool:
+
+| Run | Config | Result |
+|---|---|---|
+| `dt1t` | `--shm-size=1g`, no `NEXT_IGNORE_BUILD_ERRORS` build-arg | Compiled successfully — proved shm-size unblocks the hang — then failed at the 4 pre-existing TS errors (a gap in the diagnostic's own build-args, not a new bug) |
+| `dt1u` | `--shm-size=1g` + the build-arg | **Full success** — image built and pushed end to end |
+| `dt1v` | same config, same warm agent, run immediately after `dt1u` | Fast crash: bare `exited (1)` with zero stack trace, immediately after "Collecting page data using **3** workers" (vs. 7 in the successful run) — the signature of an OS OOM-kill, not a code defect |
+| `dt1w` | `--shm-size=2g` on a freshly-cycled agent node (pool scaled 0→1 first, to rule out warm-agent memory carryover) | Hung again — genuinely, for 90+ minutes, exceeding even the step's own configured 3600s timeout, until cancelled |
+
+**Honest conclusion:** `/dev/shm` size is a real lever — it's the only
+variable that ever separated a hang from real forward progress — but the
+four runs above are not explained by shm-size alone (2g hung; 1g both
+succeeded and crashed). There is very likely a genuine race condition or
+additional resource constraint in the ACR Docker build sandbox that
+shm-size only partially mitigates. Not root-caused to the same standard as
+the Prisma-client fix in the entry above.
+
+**Status:** PR #8's actual smoke test (migration + application-path
+validation) never ran tonight — all of tonight's remaining time went into
+this build-reliability investigation instead. Cleaned up: `bigpool`
+agent pool deleted, throwaway `diag/shm-size-test` branch and its task-file
+commits deleted (nothing merged from it), local scratch pod/task files
+removed. PR #8 remains open, unmerged.
+
+---
+
 ## Outstanding, not yet done
+
+- **Root-cause the remaining ACR build flakiness on branches carrying the
+  Assurance/guardrail-persistence code** — see the 2026-09-16 follow-up
+  entry above. `/dev/shm` sizing is a real, partial lever (proven: it's
+  the only variable that ever converted a hang into forward progress) but
+  not a complete, deterministic fix — one run hung for 90+ minutes even
+  with `--shm-size=2g` on a freshly-provisioned agent. PR #8's own smoke
+  test (migration + application-path validation) has not yet run because
+  of this — it's still blocked, not merged.
 
 - **Port `ConversationStateStore`'s Redis-backed multi-turn dialog state
   into `rayin-guardrails`** — see the 2026-09-16 collision-resolution entry
