@@ -936,6 +936,44 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+enum AcmeGuardrailEventDirection {
+  INPUT  @map("input")
+  OUTPUT @map("output")
+}
+
+enum AcmeGuardrailEventAction {
+  ALLOW  @map("allow")
+  REDACT @map("redact")
+  BLOCK  @map("block")
+}
+
+// Durable copy of guardrail decisions surfaced by the separate
+// rayin-guardrails service (https://github.com/samrayin/rayin-guardrails).
+// That service only keeps an in-memory ring buffer (resets on pod restart);
+// this table is what makes the ACME guardrails dashboard's audit/reporting
+// data survive a restart. No FK constraint, same reasoning as AuditLog above
+// -- this is an audit trail, so it must outlive the project it was recorded
+// against.
+model AcmeGuardrailEvent {
+  id              String                      @id @default(cuid())
+  projectId       String                      @map("project_id")
+  eventTime       DateTime                    @map("event_time")
+  agentId         String                      @map("agent_id")
+  traceId         String?                     @map("trace_id")
+  direction       AcmeGuardrailEventDirection
+  policyTriggered String?                     @map("policy_triggered")
+  action          AcmeGuardrailEventAction
+  createdAt       DateTime                    @default(now()) @map("created_at")
+
+  // Dedup key: rayin-guardrails' ring buffer has no event id of its own, and
+  // recentEvents() re-fetches overlapping windows on every poll, so this is
+  // what makes repeated syncs of the same event a no-op instead of a
+  // duplicate row.
+  @@unique([projectId, agentId, eventTime, direction], map: "acme_guardrail_events_dedup_key")
+  @@index([projectId, eventTime])
+  @@map("acme_guardrail_events")
+}
+
 model EvalTemplate {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now()) @map("created_at")

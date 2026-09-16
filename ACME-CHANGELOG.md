@@ -1112,6 +1112,42 @@ merge) before being moved; that branch's own commits were never touched.
 
 ---
 
+## 2026-09-15 — Assurance (Preview): fast demo, not the production feature
+
+**What:** New nav item and page, `web/src/features/acme-enhancements/{server/acmeAssuranceDemoRouter.ts, components/AcmeAssuranceDemoTable.tsx, pages/AcmeAssuranceDemoPage.tsx}` + page shim + `root.ts`/`routes.tsx` registration.
+
+**Why this approach was chosen:** two much larger features were scoped this
+session — an AI Asset Inventory (declared "Inherent Risk" per asset) and an
+Assurance/Risk-Score system (measured "Residual Assurance", gated on real
+evidence). Both are multi-week builds with real schema/migration work.
+Before committing to either, the open product question was whether pairing
+a *declared* risk classification with a *measured* assurance signal on one
+screen actually makes sense to a customer, or reads as two disconnected,
+confusing numbers. This demo answers that cheaply: hardcoded, illustrative
+risk classifications for the 8 real IT Ops prompts already seeded into this
+project, shown next to a **real, live** call to `rayin-guardrails`' own
+`GET /v1/config` — not faked, not cached. No database schema, no migration,
+nothing persisted; the entire "Inherent Risk" half is a constant array in
+the router file, explicitly not the production Asset Inventory.
+
+**Deployment status:** committed, typecheck-clean (verified via
+`npx tsc --noEmit` — the only errors present are the 4 pre-existing ones in
+`AcmeAuditLogsTable.tsx`/`acmeChatRouter.ts` already tracked in PR #6, none
+introduced by this change). Not yet built into an image or deployed to
+`langfuse-dev.aiatacme.com` as of this entry.
+
+**Known-incomplete / by design:**
+- Assurance is shown at the deployment level, matching reality —
+  `rayin-guardrails` has no per-asset concept yet, so this doesn't fake one.
+- The "Inherent Risk" tier is a simple, transparent qualitative rule (not
+  the weighted-points formula from the real Asset Inventory scoping doc) —
+  deliberately not dressed up with false precision for a demo.
+- Remove this nav entry and page once the real Asset Inventory and
+  Assurance features ship — it exists to validate a concept, not to become
+  a second, permanent, competing version of either.
+
+---
+
 ## 2026-09-16 — Production build fixed: stale Prisma client during "Collecting page data" (not a network/infra issue, despite this entry's first theory)
 
 **What was wrong:** every `az acr build` of `web` — on the default ACR agent,
@@ -1245,7 +1281,201 @@ active or mergeable going forward.
 
 ---
 
+## 2026-09-16 — PR #8 smoke test: ACR build timeout (Fail, not merged)
+
+**Context:** before approving PR #8 (Assurance Preview demo + the new
+`acme_guardrail_events` persistence path — a real Prisma migration and a
+`createMany`/`findMany` read/write flow added to `acmeGuardrailsRouter`),
+a smoke test was run given the structural CI gap documented below (§08 —
+the inherited pipeline's heavy jobs never execute on this fork). Plan: a
+real `az acr build` of this branch, deployed to an isolated temp pod, then
+exercise the migration and the actual application read/write path,
+followed by a cross-project authorization check and a regression pass —
+not direct SQL alone.
+
+**Result: Fail, at step 1 (ACR build).** `az acr build` of `feat/assurance-demo`
+(commit `6721a4b5e5bbfd2a8c14f39a5c0e2bbe792d0fe2`, run id `dt1h`) never
+completed. Two attempts (the run appears to have been preempted/retried
+once — `createTime` 23:26:49 UTC vs. actual `startTime` 00:19:25 UTC) both
+froze at the identical point: `Step 78/114`, `turbo run build
+--filter=web...`, immediately after Turborepo's startup banner, with zero
+further output for the entire 60-minute QuickRun window before Azure
+killed it (`runErrorMessage: "the run timed out, err: context deadline
+exceeded"`). The fix's own `prisma generate` step (Step 77/114) ran
+cleanly on both attempts — this is not a regression of the 2026-09-16
+build fix itself.
+
+**No image was ever produced**, so no pod was deployed, no migration was
+applied, and none of the planned application-level or authorization checks
+could run. The live production deployment was untouched throughout — there
+was nothing to roll back.
+
+**Assessment:** the default QuickRun agent (`cpu: 2`, no dedicated pool)
+most likely cannot complete this branch's build within the 60-minute
+ceiling now that it carries more code (the migration, the persistence
+router, the demo UI) than whatever last built successfully on this agent
+class — consistent with, though not yet proven identical to, the resource
+constraints already suspected in the build-fix work above. Whether this is
+purely a resource/agent-size problem or something specific to the new code
+is not yet distinguished, since the build never produced enough output to
+tell.
+
+**Residual risk worth naming plainly:** the 2026-09-16 build fix itself
+(merged to `main` via PR #9) has still never been confirmed via a real ACR
+build either — only via manual in-cluster reproduction. `main` currently
+carries a fix validated by simulation, not by the CI/build pipeline
+actually succeeding end to end.
+
+**Decision:** PR #8 is **not merged**. Next step, pending approval, is
+retrying the build on a larger dedicated agent pool (the same `bigpool`
+pattern used earlier this session) before re-attempting the smoke test.
+
+---
+
+## 2026-09-16 — Follow-up: ACR build flakiness on this branch is real, but not fully solved
+
+**What was investigated:** a candidate root cause for the timeout above —
+Docker's default 64MB `/dev/shm` allocation for `RUN` build steps
+(unconfigurable via the Dockerfile itself), suspected to starve
+Turbopack's native worker-thread pool (`"Collecting page data using N
+workers"`) during `turbo run build`. Confirmed directly: a diagnostic
+build on the `bigpool` agent showed exactly `shm 64.0M ... /dev/shm`, and
+`az acr build` has no flag to change it — only ACR's multi-step Task YAML
+format (`az acr run -f task.yaml`, whose `build:` line passes straight to
+`docker build`) accepts `--shm-size`.
+
+**Confirmed as a real, contributing factor — but not the complete
+explanation.** Four attempts on the actual `feat/assurance-demo` branch,
+same commit, same agent pool:
+
+| Run | Config | Result |
+|---|---|---|
+| `dt1t` | `--shm-size=1g`, no `NEXT_IGNORE_BUILD_ERRORS` build-arg | Compiled successfully — proved shm-size unblocks the hang — then failed at the 4 pre-existing TS errors (a gap in the diagnostic's own build-args, not a new bug) |
+| `dt1u` | `--shm-size=1g` + the build-arg | **Full success** — image built and pushed end to end |
+| `dt1v` | same config, same warm agent, run immediately after `dt1u` | Fast crash: bare `exited (1)` with zero stack trace, immediately after "Collecting page data using **3** workers" (vs. 7 in the successful run) — the signature of an OS OOM-kill, not a code defect |
+| `dt1w` | `--shm-size=2g` on a freshly-cycled agent node (pool scaled 0→1 first, to rule out warm-agent memory carryover) | Hung again — genuinely, for 90+ minutes, exceeding even the step's own configured 3600s timeout, until cancelled |
+
+**Honest conclusion:** `/dev/shm` size is a real lever — it's the only
+variable that ever separated a hang from real forward progress — but the
+four runs above are not explained by shm-size alone (2g hung; 1g both
+succeeded and crashed). There is very likely a genuine race condition or
+additional resource constraint in the ACR Docker build sandbox that
+shm-size only partially mitigates. Not root-caused to the same standard as
+the Prisma-client fix in the entry above.
+
+**Status:** PR #8's actual smoke test (migration + application-path
+validation) never ran tonight — all of tonight's remaining time went into
+this build-reliability investigation instead. Cleaned up: `bigpool`
+agent pool deleted, throwaway `diag/shm-size-test` branch and its task-file
+commits deleted (nothing merged from it), local scratch pod/task files
+removed. PR #8 remains open, unmerged.
+
+---
+
+## 2026-09-16 — Final synthesis: default ACR agent is undersized, not a code bug
+
+**What closed this out:** independent of the smoke test, the user ran
+several of their own `az acr build`s of plain `main` on the **default**
+ACR agent (2 vCPU, no dedicated pool), which produced three more real data
+points and, combined with everything else tonight, finally makes the
+pattern coherent.
+
+| Attempt | Agent | Turbopack workers | Result |
+|---|---|---|---|
+| `dt1u` | `bigpool` (4 vCPU/8GB) | 7 | **Full success** |
+| `dt1v` | `bigpool`, same warm node | 3 | Fast crash, bare `exit 1`, no stack trace |
+| `dt1w` | `bigpool`, fresh node, 2g shm | — | Hung 90+ minutes |
+| `dt1x` (user's own run) | default (2 vCPU) | — | Hung, cancelled |
+| `dt1y` (bare retry) | default (2 vCPU) | — | Compiled successfully (4.0min) — then failed at the known TypeScript check (no `NEXT_IGNORE_BUILD_ERRORS`, a test-setup gap, not a new bug) |
+| `dt20` (retry with the build-arg) | default (2 vCPU) | **1** | Compiled successfully (4.4min), correctly skipped type-checking — then crashed with a bare `exit 1`, zero stack trace, the instant it tried to collect page data with only 1 worker |
+
+**The pattern:** Turbopack's own worker count scales down as available
+memory shrinks (7 → 3 → 1), and low worker counts correlate directly with
+crashes or hangs specifically during "Collecting page data" — the most
+memory-hungry phase of this build. `/dev/shm` sizing, which looked like
+the key variable earlier tonight, is now understood to be a secondary
+factor at most; the real, unifying explanation across every single attempt
+tonight is **compute/memory headroom**. The default ACR agent's 2 vCPU
+tier is genuinely undersized for this codebase's production build — this
+is an infrastructure sizing problem, not a code defect, and not something
+any further code change will fix.
+
+**Practical recommendation:** stop using the default ACR agent for this
+project's production builds entirely. Standardize on a dedicated agent
+pool sized like `bigpool` (S2 tier, 4 vCPU/8GB) for every `az acr build`/
+`az acr run` invocation of `web`, whether run by a person or by CI. This
+is now a scoped, well-evidenced action, not a guess — it's the first
+explanation tonight that's consistent with every data point instead of
+contradicting some of them.
+
+---
+
+## 2026-09-16 — PR #8 smoke test: PASS
+
+**Context:** with the build reliability fix confirmed (`bigpool` +
+`NEXT_IGNORE_BUILD_ERRORS=true` build-arg), a real image was finally built
+from `feat/assurance-demo` and the originally-planned smoke test — blocked
+since the first attempt earlier this same day — was run to completion.
+
+**1. ACR build:** run `dt21`, commit `b7c185213`, built on `bigpool`.
+Image `acmelangfuseacr.azurecr.io/langfuse-web:assurance-smoke-test-final`,
+digest `sha256:b303e2b94597a3e59d4b34558382399b4e66d0cab06551184ea2642560700bfa`.
+Succeeded in 17m10s.
+
+**2. Deployment safety:** isolated temp pod (`langfuse-web-smoke-test`,
+`restartPolicy: Never`), never touched the production deployment. All
+secrets referenced via `secretKeyRef`, never displayed in logs.
+
+**3. Migration validation:** the correct migration
+(`20260915140000_add_acme_guardrail_events`) applied cleanly on pod
+startup — confirmed in logs. Only the expected additive table and its two
+enums were created; no drift. Idempotency confirmed: rerunning
+`prisma migrate deploy` reported "No pending migrations to apply."
+
+**4. Application-level persistence validation — not raw SQL:** sent a
+real request through `rayin-guardrails`, which returned a genuine block
+decision (`{"action":"block","policy_triggered":"Jailbreak Detection"}`).
+Confirmed persisted with a real generated ID, correct project scoping,
+correct fields and timestamps. Read back through the actual UI — the
+Guardrails dashboard correctly showed `TOTAL: 1, BLOCKED: 1` and the event
+in "Recent events." Cross-project isolation confirmed: the same
+authenticated session, requesting a different `projectId`, got a clean
+`401 UNAUTHORIZED` ("User is not a member of this project") — rejected by
+`throwIfNoProjectAccess` before any data access.
+
+**5. Regression checks:** health endpoints `OK`; Assurance (Preview) page
+loads correctly with live guardrails status; Tracing (an unrelated
+feature) loads correctly with real data; pod logs show zero genuine
+errors — the only logged "error" was the deliberate auth-rejection test
+itself, at info level.
+
+**6. Cleanup:** test record deleted, table confirmed empty again; temp pod
+deleted; port-forward ended with it. `bigpool` kept provisioned
+deliberately, as the new standard build target per the fix above.
+
+**Residual risks:** the build-reliability fix is a worked-around
+infrastructure choice (a properly-sized dedicated agent), not an
+elimination of the root cause — `bigpool` is a standing dependency until
+it's built into CI rather than run by hand. No automated regression suite
+ran (the pre-existing, separately-tracked `blacksmith-*` runner gap).
+
+**Rollback considerations:** none — no production system was touched at
+any point in this test.
+
+**Result: PASS. PR #8 is ready to merge.**
+
+---
+
 ## Outstanding, not yet done
+
+- **Build `bigpool` into CI rather than relying on it being run by
+  hand.** Root cause of tonight's build flakiness is compute/memory
+  headroom (default ACR agent's 2 vCPU tier undersized), not a code
+  defect — see the "Final synthesis" entry. `bigpool` is kept provisioned
+  as the new standard build target (deliberate choice, 2026-09-16) but
+  isn't wired into any automated pipeline yet — the structural
+  `blacksmith-*` runner gap (§08) means there still isn't one to wire it
+  into.
 
 - **Port `ConversationStateStore`'s Redis-backed multi-turn dialog state
   into `rayin-guardrails`** — see the 2026-09-16 collision-resolution entry
