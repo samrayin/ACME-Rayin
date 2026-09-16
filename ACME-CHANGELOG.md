@@ -1466,7 +1466,216 @@ any point in this test.
 
 ---
 
+## 2026-09-16 — PR #8 merged, first production deploy of the night (acme-v4.35.0.1)
+
+PR #8 (guardrail-event Postgres persistence) merged to `main` at
+`abf9470c7817e33b5c67fab83119285f924b18ac`, alongside PR #9 (build fix,
+already merged) and PR #10 (guardrails-collision resolution, already
+merged). Tagged `acme-v4.35.0.1` — the first tag under the v4.35.0 base
+bump (existing `acme-v4.33.0.1`/`.2` tags are from the prior base and
+stay as-is; the convention going forward is to restart the counter at
+`.1` on each base bump).
+
+Built on `bigpool` (still S2 at this point): first attempt (`dt22`) hit
+the same silent OOM-signature crash documented earlier in the night, at
+"Collecting page data using 3 workers." Retry (`dt23`) succeeded
+cleanly. Image `langfuse-web:acme-v4.35.0.1`, digest
+`sha256:e158b8e0…b9c08e41f2`.
+
+Rolled out to the live `langfuse-web` deployment (revision 24 →
+25). New pod verified healthy: migrations applied cleanly (including
+`20260915140000_add_acme_guardrail_events`, confirmed via "No pending
+migrations to apply" on restart), DB/ClickHouse connected, health
+endpoint `{"status":"OK","version":"4.35.0"}`. Old pod terminated
+cleanly. This is the first time tonight's guardrails-persistence work
+has run in actual production, not just a smoke-test pod.
+
+---
+
+## 2026-09-16 — PII/data-masking finding resolved: client-side masking shipped, server-side confirmed EE-only and unlicensed
+
+Investigated the security assessment's highest-severity open finding
+(3.1, "server-side data masking status is unresolved") directly against
+the code and Langfuse's own docs, rather than leaving it unscored.
+
+**Resolution:** Langfuse has two masking mechanisms, not one — client-
+side masking (free, SDK-level, `mask`/`mask_otel_spans`) and server-side
+ingestion masking (`packages/shared/src/server/ee/ingestionMasking`,
+confirmed gated behind `isEnterpriseLicenseAvailable()`, and confirmed
+wired into only the OTel ingestion path, not the primary SDK path).
+Checked the live deployment's env vars directly: no EE license key, no
+masking callback URL configured — server-side masking is fully off.
+
+**Fix — merged as PR #11:** added `packages/shared/src/server/llm/piiMask.ts`,
+a pattern-based mask function (email, phone, credit card, IBAN, IPv4 —
+same entity set `rayin-guardrails`' Presidio config already covers),
+wired into the one Langfuse-SDK-client this repo itself constructs
+(`getInternalTracingHandler.ts`, used by the in-app-agent and other
+internal AI features). 8 unit tests, all passing; two real regex bugs
+caught by the tests themselves before merge (a leading `+` on phone
+numbers being dropped, a trailing separator being absorbed into a
+credit-card match) and fixed.
+
+**Scope note, recorded explicitly:** this covers RAYIN's own internal
+AI-feature traces only. It cannot and does not mask traces from external
+customer applications instrumented with their own Langfuse SDK — that
+requires the same `mask` option in *their* code, which is a customer
+onboarding/documentation follow-up, not something this repo can enforce
+from here. Server-side enforcement (the "nothing unmasked can be
+stored" guarantee) remains an EE-licensing decision, not yet made.
+
+Tagged `acme-v4.35.0.2` on the merge commit. Build reliability
+deteriorated sharply here: three consecutive failures on `bigpool` (S2)
+against this exact tag — `dt24` and `dt25` crashed early (before
+"Compiled successfully" even appeared), `dt26` crashed at the same
+"Collecting page data using 3 workers" point as before. This broke the
+established "one retry usually works" pattern from earlier in the
+night. Decision (user-confirmed): scale `bigpool` to S3 (8 vCPU/16GB) —
+`--tier` isn't mutable via `az acr agentpool update`, so the pool was
+deleted and recreated at S3 (a destructive action, run by the user
+directly per the auto-mode classifier). First build on the new S3 pool
+(`dt28`, then superseded by the user's own `dt27` run which finished
+first and succeeded cleanly) — since then, S3 has built clean on the
+first attempt every time. `bigpool` is now permanently S3, not S2.
+
+Rolled out as `acme-v4.35.0.2`. Verified healthy (clean migrations —
+none pending, since this PR carried no schema change — DB/ClickHouse
+connected, health endpoint OK).
+
+---
+
+## 2026-09-16 — RAYIN → CAIRO wordmark rename (acme-v4.35.0.3)
+
+Urgent, same-night rename ahead of a CEO demo. Investigated first:
+the visible wordmark text lives in two components as real editable JSX
+(`LangfuseLogo.tsx`'s primary sidebar brand, `topbar-brand.tsx`'s mobile
+variant) — not baked into the logo image. The logo *graphic*
+(`wordart-black.svg`/`wordart-white.svg`) is a flattened PNG of the ACME
+pinwheel mark only; it never contained "RAYIN" as text and is unchanged
+by this rename, on purpose — a real "CAIRO" logo graphic would need a
+new design asset, not a code edit.
+
+Renamed all 7 user-visible occurrences (the two wordmark components,
+plus 5 "RayIn-maintained" dashboard labels across
+`DashboardTable`/`DashboardDetailPage`/`CloneFirstDialogController`/
+`HomeDashboardSelect`) — merged as PR #12, tagged `acme-v4.35.0.3`, built
+clean on the first attempt on the now-S3 `bigpool` (`dt29`, 13m41s),
+rolled out and verified healthy. Two internal code comments referencing
+"RAYIN" (not user-visible) were deliberately left as-is; env var names
+(`RAYIN_CHAT_LLM_*`, `RAYIN_GUARDRAILS_*`) and the separate
+`rayin-guardrails` service name were also left unchanged — a full
+cross-repo rename is a larger, separate decision, out of scope for a
+same-night visible-branding fix.
+
+---
+
+## 2026-09-16 — Capabilities 1-3 of 5 (review-date management, approval workflow, chat A/B/canary rollout) — acme-v4.35.0.4
+
+A companion session ("Proposal vs built features mapping") mapped 5
+gap items against the RAYIN proposal and produced an architecture for
+each, grounded in this repo's actual code (`promptRouter.ts`, the
+`Prompt` model, the existing BullMQ eval-queue infrastructure, LiteLLM's
+weighted-routing support). Ranked by risk/complexity and phased into
+separate PRs rather than one combined change, given the build pipeline
+had already shown real flakiness earlier the same night:
+
+**Capability 1 — Prompt review-date management (PR #13, lowest risk).**
+Stores an optional `reviewDate` in `Prompt.config` (free-form JSON, no
+migration). New `acmePromptReviewRouter` (`listDue`/`listAll`/
+`setReviewDate`, gated on the existing `prompts:read`/`prompts:CUD`
+scopes — no new RBAC tier). New `AcmePromptReviewQueue` + nightly
+06:00 UTC BullMQ job scanning all projects' latest-version prompts,
+logging what's overdue, optionally posting a Slack-compatible digest to
+`ACME_PROMPT_REVIEW_WEBHOOK_URL` if configured. New ACME Enhancements
+page ("Prompt Reviews").
+
+**Capability 2 — Approval workflow before go-live (PR #14, medium
+risk).** New model `AcmePromptApproval` — a real, additive-only
+migration (`20260917020000_add_acme_prompt_approvals`), no FK, same
+"must outlive its project" reasoning as `AuditLog`/`AcmeGuardrailEvent`.
+New `acmePromptApprovalRouter`: `request` (`prompts:CUD`),
+`approve`/`reject` (`project:update` — owner/admin only, same bar as
+the Guardrails config write path), `listPending`, `listHistory`. The
+`approve` mutation reuses Langfuse's own
+`removeLabelsFromPreviousPromptVersions` utility — no label logic
+reimplemented — so a label still lives on exactly one version at a
+time. Deliberately sits alongside Langfuse's native
+`promptProtectedLabels` (an Enterprise-gated permission check) rather
+than replacing it: this is a named-approver audit trail, a different
+concern. New ACME Enhancements page ("Prompt Approvals").
+
+**Capability 3 — A/B prompt testing & canary rollout (PR #15, medium
+risk).** New `acmePromptVariant.ts`: weighted-picks between
+`ACME_CHAT_PROMPT_LABEL` (default `chat-production`) and an optional
+`ACME_CHAT_PROMPT_CANARY_LABEL` at `ACME_CHAT_PROMPT_CANARY_WEIGHT`
+(0-1) — env-var-driven rather than a new table/UI, since a canary
+percentage is an operational dial, not schema. Wired into
+`acmeChatRouter.ts`, which previously used a hardcoded system-prompt
+string and had **zero Langfuse tracing of its own** — this is the first
+time ACME AI chat exchanges are traced at all, via the existing
+`getInternalTracingHandler`, tagged with `promptName`/`promptVersion`/
+`variant` so comparison is just the already-existing Dashboards/Metrics
+API filtered by that tag; no new comparison UI needed. Unconfigured
+deployments behave exactly as before (fallback to the original
+hardcoded instructions).
+
+**Two pre-existing bugs found and fixed in passing** while touching
+`acmeChatRouter.ts` (both silently masked by `NEXT_IGNORE_BUILD_ERRORS`,
+both unrelated to this feature): `normalizeOrderByForTable` was
+imported from the wrong package (`@langfuse/shared/src/server` instead
+of `@langfuse/shared`); the `list_recent_traces` tool referenced
+`latency`/`totalCost` fields that `getTracesTable`'s return type never
+actually had (those live on a separate `getTracesTableMetrics` call
+this tool never made). Fixed as the honest minimal correction — the two
+unsupported fields were dropped from the tool's summary output, not
+papered over with a new metrics join.
+
+All three PRs typechecked clean (only remaining web typecheck error
+throughout was the already-documented, unrelated
+`AcmeAuditLogsTable.tsx` `viewConfig` issue). Stacked and merged in
+order (#13 → #14 → #15, each retargeted to `main` after the prior one
+merged). Tagged `acme-v4.35.0.4` on the resulting `main` tip
+(`61f068a9`), building on the now-S3 `bigpool`.
+
+**Deliberately not built tonight:** capabilities 4 and 5 (prompt
+recommendation engine, automated optimization) — per the phasing plan,
+both depend on capability 2's approval flow existing first (their
+output should land as a draft version + approval request, never a
+direct label push by an LLM), and together they're the largest,
+highest-risk item of the five. Held for a separate session.
+
+---
+
 ## Outstanding, not yet done
+
+- **Capabilities 4 & 5 of the 5-item GTM plan — prompt recommendation
+  engine and automated optimization.** Deliberately not built 2026-09-16
+  alongside capabilities 1-3 — both depend on capability 2's approval
+  workflow (PR #14) existing first, since a recommendation/optimization
+  pipeline's output should land as a draft prompt version + an approval
+  request, never a direct label push by an LLM. Design already scoped
+  (see the companion "Proposal vs built features mapping" session):
+  reuse the existing LLM-as-judge queue infrastructure
+  (`worker/src/queues/evalQueue.ts`, `codeEvalQueue.ts`) plus the
+  LiteLLM gateway as critic, pulling low-scoring traces via the Public
+  API and writing suggestions as either a native Langfuse prompt comment
+  (recommendation) or a draft version routed through the capability-2
+  approval flow (auto-optimization). This is the largest, highest-risk
+  item of the five — treat as a separate session, not a quick add-on.
+
+- **Server-side ingestion masking — an Enterprise-licensing decision,
+  not yet made.** 2026-09-16's PII/masking fix (PR #11) covers RAYIN's
+  own internal AI-feature traces via free client-side masking; it does
+  not and cannot cover traces from external customer applications
+  instrumented with their own Langfuse SDK. Closing that gap needs
+  either (a) making client-side masking a mandatory step in customer
+  onboarding/SDK-integration docs (free, packaging work), or (b) an
+  actual Langfuse Enterprise self-hosted license key plus a self-hosted
+  masking callback service ACME would build and host (paid, and note:
+  confirmed in code to currently cover only the OTel ingestion path, not
+  the primary SDK ingestion endpoint — worth confirming with Langfuse
+  directly whether that's version-specific before promising it as a
+  complete answer to a customer's security team).
 
 - **Build `bigpool` into CI rather than relying on it being run by
   hand.** Root cause of tonight's build flakiness is compute/memory
