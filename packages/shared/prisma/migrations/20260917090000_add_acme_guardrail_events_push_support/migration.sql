@@ -49,6 +49,21 @@ BEGIN
 END
 $$;
 
+-- Second correction, found by live-testing this migration end-to-end
+-- against a disposable Postgres 15 instance (matching the real Azure
+-- Flexible Server's major version) with a non-superuser admin role
+-- modeling azure_pg_admin's actual privileges: REASSIGN OWNED BY requires
+-- the executing role to be a MEMBER of both the old role and the new role
+-- (or a superuser). `postgres` just created `rayin_migrator` above, but on
+-- Postgres 15, CREATEROLE does NOT grant automatic membership in roles you
+-- create (that only became automatic in Postgres 16) -- so without this
+-- GRANT, the REASSIGN below fails with "permission denied to reassign
+-- objects" on the real server, even though the CREATE ROLE step itself
+-- succeeds silently. Confirmed both ways: fails without this line, passes
+-- with it, against a fresh instance running the same major version as
+-- psql-langfuse-bgqj.
+GRANT rayin_migrator TO postgres;
+
 -- Correction from the framework doc's original draft: GRANT ALL PRIVILEGES
 -- on the database/schema does NOT confer ownership of the ~400 tables that
 -- already exist (all owned by `postgres` up to this point) -- ALTER TABLE

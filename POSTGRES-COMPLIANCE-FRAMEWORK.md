@@ -209,6 +209,37 @@ service writes into this database.
 
 ### 2.3 SQL
 
+**STATUS: LIVE-TESTED (2026-09-17), PASS.** The full migration file
+(`packages/shared/prisma/migrations/20260917090000_add_acme_guardrail_events_push_support/migration.sql`)
+was run end to end — role bootstrap and schema changes both — against a
+disposable Postgres 15 instance (matching `psql-langfuse-bgqj`'s actual
+major version), deleted immediately after. The test used a non-superuser
+admin role modeling `azure_pg_admin`'s real privileges (`CREATEDB
+CREATEROLE NOSUPERUSER`), not a local bootstrap superuser, and pre-created
+a table owned by that role before the migration ran, to genuinely exercise
+`REASSIGN OWNED BY` against pre-existing objects rather than a clean
+database. This surfaced one real bug (see the `GRANT rayin_migrator TO
+postgres` correction below — confirmed to fail without it, pass with it)
+that an earlier, less faithful test (against a true local superuser) had
+missed entirely, because a true superuser bypasses the role-membership
+check that non-superuser `azure_pg_admin` is actually subject to.
+
+What was verified, concretely, not just "command exited 0":
+- All 4 roles created idempotently.
+- `rayin_migrator` — after the fix — actually ran a real `ALTER TABLE ...
+  ADD COLUMN` and `INSERT` against the pre-existing simulated table
+  (proof of capability, not just that `REASSIGN OWNED` returned success).
+- The plain unique index on `event_id` and `ON CONFLICT (event_id) DO
+  NOTHING` behavior reconfirmed in this same fully-migrated instance.
+
+Not covered by this test: the real Azure Flexible Server's exact
+`azure_pg_admin` grants may differ in ways not visible from outside the
+service (this was a faithful model, not a clone of the live server) — and
+password provisioning, since the migration deliberately creates roles
+without one. Recommend one supervised dry run against the real server
+before or during first production use, but this is no longer an
+untested, unknown-risk step.
+
 Run once, from the `postgres` (`azure_pg_admin`) connection, as part of
 environment bootstrap — **not** repeated per deployment via application code:
 
@@ -236,11 +267,20 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO rayin_migrator;
 -- acme_guardrail_events ALTER TABLE below, which this exact migration
 -- depends on. Must run immediately after CREATE ROLE rayin_migrator, before
 -- anything else in this script:
+
+-- SECOND CORRECTION, CONFIRMED BY LIVE TEST (2026-09-17, see status note
+-- below): this GRANT is REQUIRED, not a defensive "if it fails" fallback as
+-- an earlier draft of this note assumed. REASSIGN OWNED BY requires the
+-- executing role to be a member of BOTH the old and new role. `postgres`
+-- just created rayin_migrator above, but on Postgres 15 (the real server's
+-- major version), CREATEROLE does not grant automatic membership in roles
+-- you create -- that only became automatic in Postgres 16. Without this
+-- line, the REASSIGN below fails with "permission denied to reassign
+-- objects", confirmed against a disposable instance modeling
+-- azure_pg_admin's actual (non-superuser) privileges.
+GRANT rayin_migrator TO postgres;
+
 REASSIGN OWNED BY postgres TO rayin_migrator;
--- If this fails with a role-membership error, `postgres` (azure_pg_admin)
--- needs SET ROLE on rayin_migrator first: GRANT rayin_migrator TO postgres;
--- then retry. Not expected to be necessary given azure_pg_admin's own
--- elevated rights, but noted so it isn't a surprise mid-bootstrap.
 
 -- =====================================================================
 -- 2. General application runtime role — replaces `postgres` as DATABASE_URL.
