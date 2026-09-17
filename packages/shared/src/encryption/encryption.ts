@@ -3,6 +3,7 @@ import { env } from "../env";
 
 const ENCRYPTION_KEY: string | undefined = env.ENCRYPTION_KEY; // Must be 256 bits (32 bytes, 64 hex characters)
 const IV_LENGTH = 12; // For AES-GCM, this is always 12
+const AUTH_TAG_LENGTH = 16; // 128 bits, the GCM standard -- pinned explicitly below (Semgrep gcm-no-tag-length: an unpinned tag length would let a truncated/corrupted authTagHex be accepted by setAuthTag instead of rejected, weakening GCM's authentication guarantee)
 
 // Alternatively: openssl rand -hex 32
 export function keyGen() {
@@ -33,6 +34,7 @@ export function encrypt(plainText: string, key: string = ENCRYPTION_KEY ?? ""): 
     "aes-256-gcm",
     new Uint8Array(Buffer.from(key, "hex")),
     new Uint8Array(iv),
+    { authTagLength: AUTH_TAG_LENGTH },
   );
   let encrypted = cipher.update(plainText, "utf8", "hex");
   encrypted += cipher.final("hex");
@@ -60,6 +62,7 @@ export function decrypt(text: string, key: string = ENCRYPTION_KEY ?? ""): strin
     "aes-256-gcm",
     new Uint8Array(Buffer.from(key, "hex")),
     new Uint8Array(iv),
+    { authTagLength: AUTH_TAG_LENGTH },
   );
   decipher.setAuthTag(new Uint8Array(authTag));
 
