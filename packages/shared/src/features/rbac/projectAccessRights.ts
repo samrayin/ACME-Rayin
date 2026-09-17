@@ -110,6 +110,14 @@ export const projectScopes = [
   "experiments:read",
   "mcp:access",
   "feedback:create",
+
+  // ACME addition: the rayin-guardrails audit-trail push endpoint
+  // (POSTGRES-COMPLIANCE-FRAMEWORK.md decision #4) -- a project-scoped API
+  // key held by the separate rayin-guardrails service, never a human role.
+  // Not granted to OWNER/ADMIN/MEMBER/VIEWER for the same reason none of the
+  // other public-API-only scopes above are: this is what an API key
+  // presents, not something a UI role membership should confer.
+  "guardrailsEvents:create",
 ] as const;
 
 // type string of all Resource:Action, e.g. "members:read"

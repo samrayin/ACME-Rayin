@@ -46,6 +46,17 @@ export const env = createEnv({
     DATABASE_URL: z.url(),
     NODE_ENV: z.enum(["development", "test", "production"]),
     BUILD_ID: z.string().optional(),
+    // ACME addition: connection string for the rayin_guardrails_writer
+    // Postgres role (POSTGRES-COMPLIANCE-FRAMEWORK.md §2) -- INSERT-only on
+    // acme_guardrail_events, nothing else. The guardrails-events push
+    // endpoint uses a SEPARATE PrismaClient bound to this URL, not the
+    // shared `prisma` singleton (which connects as the broader
+    // rayin_app_runtime role) -- the whole point is that a bug in this one
+    // endpoint's handling of external, attacker-influenced input can't
+    // reach anything beyond this one table. Optional at the schema level;
+    // the endpoint itself refuses to serve requests without it rather than
+    // silently falling back to the general connection.
+    RAYIN_GUARDRAILS_WRITER_DATABASE_URL: z.string().optional(),
     // ACME addition: the in-app ACME AI chat feature
     // (web/src/features/acme-enhancements/server/acmeChatRouter.ts) always
     // calls through RAYIN's own LiteLLM gateway (integrations/litellm) --
@@ -393,6 +404,20 @@ export const env = createEnv({
       .length(
         64,
         "ENCRYPTION_KEY must be 256 bits, 64 string characters in hex format, generate via: openssl rand -hex 32",
+      )
+      .optional(),
+    // ACME addition: dedicated key for guardrail-event raw content
+    // (acme_guardrail_events.raw_content_encrypted), deliberately separate
+    // from the shared ENCRYPTION_KEY above -- POSTGRES-COMPLIANCE-
+    // FRAMEWORK.md decision #7. Same format/generation as ENCRYPTION_KEY.
+    // Optional at the schema level for the same reason ENCRYPTION_KEY is:
+    // the guardrails-events endpoint itself refuses `block`-tier writes
+    // without it rather than falling back to the shared key silently.
+    GUARDRAILS_ENCRYPTION_KEY: z
+      .string()
+      .length(
+        64,
+        "GUARDRAILS_ENCRYPTION_KEY must be 256 bits, 64 string characters in hex format, generate via: openssl rand -hex 32",
       )
       .optional(),
     LANGFUSE_AI_GATEWAY_SERVICE_KEY: z.string().min(1).optional(),
@@ -1115,6 +1140,8 @@ export const env = createEnv({
     LANGFUSE_EE_LICENSE_KEY: process.env.LANGFUSE_EE_LICENSE_KEY,
     ADMIN_API_KEY: process.env.ADMIN_API_KEY,
     ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
+    GUARDRAILS_ENCRYPTION_KEY: process.env.GUARDRAILS_ENCRYPTION_KEY,
+    RAYIN_GUARDRAILS_WRITER_DATABASE_URL: process.env.RAYIN_GUARDRAILS_WRITER_DATABASE_URL,
     LANGFUSE_AI_GATEWAY_SERVICE_KEY:
       process.env.LANGFUSE_AI_GATEWAY_SERVICE_KEY,
     LANGFUSE_AI_GATEWAY_SERVICE_KEY_PREVIOUS:
