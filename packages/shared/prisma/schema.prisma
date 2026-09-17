@@ -965,10 +965,34 @@ model AcmeGuardrailEvent {
   action          AcmeGuardrailEventAction
   createdAt       DateTime                    @default(now()) @map("created_at")
 
-  // Dedup key: rayin-guardrails' ring buffer has no event id of its own, and
-  // recentEvents() re-fetches overlapping windows on every poll, so this is
-  // what makes repeated syncs of the same event a no-op instead of a
-  // duplicate row.
+  // Added for the durable audit-trail push (POSTGRES-COMPLIANCE-
+  // FRAMEWORK.md) -- rayin-guardrails now generates a real UUID per event
+  // at decision time and pushes it here synchronously, instead of this
+  // table only ever being populated by the dashboard's own pull-sync.
+  // eventId is the real idempotency key (see the unique index below);
+  // tiered content by action, per §1.1 of the framework doc:
+  //   allow  -> no extra columns populated (metadata only, as before)
+  //   redact -> redactedText + piiFindings (already-safe by construction)
+  //   block  -> rawContentEncrypted (the one Restricted-tier column in this
+  //             schema -- see §1.2/§3.4; encrypted with a dedicated key,
+  //             not the shared global ENCRYPTION_KEY)
+  eventId              String?   @unique(map: "acme_guardrail_events_event_id_key") @map("event_id")
+  redactedText         String?   @map("redacted_text")
+  piiFindings          Json?     @map("pii_findings")
+  rawContentEncrypted  String?   @map("raw_content_encrypted")
+
+  // Human end-user identity, forwarded from rayin-guardrails' caller.
+  // Deliberately separate from agentId (identifies the AI agent, not the
+  // person) -- a real gap identified in the 2026-09-17 architecture review:
+  // without this, a jailbreak investigation could answer "which agent" but
+  // not "which employee". Caller-asserted for now (not yet verified against
+  // an Entra ID token); see rayin-guardrails' planned JWT validation work.
+  userId               String?   @map("user_id")
+
+  // Dedup key: pre-dates eventId (rayin-guardrails' ring buffer originally
+  // had no event id of its own). Kept in place until the eventId backfill
+  // is complete and every consumer emits it, then dropped in a follow-up
+  // migration -- see POSTGRES-COMPLIANCE-FRAMEWORK.md's note on this.
   @@unique([projectId, agentId, eventTime, direction], map: "acme_guardrail_events_dedup_key")
   @@index([projectId, eventTime])
   @@map("acme_guardrail_events")
