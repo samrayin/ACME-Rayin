@@ -75,7 +75,33 @@ case to design for, not the edge case.
 
 ### 1.3 Retention
 
-**Assumption (retention periods below are starting proposals, not confirmed
+**DECIDED (2026-09-17, leadership review):** a single, uniform retention
+boundary applies to all three tiers — **30 days hot in Postgres, queryable
+and dashboard-facing, then archived to cold storage (Azure Blob Storage,
+Archive access tier) and purged from Postgres.** This supersedes the
+earlier tiered proposal (1yr/3–5yr/1yr) below, which is kept as historical
+context for the reasoning, not as the active policy. This was a business
+decision, not an engineering one, and is no longer PENDING — see Open
+Decisions §1 for the record of the change.
+
+| Tier | Retention | Mechanism |
+|---|---|---|
+| `allow` | 30 days hot, then archived | Nightly job: copy to Blob Archive tier → `DELETE` via `rayin_retention_purger` (see §2) once the archive write is confirmed |
+| `redact` (findings + redacted text) | 30 days hot, then archived | Same mechanism |
+| `block` (raw encrypted content, still encrypted at rest in cold storage) | 30 days hot, then archived | Same mechanism |
+
+Cold storage is a compliance copy, not a live query surface — retrieving an
+archived event for an investigation is a deliberate, logged restore, not a
+dashboard read. The archive step needs its own write credential to Blob
+Storage (a storage connection or managed identity), separate from the
+Postgres roles in §2 — `rayin_retention_purger` only needs `SELECT`+`DELETE`
+on Postgres, since the Blob write happens before the Postgres delete, not
+through it.
+
+<details>
+<summary>Original tiered proposal (superseded, kept for reasoning context)</summary>
+
+**Assumption (retention periods below were starting proposals, not confirmed
 regulatory citations):** CBB Rulebook retention requirements vary by module
 (e.g., transaction records vs. security/audit logs vs. AML records carry
 different minimums, commonly in the 5–10 year range for financial records
@@ -83,14 +109,15 @@ specifically). A guardrail decision log is a **security/operational audit
 trail**, not a financial transaction record, and the two should not be
 conflated into one retention number without a compliance officer confirming
 which CBB module (and, if relevant, Bahrain's PDPL) actually governs this
-data category for the specific customer. Treat the table below as the
-engineering default until that confirmation happens — see Open Decisions.
+data category for the specific customer.
 
 | Tier | Proposed retention | Deletion mechanism |
 |---|---|---|
 | `allow` | 1 year (matches typical operational log retention) | Scheduled purge (see §2, `rayin_retention_purger`) |
 | `redact` (findings + redacted text) | 3–5 years (aligned to a typical audit-trail expectation; redacted text carries no raw PII so a longer window is lower-risk to hold) | Scheduled purge |
 | `block` (raw encrypted content) | Shortest defensible window that still satisfies incident-investigation needs (proposal: 1 year, reviewed against actual incident-response requirements) | Scheduled purge, **same mechanism, shorter interval** |
+
+</details>
 
 Data-minimization principle (GDPR-equivalent, and Bahrain's PDPL follows the
 same shape): the higher the sensitivity, the stronger the argument for the
@@ -529,13 +556,18 @@ itself — `rayin_retention_purger`'s existence and grants), it should be built
 generically, with the actual retention interval as a configurable parameter
 supplied later, not hardcoded from the proposals below.
 
-1. **STATUS: PENDING — Actual retention periods** (§1.3) — the 1yr/3–5yr/1yr
-   proposal is an engineering starting point, not a confirmed reading of the
-   CBB Rulebook or Bahrain PDPL for this specific data category. Needs
-   compliance/legal sign-off per customer contract before being encoded as an
-   automated purge job (§2, `rayin_retention_purger`) that will actually
-   delete data. **Do not hardcode a retention interval anywhere until this is
-   answered.**
+1. **STATUS: RESOLVED (2026-09-17, leadership review) — Retention periods**
+   (§1.3) — business decision made: **30 days hot in Postgres, then archived
+   to cold storage and purged.** Applies uniformly to all three tiers,
+   superseding the earlier 1yr/3–5yr/1yr engineering proposal. This is a
+   business decision, not a confirmed reading of the CBB Rulebook or Bahrain
+   PDPL — if a specific BFSI customer's regulatory obligation requires a
+   longer minimum for a given data category, that customer's contract may
+   need a per-deployment override of this default; flag that possibility to
+   compliance rather than assuming 30 days satisfies every customer. The
+   purge job (§2, `rayin_retention_purger`) should still read the interval
+   from a configurable parameter, not a hardcoded literal, so a future
+   per-customer override doesn't require a code change.
 2. **STATUS: PENDING — Legal basis for exempting `block`-tier content from
    erasure requests** (§1.3) — whether "security audit trail, legitimate
    interest/legal obligation" is a sufficient documented basis to retain raw
