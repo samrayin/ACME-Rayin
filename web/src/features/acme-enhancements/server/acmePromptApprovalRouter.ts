@@ -110,6 +110,16 @@ export const acmePromptApprovalRouter = createTRPCRouter({
         });
       }
 
+      // Segregation of duties: OWNER and ADMIN hold both prompts:CUD and
+      // project:update, so without this check the same person could request
+      // and approve their own prompt promotion. Compliance framework §4.2.
+      if (approval.requestedBy === ctx.session.user.id) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You cannot approve your own prompt approval request.",
+        });
+      }
+
       const targetPrompt = await prisma.prompt.findFirst({
         where: { id: approval.promptId, projectId: input.projectId },
         select: { id: true, labels: true },

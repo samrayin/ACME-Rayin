@@ -12,6 +12,7 @@ const BASE_INPUT: GuardrailsEventPushInput = {
   eventId: "evt-1",
   agentId: "agent-1",
   traceId: "trace-1",
+  userId: "user-1",
   eventTime: "2026-09-17T10:00:00.000Z",
   direction: "input",
   action: "allow",
@@ -88,7 +89,7 @@ describe("buildEventRow", () => {
     expect(encryptFn).not.toHaveBeenCalled();
   });
 
-  it("carries projectId, eventId, agentId, traceId, eventTime and direction through unchanged", () => {
+  it("carries projectId, eventId, agentId, traceId, userId, eventTime and direction through unchanged", () => {
     const row = buildEventRow(
       "proj-42",
       { ...BASE_INPUT, direction: "output" },
@@ -98,7 +99,13 @@ describe("buildEventRow", () => {
     expect(row.eventId).toBe("evt-1");
     expect(row.agentId).toBe("agent-1");
     expect(row.traceId).toBe("trace-1");
+    expect(row.userId).toBe("user-1");
     expect(row.direction).toBe("OUTPUT");
     expect(row.eventTime).toEqual(new Date("2026-09-17T10:00:00.000Z"));
+  });
+
+  it("userId absent (caller didn't send it): stays null, not omitted", () => {
+    const row = buildEventRow("proj-1", { ...BASE_INPUT, userId: null }, "unused-key");
+    expect(row.userId).toBeNull();
   });
 });

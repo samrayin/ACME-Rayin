@@ -981,6 +981,14 @@ model AcmeGuardrailEvent {
   piiFindings          Json?     @map("pii_findings")
   rawContentEncrypted  String?   @map("raw_content_encrypted")
 
+  // Human end-user identity, forwarded from rayin-guardrails' caller.
+  // Deliberately separate from agentId (identifies the AI agent, not the
+  // person) -- a real gap identified in the 2026-09-17 architecture review:
+  // without this, a jailbreak investigation could answer "which agent" but
+  // not "which employee". Caller-asserted for now (not yet verified against
+  // an Entra ID token); see rayin-guardrails' planned JWT validation work.
+  userId               String?   @map("user_id")
+
   // Dedup key: pre-dates eventId (rayin-guardrails' ring buffer originally
   // had no event id of its own). Kept in place until the eventId backfill
   // is complete and every consumer emits it, then dropped in a follow-up

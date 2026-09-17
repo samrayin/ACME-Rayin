@@ -32,6 +32,9 @@ const GuardrailsEventPushBody = z.object({
   event_id: z.string().min(1),
   agent_id: z.string().min(1),
   trace_id: z.string().nullable(),
+  // Human end-user identity -- see acmeGuardrailsEventsIngestService.ts.
+  // Caller-asserted, not yet verified against an Entra ID token.
+  user_id: z.string().nullable(),
   event_time: z.string().datetime(),
   direction: z.enum(["input", "output"]),
   action: z.enum(["allow", "redact", "block"]),
@@ -61,6 +64,7 @@ export default withMiddlewares({
         eventId: body.event_id,
         agentId: body.agent_id,
         traceId: body.trace_id,
+        userId: body.user_id,
         eventTime: body.event_time,
         direction: body.direction,
         action: body.action,

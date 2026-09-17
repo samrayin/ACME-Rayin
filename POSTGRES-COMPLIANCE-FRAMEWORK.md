@@ -484,15 +484,19 @@ request." Self-approval is a textbook segregation-of-duties finding in any
 change-approval workflow (prompt promotion here is functionally a production
 change-control process).
 
-**Recommendation:** enforce `reviewedBy != requestedBy` at the application
-layer in the approve/reject mutation (reject the action, don't just warn, if
-the reviewing user's id matches the request's `requestedBy`). This is a
-one-line guard in the existing router, not a schema or scope change — no new
-scope is needed, the fix belongs at the maker-checker identity check, not the
-role model. Flagging this as a concrete, low-cost fix rather than an
-assumption to accept, since self-approval is specifically the kind of gap a
-BFSI audit will test for directly (they will ask "can an Owner approve their
-own prompt promotion?" and today the honest answer is yes).
+**STATUS: FIXED (2026-09-17).** `reviewedBy != requestedBy` is now enforced
+in the `approve` mutation (`acmePromptApprovalRouter.ts`) — a `FORBIDDEN`
+rejection, not a warning, if the reviewing user's id matches the request's
+`requestedBy`. One-line guard in the existing router, no schema or scope
+change. This closes the specific gap a BFSI audit tests for directly ("can
+an Owner approve their own prompt promotion?") — the answer is now no.
+
+Note this does not by itself close the separate, larger gap noted in the
+2026-09-17 architecture review: a user with `prompts:CUD` can still set a
+label directly on the native prompt page, bypassing this approval flow
+entirely, since protected-label *configuration* is Enterprise-gated and no
+licence is set. That is tracked as its own roadmap item (in-house
+protected-label enforcement), not fixed by this guard.
 
 ### 4.3 New guardrails-events endpoint — shared-secret auth, no user scope
 

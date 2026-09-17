@@ -43,6 +43,12 @@ export type GuardrailsEventPushInput = {
   eventId: string;
   agentId: string;
   traceId: string | null;
+  // Human end-user identity, distinct from agentId (the AI agent). Caller-
+  // asserted for now -- rayin-guardrails forwards whatever it was given,
+  // not yet verified against an Entra ID token. See the 2026-09-17
+  // architecture review: without this, an investigation could answer
+  // "which agent" but not "which employee".
+  userId: string | null;
   eventTime: string;
   direction: "input" | "output";
   action: "allow" | "redact" | "block";
@@ -91,6 +97,7 @@ export function buildEventRow(
     eventId: input.eventId,
     agentId: input.agentId,
     traceId: input.traceId,
+    userId: input.userId,
     eventTime: new Date(input.eventTime),
     direction: input.direction === "input" ? "INPUT" : "OUTPUT",
     policyTriggered: input.policyTriggered,
