@@ -49,6 +49,10 @@ export type GuardrailsEventPushInput = {
   // architecture review: without this, an investigation could answer
   // "which agent" but not "which employee".
   userId: string | null;
+  // Machine the request came from (hostname or device id). Caller-asserted,
+  // like userId -- rayin-guardrails only sees the gateway pod as its peer.
+  // Null when the caller didn't send one, or rayin-guardrails predates it.
+  clientHost: string | null;
   eventTime: string;
   direction: "input" | "output";
   action: "allow" | "redact" | "block";
@@ -98,6 +102,8 @@ export function buildEventRow(
     agentId: input.agentId,
     traceId: input.traceId,
     userId: input.userId,
+    clientHost: input.clientHost,
+    source: "PUSH",
     eventTime: new Date(input.eventTime),
     direction: input.direction === "input" ? "INPUT" : "OUTPUT",
     policyTriggered: input.policyTriggered,
@@ -120,23 +126,28 @@ export function buildEventRow(
  * Persists one pushed guardrail event. Idempotent by design: a duplicate
  * event_id (e.g. rayin-guardrails retried a push that actually succeeded,
  * or the pull-based reconciliation later re-syncs the same event) is a
- * silent no-op, not an error -- createMany's skipDuplicates generates a bare
+ * no-op, not an error -- createMany's skipDuplicates generates a bare
  * `ON CONFLICT DO NOTHING` (confirmed against the real plain unique index
  * on event_id, not an explicit-target form -- see the migration's own
  * comments for why a plain index needs no predicate here).
+ *
+ * The no-op is no longer silent: `duplicate` reports it (count === 0), and
+ * it is logged, so a push that loses to an existing row is visible rather
+ * than indistinguishable from a successful write.
  */
 export async function ingestGuardrailsEvent(
   projectId: string,
   input: GuardrailsEventPushInput,
-): Promise<{ stored: true }> {
+): Promise<{ stored: true; duplicate: boolean }> {
   const data = buildEventRow(projectId, input, env.GUARDRAILS_ENCRYPTION_KEY);
 
   const client = getWriterClient();
+  let inserted: number;
   try {
-    await client.acmeGuardrailEvent.createMany({
+    ({ count: inserted } = await client.acmeGuardrailEvent.createMany({
       data: [data],
       skipDuplicates: true,
-    });
+    }));
   } catch (error) {
     logger.error("[guardrails-events] Failed to persist pushed event", {
       error,
@@ -146,5 +157,12 @@ export async function ingestGuardrailsEvent(
     throw error;
   }
 
-  return { stored: true };
+  const duplicate = inserted === 0;
+  if (duplicate) {
+    logger.info("[guardrails-events] Pushed event already stored; skipped", {
+      projectId,
+      eventId: input.eventId,
+    });
+  }
+  return { stored: true, duplicate };
 }

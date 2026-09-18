@@ -947,6 +947,12 @@ enum AcmeGuardrailEventAction {
   BLOCK  @map("block")
 }
 
+// Which capture path wrote an AcmeGuardrailEvent row -- see the model.
+enum AcmeGuardrailEventSource {
+  PUSH @map("push")
+  PULL @map("pull")
+}
+
 // Durable copy of guardrail decisions surfaced by the separate
 // rayin-guardrails service (https://github.com/samrayin/rayin-guardrails).
 // That service only keeps an in-memory ring buffer (resets on pod restart);
@@ -988,6 +994,18 @@ model AcmeGuardrailEvent {
   // not "which employee". Caller-asserted for now (not yet verified against
   // an Entra ID token); see rayin-guardrails' planned JWT validation work.
   userId               String?   @map("user_id")
+
+  // Machine the guarded request came from (hostname or device id), forwarded
+  // by the caller alongside userId. Caller-asserted, like userId:
+  // rayin-guardrails only sees the gateway pod as its network peer, not the
+  // end user's machine.
+  clientHost           String?   @map("client_host")
+
+  // Which capture path wrote this row: PUSH (durable audit-trail endpoint,
+  // full tiered content) or PULL (dashboard buffer reconciliation, metadata
+  // only, for events whose push failed). Null = recorded before this column
+  // existed; existing rows are deliberately not backfilled (audit table).
+  source               AcmeGuardrailEventSource?
 
   // Dedup key: pre-dates eventId (rayin-guardrails' ring buffer originally
   // had no event id of its own). Kept in place until the eventId backfill

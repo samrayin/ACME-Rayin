@@ -4,9 +4,9 @@
  * (https://github.com/samrayin/rayin-guardrails), a separate service, not
  * code in this repo.
  *
- * recentEvents/getConfig: "projectGuardrails:read" — any project member with
- * that scope, same sensitivity as Audit Logs (reveals what content was
- * flagged). rayin-guardrails' GET /v1/events is an in-memory ring buffer
+ * recentEvents/eventDetail/getConfig: "projectGuardrails:read" — granted to
+ * OWNER and ADMIN only (projectAccessRights.ts), same sensitivity as Audit
+ * Logs (reveals what content was flagged). rayin-guardrails' GET /v1/events is an in-memory ring buffer
  * (resets on that service's own pod restart, see its README "Known gaps").
  * Every successful fetch here is now also persisted into this repo's own
  * Postgres (`AcmeGuardrailEvent`) before being read back, so the dashboard's
@@ -14,6 +14,11 @@
  * though the upstream buffer itself does not. If the persisted read fails
  * (e.g. Postgres unreachable), this falls back to serving the live fetch
  * directly, matching the old buffer-only behavior rather than erroring.
+ *
+ * Since the durable push (guardrails-events endpoint), this pull-persist is
+ * only a fallback for events whose push failed -- see
+ * acmeGuardrailsPullBackfill.ts for why it only persists events with an
+ * event_id that are old enough for their push to have finished.
  *
  * updateConfig: "project:update" — owner/admin only, same gate as UI
  * Customization, since this changes what gets enforced for every user in
@@ -35,21 +40,14 @@ import {
   AcmeGuardrailEventDirection,
 } from "@langfuse/shared/src/db";
 import { logger } from "@langfuse/shared/src/server";
+import { TRPCError } from "@trpc/server";
+import { selectPullBackfillRows } from "@/src/features/acme-enhancements/server/acmeGuardrailsPullBackfill";
 
-const DIRECTION_TO_DB: Record<"input" | "output", AcmeGuardrailEventDirection> = {
-  input: AcmeGuardrailEventDirection.INPUT,
-  output: AcmeGuardrailEventDirection.OUTPUT,
-};
 const DIRECTION_FROM_DB: Record<AcmeGuardrailEventDirection, "input" | "output"> = {
   [AcmeGuardrailEventDirection.INPUT]: "input",
   [AcmeGuardrailEventDirection.OUTPUT]: "output",
 };
 
-const ACTION_TO_DB: Record<"allow" | "redact" | "block", AcmeGuardrailEventAction> = {
-  allow: AcmeGuardrailEventAction.ALLOW,
-  redact: AcmeGuardrailEventAction.REDACT,
-  block: AcmeGuardrailEventAction.BLOCK,
-};
 const ACTION_FROM_DB: Record<AcmeGuardrailEventAction, "allow" | "redact" | "block"> = {
   [AcmeGuardrailEventAction.ALLOW]: "allow",
   [AcmeGuardrailEventAction.REDACT]: "redact",
@@ -72,7 +70,13 @@ const ConfigResponseSchema = z.object({
   available_pii_entities: z.array(z.string()),
 });
 
+// event_id, user_id and client_host are optional: older rayin-guardrails
+// builds don't include them in the buffer. Kept (not stripped) so pull rows
+// dedupe against push rows on event_id -- see acmeGuardrailsPullBackfill.ts.
 const GuardrailsEventSchema = z.object({
+  event_id: z.string().nullish(),
+  user_id: z.string().nullish(),
+  client_host: z.string().nullish(),
   time: z.string(),
   agent_id: z.string(),
   trace_id: z.string().nullable(),
@@ -125,18 +129,15 @@ export const acmeGuardrailsRouter = createTRPCRouter({
 
       const parsed = GuardrailsEventsResponseSchema.parse(await res.json());
 
-      if (parsed.events.length > 0) {
+      const backfill = selectPullBackfillRows(
+        parsed.events,
+        input.projectId,
+        new Date(),
+      );
+      if (backfill.length > 0) {
         try {
           await prisma.acmeGuardrailEvent.createMany({
-            data: parsed.events.map((event) => ({
-              projectId: input.projectId,
-              eventTime: new Date(event.time),
-              agentId: event.agent_id,
-              traceId: event.trace_id,
-              direction: DIRECTION_TO_DB[event.direction],
-              policyTriggered: event.policy_triggered,
-              action: ACTION_TO_DB[event.action],
-            })),
+            data: backfill,
             skipDuplicates: true,
           });
         } catch (error) {
@@ -155,6 +156,9 @@ export const acmeGuardrailsRouter = createTRPCRouter({
         });
 
         const events = persisted.map((event) => ({
+          id: event.id as string | null,
+          user_id: event.userId,
+          client_host: event.clientHost,
           time: event.eventTime.toISOString(),
           agent_id: event.agentId,
           trace_id: event.traceId,
@@ -182,8 +186,62 @@ export const acmeGuardrailsRouter = createTRPCRouter({
           error,
           projectId: input.projectId,
         });
-        return { configured: true as const, ...parsed };
+        return {
+          configured: true as const,
+          summary: parsed.summary,
+          events: parsed.events.map((event) => ({
+            id: null as string | null,
+            user_id: event.user_id ?? null,
+            client_host: event.client_host ?? null,
+            time: event.time,
+            agent_id: event.agent_id,
+            trace_id: event.trace_id,
+            direction: event.direction,
+            policy_triggered: event.policy_triggered,
+            action: event.action,
+          })),
+        };
       }
+    }),
+
+  // Detail panel for one persisted event (CAIRO roadmap Phase 1, "clickable
+  // jailbreak detail view"). Returns the redact-tier content (already-safe
+  // redacted text + PII findings) but never the block-tier ciphertext --
+  // only whether it exists. Revealing blocked content is a separate,
+  // role-gated and logged feature (sensitiveFields:reveal, Phase 2).
+  eventDetail: protectedProjectProcedure
+    .input(z.object({ projectId: z.string(), id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      throwIfNoProjectAccess({
+        session: ctx.session,
+        projectId: input.projectId,
+        scope: "projectGuardrails:read",
+      });
+
+      const event = await prisma.acmeGuardrailEvent.findFirst({
+        where: { id: input.id, projectId: input.projectId },
+      });
+      if (!event) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Guardrail event not found." });
+      }
+
+      return {
+        id: event.id,
+        eventId: event.eventId,
+        time: event.eventTime.toISOString(),
+        recordedAt: event.createdAt.toISOString(),
+        agentId: event.agentId,
+        userId: event.userId,
+        clientHost: event.clientHost,
+        traceId: event.traceId,
+        direction: DIRECTION_FROM_DB[event.direction],
+        action: ACTION_FROM_DB[event.action],
+        policyTriggered: event.policyTriggered,
+        source: event.source === null ? null : event.source === "PUSH" ? "push" : "pull",
+        redactedText: event.redactedText,
+        piiFindings: event.piiFindings,
+        hasEncryptedContent: event.rawContentEncrypted !== null,
+      };
     }),
 
   getConfig: protectedProjectProcedure
