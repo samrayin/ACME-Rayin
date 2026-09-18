@@ -492,6 +492,9 @@ enum Role {
   MEMBER
   VIEWER
   NONE
+  // ACME: Security Analyst -- guardrail events and audit logs only, no trace
+  // content. See web/src/features/rbac/server/securityRoleAllowList.ts.
+  SECURITY
 }
 
 model TraceSession {

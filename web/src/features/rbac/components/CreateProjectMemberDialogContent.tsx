@@ -30,6 +30,7 @@ const roleValues = {
   MEMBER: "MEMBER",
   VIEWER: "VIEWER",
   NONE: "NONE",
+  SECURITY: "SECURITY",
 } as const satisfies Record<Role, Role>;
 
 const formSchema = z.object({

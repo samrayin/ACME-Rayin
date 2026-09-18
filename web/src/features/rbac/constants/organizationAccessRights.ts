@@ -44,6 +44,7 @@ export const organizationRoleAccessRights: Record<Role, OrganizationScope[]> = {
   MEMBER: ["gateway:invoke", "organizationMembers:read"],
   VIEWER: [],
   NONE: [],
+  SECURITY: [],
 };
 
 export const orgNoneRoleComment =
