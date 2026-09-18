@@ -112,6 +112,7 @@ export function AcmeAuditLogsTable({ projectId }: { projectId: string }) {
   return (
     <>
       <DataTableToolbar
+        tableName="acmeAuditLogs"
         columns={columns}
         rowHeight={rowHeight}
         setRowHeight={setRowHeight}
