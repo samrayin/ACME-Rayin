@@ -85,10 +85,15 @@ function DetailRow({
 function AcmeGuardrailEventDetail({
   projectId,
   eventRowId,
+  open,
   onClose,
 }: {
   projectId: string;
   eventRowId: string | null;
+  // Separate from eventRowId so the panel keeps showing the same event while
+  // its close animation plays, instead of flashing "Loading..." once the id
+  // is cleared.
+  open: boolean;
   onClose: () => void;
 }) {
   const detail = api.acmeGuardrails.eventDetail.useQuery(
@@ -101,8 +106,8 @@ function AcmeGuardrailEventDetail({
 
   return (
     <Dialog
-      open={eventRowId !== null}
-      onOpenChange={(open) => !open && onClose()}
+      open={open}
+      onOpenChange={(isOpen) => !isOpen && onClose()}
     >
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
@@ -604,7 +609,13 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
 }
 
 export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<{
+    id: string;
+    open: boolean;
+  } | null>(null);
+  const openEvent = (id: string | null) => {
+    if (id) setSelectedEvent({ id, open: true });
+  };
   const events = api.acmeGuardrails.recentEvents.useQuery(
     { projectId, limit: 50 },
     // Polling, not a subscription -- the source itself (rayin-guardrails'
@@ -706,7 +717,7 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Date &amp; time</TableHead>
+                  <TableHead className="w-44">Date &amp; time</TableHead>
                   <TableHead>User</TableHead>
                   <TableHead>Machine</TableHead>
                   <TableHead>Agent</TableHead>
@@ -724,11 +735,11 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
                     )}
                     onClick={
                       event.id
-                        ? () => setSelectedEventId(event.id)
+                        ? () => openEvent(event.id)
                         : undefined
                     }
                   >
-                    <TableCell className="font-mono text-xs whitespace-nowrap">
+                    <TableCell className="font-mono text-xs">
                       {formatDateTime(event.time)}
                     </TableCell>
                     <TableCell>{event.user_id ?? "—"}</TableCell>
@@ -749,8 +760,13 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
 
       <AcmeGuardrailEventDetail
         projectId={projectId}
-        eventRowId={selectedEventId}
-        onClose={() => setSelectedEventId(null)}
+        eventRowId={selectedEvent?.id ?? null}
+        open={selectedEvent?.open ?? false}
+        onClose={() =>
+          setSelectedEvent((current) =>
+            current ? { ...current, open: false } : null,
+          )
+        }
       />
     </div>
   );
