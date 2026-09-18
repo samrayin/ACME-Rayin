@@ -1740,6 +1740,49 @@ browser tab titles.
 
 ---
 
+## 2026-09-19 — Animated brand headline on the sign-in page
+
+**What:** the sign-in page now opens with **"ACME Governance and Assurance
+Offering"** in Orbitron Black. "ACME" is in brand maroon and the rest in navy
+(`primary`). The words come into focus one after another, then a
+maroon-to-navy dash draws underneath. The owner picked this style ("option
+B") from a three-way preview. "Sign in to your account" stays below it
+unchanged.
+
+**How:**
+- `AcmeSignInHeadline` (`features/acme-enhancements/components/`) renders the
+  page's `h1`, so screen readers get the full phrase. The dash is
+  `aria-hidden`.
+- **Font bundled, not fetched:** Orbitron Black (latin subset, 6.4 KB woff2)
+  and its SIL Open Font License are committed under `web/public/fonts/`, the
+  same way as IBM Plex Mono. It's loaded with `next/font/local` inside the
+  ACME component. The sign-in page makes no runtime request to a font CDN,
+  which matters for air-gapped customer deployments. Upstream's `fonts.ts` and
+  `_app.tsx` are deliberately untouched, because the app-wide typeface
+  convention there is for a font the whole app uses.
+- **Heavy weight without a banned utility:** the repo's lint rule allows only
+  `font-bold` and `font-normal`, and the type system gives `text-*` sizes a
+  regular weight. `next/font` puts `font-weight: 900` on its own unlayered
+  class, which wins over the layered Tailwind utilities.
+- **Tokens, not raw colors:** a new `--acme-maroon` token (light and dark
+  values) exposed as `text-acme-maroon` / `from-acme-maroon`. The two
+  animations are `--animate-acme-*` tokens with keyframes in `globals.css`.
+  They use `animation-fill-mode: both`, so each word holds its start frame
+  through its stagger delay.
+- **Reduced motion:** with `prefers-reduced-motion`, the headline and dash
+  render finished, with no animation.
+- The only change inside an upstream file is one `// ACME:` insertion in
+  `SignInPage.tsx`, plus the tokens and keyframes in the ACME sections of
+  `globals.css`.
+
+**Verified locally:** web typecheck; ESLint (0 warnings) and Prettier on the
+changed files; the existing sign-in page tests (16/16) and 2 new headline
+tests. The Tailwind build was compiled to confirm every new class, delay and
+reduced-motion variant is generated, and that the delay utilities come after
+the animation shorthand in the stylesheet, so the stagger isn't reset.
+
+---
+
 ## Outstanding, not yet done
 
 - **Capabilities 4 & 5 of the 5-item GTM plan — prompt recommendation
