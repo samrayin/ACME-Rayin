@@ -11,7 +11,7 @@ import {
   getTraceByIdFromEventsTable,
 } from "@langfuse/shared/src/server";
 import { env } from "@langfuse/shared/src/env";
-import { prisma } from "@langfuse/shared/src/db";
+import { prisma, Role } from "@langfuse/shared/src/db";
 import { sendAdminAccessWebhook } from "@/src/server/adminAccessWebhook";
 import { TRACE_DOWNLOAD_OMIT_LARGE_FIELDS_THRESHOLD } from "../constants/traceDownloadConfig";
 
@@ -22,6 +22,8 @@ export type TraceExportSession = {
     organizations: Array<{
       projects: Array<{
         id: string;
+        // ACME: used to keep the Security Analyst role out of trace content.
+        role?: Role;
       }>;
     }>;
   };
@@ -46,12 +48,17 @@ const getDurationSeconds = (
   return (endTime.getTime() - startTime.getTime()) / 1000;
 };
 
+// ACME: the Security Analyst role never gets trace content -- see
+// web/src/features/rbac/server/securityRoleAllowList.ts. This helper backs
+// both the trace download and the observation I/O routes.
 const hasProjectAccess = (
   session: TraceExportAccessSession,
   projectId: string,
 ) =>
   session?.user.organizations.some((organization) =>
-    organization.projects.some((project) => project.id === projectId),
+    organization.projects.some(
+      (project) => project.id === projectId && project.role !== Role.SECURITY,
+    ),
   ) ?? false;
 
 const getObservationRecordsForTrace = async (params: {

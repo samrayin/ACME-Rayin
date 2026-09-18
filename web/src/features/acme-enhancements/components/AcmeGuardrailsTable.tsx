@@ -100,6 +100,12 @@ function AcmeGuardrailEventDetail({
     { projectId, id: eventRowId ?? "" },
     { enabled: eventRowId !== null },
   );
+  // Trace content (raw prompts) needs projectData:read, which the Security
+  // Analyst role does not hold -- show the trace id, not a link.
+  const canOpenTrace = useHasProjectAccess({
+    projectId,
+    scope: "projectData:read",
+  });
   const notRecorded = (
     <span className="text-muted-foreground">Not recorded</span>
   );
@@ -165,7 +171,11 @@ function AcmeGuardrailEventDetail({
                 </DetailRow>
               )}
               <DetailRow label="Trace">
-                {detail.data.traceId ? (
+                {detail.data.traceId && !canOpenTrace ? (
+                  <span className="font-mono text-xs">
+                    {detail.data.traceId}
+                  </span>
+                ) : detail.data.traceId ? (
                   <Link
                     href={`/project/${projectId}/traces/${detail.data.traceId}`}
                     className="text-primary hover:underline"
@@ -609,6 +619,12 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
 }
 
 export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
+  // The Continuous Assurance card reads scores (trace data) -- not shown to
+  // roles without projectData:read, e.g. the Security Analyst.
+  const canReadProjectData = useHasProjectAccess({
+    projectId,
+    scope: "projectData:read",
+  });
   const [selectedEvent, setSelectedEvent] = useState<{
     id: string;
     open: boolean;
@@ -697,7 +713,7 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
 
       <AcmeGuardrailsPolicies projectId={projectId} />
 
-      <AcmeGuardrailsAssurance projectId={projectId} />
+      {canReadProjectData && <AcmeGuardrailsAssurance projectId={projectId} />}
 
       <Card>
         <CardHeader>

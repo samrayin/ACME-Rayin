@@ -24,6 +24,7 @@ import * as opentelemetry from "@opentelemetry/api";
 import { type IncomingHttpHeaders } from "node:http";
 import { getTRPCErrorCodeFromHTTPStatusCode } from "@/src/server/utils/trpc-utils";
 import { sendAdminAccessWebhook } from "@/src/server/adminAccessWebhook";
+import { throwIfSecurityRoleBlocked } from "@/src/features/rbac/server/securityRoleAllowList";
 
 type CreateContextOptions = {
   session: Session | null;
@@ -385,6 +386,12 @@ const enforceUserIsAuthedAndProjectMember = t.middleware(async (opts) => {
     });
   }
 
+  throwIfSecurityRoleBlocked({
+    projectRole: sessionProject.role,
+    procedurePath: opts.path,
+    isInstanceAdmin: ctx.session.user.admin === true,
+  });
+
   trackPosthogActivity({
     userId: ctx.session.user.id,
     organizationId: sessionProject.organization.id,
@@ -630,6 +637,12 @@ const enforceTraceAccess = (readSource: "v3" | "v4") =>
       });
     }
 
+    throwIfSecurityRoleBlocked({
+      projectRole: sessionProject?.role,
+      procedurePath: opts.path,
+      isInstanceAdmin: ctx.session?.user?.admin === true,
+    });
+
     if (ctx.session?.user?.admin === true) {
       await sendAdminAccessWebhook({
         email: ctx.session.user.email,
@@ -715,6 +728,12 @@ const enforceSessionAccess = t.middleware(async (opts) => {
         "User is not a member of this project and this session is not public",
     });
   }
+
+  throwIfSecurityRoleBlocked({
+    projectRole: userSessionProject?.role,
+    procedurePath: opts.path,
+    isInstanceAdmin: ctx.session?.user?.admin === true,
+  });
 
   if (ctx.session?.user?.admin === true) {
     await sendAdminAccessWebhook({

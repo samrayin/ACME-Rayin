@@ -116,4 +116,6 @@ const reduceScopesToListItems = (
 };
 
 const formatRole = (role: Role) =>
-  role.charAt(0).toUpperCase() + role.slice(1).toLowerCase();
+  role === "SECURITY"
+    ? "Security Analyst"
+    : role.charAt(0).toUpperCase() + role.slice(1).toLowerCase();
