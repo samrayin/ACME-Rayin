@@ -114,6 +114,8 @@
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
   --color-primary: hsl(var(--primary));
+  /* ACME: brand maroon (sign-in headline), see --acme-maroon below. */
+  --color-acme-maroon: hsl(var(--acme-maroon));
   --color-primary-foreground: hsl(var(--primary-foreground));
   --color-secondary: hsl(var(--secondary));
   --color-secondary-foreground: hsl(var(--secondary-foreground));
@@ -179,6 +181,12 @@
   --animate-accordion-down: accordion-down 0.2s ease-out;
   --animate-accordion-up: accordion-up 0.2s ease-out;
   --animate-appear: appear 0.2s ease-out forwards;
+  /* ACME: sign-in headline (AcmeSignInHeadline). `both` holds the start
+     frame through each word's stagger delay, so no hidden initial state is
+     needed and prefers-reduced-motion can simply switch the animation off. */
+  --animate-acme-focus-in: acme-focus-in 0.6s ease both;
+  --animate-acme-dash-draw: acme-dash-draw 1s cubic-bezier(0.6, 0, 0.2, 1) 1.3s
+    both;
   /* Cycle length comes from REFETCH_SWEEP_MS in components/table/data-table.tsx,
      which sets --table-refetch-cycle on the element: the same number also
      releases the busy flag on a whole sweep, so the two must not drift. */
@@ -244,6 +252,30 @@
 
     to {
       opacity: 1;
+    }
+  }
+
+  /* ACME: sign-in headline words come into focus. */
+  @keyframes acme-focus-in {
+    from {
+      opacity: 0;
+      filter: blur(6px);
+    }
+
+    to {
+      opacity: 1;
+      filter: blur(0);
+    }
+  }
+
+  /* ACME: the dash under the sign-in headline draws out to 75% width. */
+  @keyframes acme-dash-draw {
+    from {
+      width: 0;
+    }
+
+    to {
+      width: 75%;
     }
   }
 }
@@ -336,6 +368,8 @@
     --primary-accent: 243 75.4% 58.6%;
     /* ACME brand navy, same family as --primary above. */
     --link: 217 70% 34%;
+    /* ACME brand maroon (the ACME logo's red), used by the sign-in headline. */
+    --acme-maroon: 348 66% 34%;
     --link-hover: 217 70% 24%;
     /* Preview-deployment strip (PR previews only): soft blue tint with text
        darker than the fill, links a step brighter than body text. Values are
@@ -524,6 +558,8 @@
     --primary-accent: 246 55% 70%;
     --link: 246 55% 70%;
     --link-hover: 246 95% 85%;
+    /* ACME: lighter maroon so the sign-in headline keeps contrast in dark mode. */
+    --acme-maroon: 348 70% 64%;
     /* Preview-deployment strip: fill is blue-500/25 precomposed over the 6%
        canvas, border is blue-300/20 precomposed over that fill — the strip
        needs opaque colors. Body text stays on the neutral foreground tier;
