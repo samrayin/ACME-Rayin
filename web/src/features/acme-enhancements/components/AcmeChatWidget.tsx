@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { MessageCircle, X, Send } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import { Textarea } from "@/src/components/ui/textarea";
-import { Layer } from "@/src/components/ui/layer";
+import { Layer } from "@/src/components/design-system/Layer/Layer";
 import { api } from "@/src/utils/api";
 import { cn } from "@/src/utils/tailwind";
 import { useHasProjectAccess } from "@/src/features/rbac";

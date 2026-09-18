@@ -16,9 +16,11 @@ that point — no need to replay commit history or guess which combination of pa
 was actually deployed. See "Tagging convention" below for what a tag does and does
 not capture.
 
-**Base version:** Langfuse `v4.35.0` (upgraded from `v4.33.0` on 2026-09-11 — see
-"Upgrade to v4.35.0" below; that was itself upgraded from `v4.17.0` on
-2026-09-10, see "Upgrade to v4.33.0"), Helm chart `2.0.0` — matches what's live
+**Base version:** Langfuse `v4.38.0` (upgraded from `v4.35.0` on 2026-09-19 — see
+"Upgrade to v4.38.0" below; before that from `v4.33.0` on 2026-09-11, see
+"Upgrade to v4.35.0", and from `v4.17.0` on 2026-09-10, see "Upgrade to
+v4.33.0"). Tags restart at `acme-v4.38.0.1` (web) and
+`worker-acme-v4.38.0.1` (worker) under this base. Helm chart `2.0.0` — matches what's live
 on `langfuse-dev.aiatacme.com` (see `Azure Blueprint/ENVIRONMENT-STUDY.md` in
 the companion infrastructure project for the full deployment audit).
 **Note on tag numbering:** existing tags (`acme-v4.33.0.1`, `.2`) were cut
@@ -1643,6 +1645,63 @@ both depend on capability 2's approval flow existing first (their
 output should land as a draft version + approval request, never a
 direct label push by an LLM), and together they're the largest,
 highest-risk item of the five. Held for a separate session.
+
+---
+
+## 2026-09-19 — Upgrade to v4.38.0
+
+**What:** Base Langfuse version bumped from `v4.35.0` to `v4.38.0` (releases
+4.36.0, 4.36.1, 4.37.0 and 4.38.0; 159 upstream commits). Same method as the
+v4.35.0 upgrade: a real `git merge` of upstream's **release tag** `v4.38.0`
+(not `upstream/main`, which carried 33 unreleased commits) on a dedicated
+`upgrade/v4.38.0` branch off `main`, landed with a **merge commit**. Never
+squash an upgrade PR: that severs the merge-base with upstream, and the next
+sync would re-conflict on every file.
+
+**Conflicts: 5, all resolved by keeping the ACME behavior on upstream's new
+structure.**
+- `.gitattributes`: both sides added lines (ACME's LF rules for `*.sh` and
+  Dockerfiles; upstream's `linguist-generated` marks for `packages/native`).
+  Kept both.
+- `page-header.tsx`: both sides added a hook call (ACME header background;
+  upstream's in-app agent launcher). Kept both.
+- `AuthenticatedLayout.tsx`: upstream removed the `TopBannerProvider` wrapper
+  and moved the feature-preview modal. Took upstream's structure and
+  re-inserted `AcmeChatWidget` and `AcmeThemeStyleInjector` in the same
+  place, right after `InAppAgentWindowHost`.
+- `pages/project/[projectId]/index.tsx`: upstream moved the whole project
+  home page to `features/dashboard/ProjectHomePage.tsx` and left a one-line
+  re-export. Took the re-export and ported ACME's only change there, the
+  Security Analyst redirect to Guardrails, into `ProjectHomePage`.
+- `CreateProjectMemberDialogContent.tsx`: deleted upstream (replaced by
+  `CreateProjectMemberDialog.tsx` in the design-system dialog refactor).
+  ACME's only change was adding `SECURITY` to the role list; ported to the
+  new file, where the `satisfies Record<Role, Role>` check requires it.
+
+**Nothing ACME dropped silently:** for all 21 other files both sides
+changed, the ACME delta after the merge has exactly the same number of
+changed lines as before it.
+
+**Upstream changes that matter for operations:**
+- **ClickHouse migration `0049_add_events_name_ngram_indexes`** (skip
+  indexes for name, user and session search). No Postgres migrations. An
+  image rollback needs no schema rollback: older code ignores extra indexes.
+- **`packages/native`**: a new Rust (napi-rs) add-on that the worker loads.
+  The worker image now installs a Rust toolchain and compiles it, so
+  worker builds take longer. Local `turbo run typecheck` also tries to build
+  it, so check packages with `tsc` directly on machines without Rust.
+- pnpm 12.3.1 → 12.4.1 (`packageManager`, both Dockerfiles).
+- New env vars are all optional (API cutoff for Cloud organizations,
+  event-propagation insert tuning, a Cloud billing webhook secret). None
+  are needed for a self-hosted deployment.
+- `ai-gateway/` changed but is still behind `restrictedFlags =
+  ["aiGateway"]`, so it is off by default. Still no overlap with the
+  LiteLLM gateway.
+
+**Release:** through `scripts/release/release.sh` from `main` after merge,
+web first (its container applies the ClickHouse migration on start), then
+worker. The deployment record in `acme-rayin-ops` has the tags, digests and
+verification.
 
 ---
 
