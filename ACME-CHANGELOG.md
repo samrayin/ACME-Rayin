@@ -1698,10 +1698,45 @@ changed lines as before it.
   ["aiGateway"]`, so it is off by default. Still no overlap with the
   LiteLLM gateway.
 
-**Release:** through `scripts/release/release.sh` from `main` after merge,
-web first (its container applies the ClickHouse migration on start), then
-worker. The deployment record in `acme-rayin-ops` has the tags, digests and
-verification.
+**Released 2026-09-19** through `scripts/release/release.sh` from `9fec0e44e`
+(the #26 merge commit), web first, then worker:
+- **Web `acme-v4.38.0.1`** (ACR run `dt2p`, 13m11s). The ClickHouse migration
+  applied on startup (`49/u add_events_name_ngram_indexes`, 0.5 s). No
+  Postgres migrations were pending. Health 200.
+- **Worker `worker-acme-v4.38.0.1`** (ACR run `dt2r`, 8m01s). This is the
+  **first worker release through `release.sh`**. Until now the worker ran the
+  mutable `acme-dev` tag and showed as UNTRACED. The Rust add-on loads at
+  startup, and every queue executor starts.
+- `verify-deployed.sh`: web and worker both **TRACED** at `9fec0e44e`.
+- Verified with read-only checks only: health, pod logs, and a browser pass
+  over Home, Audit Logs and Guardrails in an existing session. No synthetic or
+  real traffic test. The deployment record in `acme-rayin-ops` lists what was
+  not verified.
+
+**Finding: `release.sh` took the Dockerfile from the checkout, not the
+export.** It passes `az acr build --file <relative path>` while running from
+the repo root it was started in. `az` read the Dockerfile from that
+checkout's working tree and only the source from the clean `git archive`.
+The checkout was on an older branch, so:
+- The first worker build (`dt2q`) used the pre-merge Dockerfile, which has no
+  Rust toolchain, and failed (`cargo metadata failed to run`). Nothing was
+  tagged or deployed.
+- The web build used a Dockerfile that differs from `main` by one line
+  (`corepack prepare pnpm@12.3.1` against `@12.4.1`). That line had no effect
+  on the image, because pnpm 12.4.1 did the install. But the `acme-v4.38.0.1`
+  tag annotation's "exact: built from git archive of this commit" claim does
+  not hold for its Dockerfile.
+- Until the script is fixed (#24: build from inside `$BUILD_DIR`), **run
+  `release.sh` only from a clean worktree at `origin/main`**. Check that
+  ACR's `Step N/<total>` matches the Dockerfile's instruction count on
+  `main`.
+
+**Pre-existing items the upgrade surfaced (not regressions):** 3
+`app-shell-chrome` client tests fail because they never mocked the ACME
+header-theme hook. Lint rules that upstream added in this range flag 4
+warnings in older ACME files. White-label gaps: upstream's `AgentToolsBanner`
+("Langfuse works great with your AI coding agents") and the "… | Langfuse"
+browser tab titles.
 
 ---
 
