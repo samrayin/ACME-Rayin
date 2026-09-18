@@ -71,7 +71,7 @@ describe("selectPullBackfillRows", () => {
     ).toEqual([]);
   });
 
-  it("skips events with an unparseable time", () => {
+  it("skips events with an unparsable time", () => {
     expect(
       selectPullBackfillRows([{ ...BASE, time: "not-a-date" }], "proj-1", NOW),
     ).toEqual([]);
