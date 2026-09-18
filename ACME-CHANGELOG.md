@@ -1646,6 +1646,102 @@ highest-risk item of the five. Held for a separate session.
 
 ---
 
+## 2026-09-17/18 — Durable guardrail audit trail: shipped and verified end to end
+
+The feature that replaces "the dashboard pulls guardrail events whenever it
+happens to be open" with a durable write pushed for every guardrail
+decision. The push is asynchronous by design — a detached background task
+with retries — so it never adds latency to the guard decision itself; if it
+cannot deliver, the event stays in the service's local buffer. Design
+reference: `POSTGRES-COMPLIANCE-FRAMEWORK.md`, whose status
+notes are updated alongside this entry.
+
+**What shipped:**
+
+| Item | Repo | Commit |
+|---|---|---|
+| PR #17 — `POST /api/public/guardrails-events`, migration `20260917090000_add_acme_guardrail_events_push_support`, four least-privilege Postgres roles, self-approval guard, `user_id` on guardrail events, dedicated guardrails encryption key | `ACME-Rayin` | `6610fd8cf` |
+| PR #3 — push logic + end-user identity in the guardrails service | `rayin-guardrails` | — |
+| PR #4 — render `event_time` as UTC with a `Z` suffix | `rayin-guardrails` | `158a1d006` |
+| PR #5 — make push failures visible (health status, status endpoint, alertable log) | `rayin-guardrails` | `a86a3a730` |
+
+- **Push endpoint.** `rayin-guardrails` writes every decision to
+  `POST /api/public/guardrails-events`, authenticated with a project API key.
+  The project is derived from the key; any `project_id` in the body is
+  ignored.
+- **Four Postgres roles** (compliance framework §2): `rayin_migrator` (DDL
+  owner), `rayin_app_runtime` (general traffic), `rayin_guardrails_writer`
+  (`INSERT`-only on `acme_guardrail_events` — the endpoint's own connection),
+  `rayin_retention_purger` (age-gated `DELETE`, for the retention job).
+- **Self-approval guard** on prompt approvals: `approve` now rejects with
+  `FORBIDDEN` when the reviewer is the requester (framework §4.2).
+- **User identity on guardrail events.** Events carry the end user's
+  `user_id`. **This is caller-asserted** — it is what the guardrails service
+  reports, not yet verified against an identity token. Treat it as
+  attribution, not authentication, until token verification exists.
+- **Tiered content storage** by decision (framework §1.1): `allow` stores
+  metadata only, `redact` stores findings and redacted text, and `block`
+  stores the raw content encrypted server-side under a dedicated
+  `GUARDRAILS_ENCRYPTION_KEY`, separate from Langfuse's shared
+  `ENCRYPTION_KEY` (framework §3.4).
+
+**Bugs found and fixed, and what each one teaches:**
+
+| Commit | Bug | Lesson |
+|---|---|---|
+| `6fcc72f06` | On Postgres 15, `REASSIGN OWNED BY` fails with "permission denied to reassign objects" unless the admin role first holds `GRANT rayin_migrator TO <admin>`. | A local superuser bypasses the membership check. Test role migrations as a non-superuser admin that models the managed service's real privileges. |
+| `5c6430fb5` | AES-256-GCM `createDecipheriv` relied on the default auth-tag length instead of pinning `authTagLength`. Found by Semgrep. | Pin every GCM parameter explicitly; keep static analysis on crypto code. |
+| `rayin-guardrails` #4 (`158a1d006`) | The service rendered `event_time` with a `+00:00` offset; the endpoint validates with zod's `z.string().datetime()`, which by default accepts only `Z`. **Every push was rejected.** | Fixed where the non-canonical value was produced. The endpoint's schema was deliberately **not** widened: loosening an audit endpoint's input validation to fit one client is the wrong direction. |
+| `rayin-guardrails` #5 (`a86a3a730`) | The push path failed silently: errors were logged, nothing consumed the log, and the health check stayed green. | A control whose purpose is "every decision is durably recorded" needs its own failure signal. `/healthz` now reports an `audit_push` status in its body while still returning HTTP 200 (the path is both liveness and readiness probe, so failing it would restart or de-route the guard itself); an authenticated `/v1/audit-push/status` endpoint gives detail; failures emit the alertable log signature `audit_push_failed`. |
+
+**Verification:**
+
+- A real blocked request produced a complete audit row — `event_id`,
+  `user_id` and encrypted `block`-tier content — after the fixes above.
+- Project isolation holds: unauthenticated and wrong-key requests get 401;
+  a body-supplied `project_id` is ignored and the row lands under the
+  authenticating key's own project.
+- `rayin_guardrails_writer` verified to hold `INSERT` only: `SELECT`,
+  `UPDATE` and `DELETE` on the audit table, and `SELECT` on `api_keys`/
+  `projects`, are all denied. The blast radius of a bug or compromise in
+  the guardrails service stops at "can append rows to one audit table."
+
+**Build lessons for anyone building this product on Windows:**
+
+1. **Build from a clean export at a short path, not the repo checkout.** The
+   checkout plus `node_modules` exceeds the 260-character path limit.
+2. **Make that export with LF line endings preserved:**
+   `git -c core.autocrlf=false -c core.eol=lf archive --format=tar HEAD`.
+   With `core.autocrlf=true`, a plain `git archive` rewrites
+   `patches/*.patch` to CRLF and `pnpm install --frozen-lockfile` fails with
+   `ERR_PNPM_INVALID_PATCH`. **Recommended product fix (not made in this
+   change):** add `patches/*.patch text eol=lf` to `.gitattributes` so the
+   trap disappears for everyone.
+3. **`az acr build` on Windows can crash while streaming logs** (a console
+   encoding error in the CLI's log renderer); the build itself may still
+   succeed server-side. Use `--no-logs`, check the run's status, and read
+   the run log through the registry management API rather than the CLI
+   streamer — which tends to die before the line that explains a real
+   failure.
+
+**Process findings:**
+
+- A pre-merge smoke test applied a migration to a shared database before
+  the change was merged. Run pre-merge tests against disposable databases
+  only.
+- A record of a completed cleanup did not match actual state. Verify
+  completed actions against state, not against the command having run.
+- Audit-table test rows are **not** deleted: the table is append-only by
+  design, and a privileged `DELETE` would contradict that. They age out under
+  retention — once the purge job exists (see "Outstanding").
+
+Operational security findings from this deployment are tracked privately (INC-2026-09-17-01).
+
+**Rollback considerations:** previous images ignore the new roles, columns
+and key. Migration `20260917090000` is forward-only by design.
+
+---
+
 ## Outstanding, not yet done
 
 - **Capabilities 4 & 5 of the 5-item GTM plan — prompt recommendation
