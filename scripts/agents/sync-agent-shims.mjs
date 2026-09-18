@@ -256,10 +256,10 @@ const symlinkOutputs = [
     path: resolve(repoRoot, "AGENTS.md"),
     target: resolve(repoRoot, ".agents/AGENTS.md"),
   },
-  {
-    path: resolve(repoRoot, "CLAUDE.md"),
-    target: resolve(repoRoot, "AGENTS.md"),
-  },
+  // ACME: the root CLAUDE.md is a hand-written file (it imports AGENTS.md on
+  // its first line, then adds ACME project guidance), so it is deliberately
+  // not generated as a symlink here. Package-level CLAUDE.md symlinks below
+  // are unchanged. Re-check this block on every upstream merge.
   ...packageAgentsDirectories.map((directory) => ({
     path: resolve(directory, "CLAUDE.md"),
     target: resolve(directory, "AGENTS.md"),
