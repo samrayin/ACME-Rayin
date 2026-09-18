@@ -1,9 +1,17 @@
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
 import { Badge } from "@/src/components/ui/badge";
 import { Switch } from "@/src/components/ui/switch";
 import { Button } from "@/src/components/ui/button";
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/src/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -42,6 +50,144 @@ function ActionBadge({ action }: { action: "allow" | "redact" | "block" }) {
   if (action === "block") return <Badge variant="error">Blocked</Badge>;
   if (action === "redact") return <Badge variant="warning">Redacted</Badge>;
   return <Badge variant="success">Allowed</Badge>;
+}
+
+function formatDateTime(iso: string) {
+  return new Date(iso).toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function DetailRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-[140px_1fr] gap-3 border-b py-2 text-sm last:border-b-0">
+      <div className="text-muted-foreground">{label}</div>
+      <div className="min-w-0 break-words">{children}</div>
+    </div>
+  );
+}
+
+// Detail panel for one guardrail decision -- CAIRO roadmap Phase 1,
+// "clickable jailbreak detail view". Who (user), from where (machine), when,
+// what was decided, plus a link through to the trace. Blocked content stays
+// encrypted: this panel only says whether it exists (reveal is Phase 2).
+function AcmeGuardrailEventDetail({
+  projectId,
+  eventRowId,
+  onClose,
+}: {
+  projectId: string;
+  eventRowId: string | null;
+  onClose: () => void;
+}) {
+  const detail = api.acmeGuardrails.eventDetail.useQuery(
+    { projectId, id: eventRowId ?? "" },
+    { enabled: eventRowId !== null },
+  );
+  const notRecorded = (
+    <span className="text-muted-foreground">Not recorded</span>
+  );
+
+  return (
+    <Dialog
+      open={eventRowId !== null}
+      onOpenChange={(open) => !open && onClose()}
+    >
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Guardrail event</DialogTitle>
+          <DialogDescription>
+            One decision by rayin-guardrails, as stored in the audit trail.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogBody>
+          {detail.isPending ? (
+            <p className="text-muted-foreground text-sm">Loading…</p>
+          ) : detail.isError ? (
+            <p className="text-muted-foreground text-sm">
+              Could not load this event: {detail.error.message}
+            </p>
+          ) : (
+            <div className="flex flex-col">
+              <DetailRow label="Date & time">
+                <span className="font-mono text-xs">
+                  {formatDateTime(detail.data.time)}
+                </span>
+              </DetailRow>
+              <DetailRow label="User">
+                {detail.data.userId ?? notRecorded}
+              </DetailRow>
+              <DetailRow label="Machine">
+                {detail.data.clientHost ?? notRecorded}
+              </DetailRow>
+              <DetailRow label="Agent">{detail.data.agentId}</DetailRow>
+              <DetailRow label="Direction">
+                <span className="capitalize">{detail.data.direction}</span>
+              </DetailRow>
+              <DetailRow label="Policy">
+                {detail.data.policyTriggered ?? "—"}
+              </DetailRow>
+              <DetailRow label="Action">
+                <ActionBadge action={detail.data.action} />
+              </DetailRow>
+              {detail.data.action === "redact" && detail.data.redactedText && (
+                <DetailRow label="Redacted text">
+                  <span className="font-mono text-xs whitespace-pre-wrap">
+                    {detail.data.redactedText}
+                  </span>
+                </DetailRow>
+              )}
+              {detail.data.action === "block" && (
+                <DetailRow label="Blocked content">
+                  {detail.data.hasEncryptedContent ? (
+                    <span className="text-muted-foreground">
+                      Stored encrypted. Not shown here.
+                    </span>
+                  ) : (
+                    notRecorded
+                  )}
+                </DetailRow>
+              )}
+              <DetailRow label="Trace">
+                {detail.data.traceId ? (
+                  <Link
+                    href={`/project/${projectId}/traces/${detail.data.traceId}`}
+                    className="text-primary hover:underline"
+                  >
+                    View trace
+                  </Link>
+                ) : (
+                  notRecorded
+                )}
+              </DetailRow>
+              <DetailRow label="Event ID">
+                <span className="font-mono text-xs">
+                  {detail.data.eventId ?? "—"}
+                </span>
+              </DetailRow>
+              <DetailRow label="Captured via">
+                {(detail.data.source ??
+                  (detail.data.eventId ? "push" : "pull")) === "push"
+                  ? "Audit push"
+                  : "Dashboard backfill (metadata only)"}
+              </DetailRow>
+            </div>
+          )}
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 const ASSURANCE_SCORE_NAME = "promptfoo-pass";
@@ -458,6 +604,7 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
 }
 
 export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const events = api.acmeGuardrails.recentEvents.useQuery(
     { projectId, limit: 50 },
     // Polling, not a subscription -- the source itself (rayin-guardrails'
@@ -545,8 +692,8 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
         <CardHeader>
           <CardTitle className="text-sm">Recent events</CardTitle>
           <p className="text-muted-foreground text-xs">
-            Persisted to Langfuse&apos;s database as it&apos;s observed —
-            survives a rayin-guardrails restart, most recent first.
+            Stored in the audit trail as each decision is made — most recent
+            first. Select a row for details.
           </p>
         </CardHeader>
         <CardContent className="pt-0">
@@ -559,7 +706,9 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Time</TableHead>
+                  <TableHead>Date &amp; time</TableHead>
+                  <TableHead>User</TableHead>
+                  <TableHead>Machine</TableHead>
                   <TableHead>Agent</TableHead>
                   <TableHead>Direction</TableHead>
                   <TableHead>Policy</TableHead>
@@ -568,10 +717,22 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
               </TableHeader>
               <TableBody>
                 {recent.map((event, i) => (
-                  <TableRow key={`${event.time}-${i}`}>
-                    <TableCell className="font-mono text-xs">
-                      {new Date(event.time).toLocaleTimeString()}
+                  <TableRow
+                    key={event.id ?? `${event.time}-${i}`}
+                    className={cn(
+                      event.id && "hover:bg-muted/50 cursor-pointer",
+                    )}
+                    onClick={
+                      event.id
+                        ? () => setSelectedEventId(event.id)
+                        : undefined
+                    }
+                  >
+                    <TableCell className="font-mono text-xs whitespace-nowrap">
+                      {formatDateTime(event.time)}
                     </TableCell>
+                    <TableCell>{event.user_id ?? "—"}</TableCell>
+                    <TableCell>{event.client_host ?? "—"}</TableCell>
                     <TableCell>{event.agent_id}</TableCell>
                     <TableCell className="capitalize">{event.direction}</TableCell>
                     <TableCell>{event.policy_triggered ?? "—"}</TableCell>
@@ -585,6 +746,12 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
           )}
         </CardContent>
       </Card>
+
+      <AcmeGuardrailEventDetail
+        projectId={projectId}
+        eventRowId={selectedEventId}
+        onClose={() => setSelectedEventId(null)}
+      />
     </div>
   );
 }
