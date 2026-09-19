@@ -1844,6 +1844,45 @@ was 165 commits behind `main`. Cross-checking the Readiness Ledger caught it
 and the report was corrected the same day. Reviews should run from a clean
 worktree at `origin/main`.
 
+## 2026-09-19 — Change-governance procedure adopted (CHG-2026-001)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-001 · owner: Anees Ur Rahman |
+| **Approval** | Approved by Anees Ur Rahman, 2026-09-19. Human approval; delegated auto-approval not used. |
+| **Impact** | Documentation only. No application code, schema, data or environment changed. Not client-visible. |
+| **Schema change** | None |
+| **Rollback** | Revert the commit (or delete `acme-governance/` and the CONTRIBUTING-ACME.md line). No data to restore. |
+
+**What:** new `acme-governance/` — `CHANGE-PROCEDURE.md`,
+`READINESS-AUDITOR-PROMPT.md` (now version-controlled, with review area 7
+"Change governance"), templates for ADR, rollback plan and changelog entry,
+and an empty ADR index. One-line pointer in `CONTRIBUTING-ACME.md`.
+
+**Why:** changes so far were recorded after the fact and unevenly; shipped
+Prisma migrations have no rollback scripts; one earlier test migrated
+production before merge. Every enhancement and database change now produces a
+design note, a versioned migration, a rehearsed rollback and a changelog entry
+whose approval wording says accurately whether approval was automated or
+human. Change IDs follow `CHG-YYYY-NNN`.
+
+**Scope deviation, recorded for accuracy:** the second working phase was
+scoped to the auditor prompt, this entry and the CONTRIBUTING pointer. The
+procedure and its three templates, drafted in the first phase, were also
+amended. Reason: the first draft allowed delegated auto-approval of production
+promotion, which contradicts the owner's control that delegated auto-approval
+is for development records only and never authorises a customer production
+deployment. Leaving that contradiction in a newly adopted procedure would have
+made the record wrong on day one. The owner accepted the deviation on
+2026-09-19.
+
+**Deployment status:** source-only; nothing to deploy.
+
+**Known-incomplete:** no staging environment and no named human production
+approver (Readiness Ledger N-46 and N-47, both open, both to close before the
+first customer production deployment); historical changes are not yet
+backfilled with retrospective design notes or rollback scripts.
+
 ## Outstanding, not yet done
 
 - **Capabilities 4 & 5 of the 5-item GTM plan — prompt recommendation
