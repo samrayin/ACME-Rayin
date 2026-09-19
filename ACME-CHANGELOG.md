@@ -1793,6 +1793,17 @@ Not yet checked by eye in a signed-out browser. The worker is unchanged
 
 ---
 
+## 2026-09-19 — Sidebar: prompt pages grouped, "Book a call" removed
+
+**What:** "Prompt Reviews" and "Prompt Approvals" move from the top of the
+sidebar into the **Prompt Management** group, after Prompts and Playground.
+Upstream's "Book a call" entry (a Langfuse sales link) is removed, along with
+its now-unused `book-a-call-button.tsx`; CAIRO support goes through "Contact
+ACME Support". Navigation only: no routes, permissions or data change.
+
+**Verified:** by code review only. Not type-checked or viewed in a browser
+yet (dependencies are not installed in this checkout); check after deploy.
+
 ## Outstanding, not yet done
 
 - **Capabilities 4 & 5 of the 5-item GTM plan — prompt recommendation

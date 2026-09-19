@@ -34,7 +34,6 @@ import { type OrganizationScope } from "@/src/features/rbac/constants/organizati
 import { SupportButton } from "@/src/components/nav/support-button";
 import { V4MigrationNavItem } from "@/src/features/v4-migration/V4MigrationNavItem";
 import { V4SidebarToggle } from "@/src/features/events/components/V4SidebarToggle";
-import { BookACallButton } from "@/src/components/nav/book-a-call-button";
 import { SidebarMenuButton } from "@/src/components/ui/sidebar";
 import { KeyboardShortcut } from "@/src/components/design-system/KeyboardShortcut/KeyboardShortcut";
 import { useCommandMenu } from "@/src/features/command-k-menu/CommandMenuProvider";
@@ -148,25 +147,6 @@ export const ROUTES: Route[] = [
     section: RouteSection.Main,
   },
   {
-    // ACME addition: review-date management for prompts (Prompt.config.
-    // reviewDate, no migration). Gated on the existing prompts:read scope
-    // rather than a new one -- see acmePromptReviewRouter.ts.
-    title: "Prompt Reviews",
-    pathname: `/project/[projectId]/acme-enhancements/prompt-reviews`,
-    icon: CalendarClock,
-    projectRbacScopes: ["prompts:read"],
-    section: RouteSection.Main,
-  },
-  {
-    // ACME addition: request/approve/reject trail for pushing a prompt
-    // version to a label -- see acmePromptApprovalRouter.ts.
-    title: "Prompt Approvals",
-    pathname: `/project/[projectId]/acme-enhancements/prompt-approvals`,
-    icon: CheckCircle2,
-    projectRbacScopes: ["prompts:read"],
-    section: RouteSection.Main,
-  },
-  {
     title: "Tracing",
     projectRbacScopes: ["projectData:read"],
     icon: ListTree,
@@ -217,6 +197,27 @@ export const ROUTES: Route[] = [
     pathname: "/project/[projectId]/playground",
     icon: TerminalIcon,
     productModule: "playground",
+    group: RouteGroup.PromptManagement,
+    section: RouteSection.Main,
+  },
+  {
+    // ACME addition: review-date management for prompts (Prompt.config.
+    // reviewDate, no migration). Gated on the existing prompts:read scope
+    // rather than a new one -- see acmePromptReviewRouter.ts.
+    title: "Prompt Reviews",
+    pathname: `/project/[projectId]/acme-enhancements/prompt-reviews`,
+    icon: CalendarClock,
+    projectRbacScopes: ["prompts:read"],
+    group: RouteGroup.PromptManagement,
+    section: RouteSection.Main,
+  },
+  {
+    // ACME addition: request/approve/reject trail for pushing a prompt
+    // version to a label -- see acmePromptApprovalRouter.ts.
+    title: "Prompt Approvals",
+    pathname: `/project/[projectId]/acme-enhancements/prompt-approvals`,
+    icon: CheckCircle2,
+    projectRbacScopes: ["prompts:read"],
     group: RouteGroup.PromptManagement,
     section: RouteSection.Main,
   },
@@ -356,12 +357,8 @@ export const ROUTES: Route[] = [
     icon: Settings,
     section: RouteSection.Secondary,
   },
-  {
-    title: "Book a call",
-    section: RouteSection.Secondary,
-    pathname: "",
-    menuNode: <BookACallButton />,
-  },
+  // ACME: upstream's "Book a call" entry (a Langfuse sales link) is removed;
+  // CAIRO support goes through "Contact ACME Support".
   {
     title: "Support",
     icon: LifeBuoy,
