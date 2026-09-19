@@ -10,3 +10,4 @@ are marked as such and never claim approvals that were not recorded at the time.
 |---|---|---|---|---|
 | — | *(baseline ADR-0000 and retrospective notes are added in the backfill phase)* | | | |
 | [ADR-0001](ADR-0001-ci-permanently-failing-checks.md) | Fix or gate the three CI checks that failed on every PR (CHG-2026-002) | Forward | Accepted | 2026-09-19 |
+| [ADR-0002](ADR-0002-security-review-real-gate.md) | Make the AI security review a gate, enforceable once required on `main` (CHG-2026-003); supersedes ADR-0001's opt-in switch for that check | Forward | Proposed | 2026-09-19 |
