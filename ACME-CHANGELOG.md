@@ -1849,7 +1849,7 @@ worktree at `origin/main`.
 | | |
 |---|---|
 | **Change ID** | CHG-2026-001 · owner: Anees Ur Rahman |
-| **Approval** | Pending — owner review. No auto-approval applied. |
+| **Approval** | Approved by Anees Ur Rahman, 2026-09-19. Human approval; delegated auto-approval not used. |
 | **Impact** | Documentation only. No application code, schema, data or environment changed. Not client-visible. |
 | **Schema change** | None |
 | **Rollback** | Revert the commit (or delete `acme-governance/` and the CONTRIBUTING-ACME.md line). No data to restore. |
