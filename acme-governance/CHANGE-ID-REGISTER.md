@@ -28,11 +28,12 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | CHG-2026-002 | — | CI: fix or gate the three checks that failed on every PR | Anees Ur Rahman | #34 | Merged |
 | CHG-2026-003 | — | CI: make the AI security review a gate that fails closed | Anees Ur Rahman | `ci/security-review-real-gate` · #36 | Claimed |
 | CHG-2026-004 | 2 | This register | Anees Ur Rahman | #37 | Merged |
-| CHG-2026-005 | 1 | CAIRO manages the LiteLLM gateway: keys, teams, budgets, models, spend | Anees Ur Rahman | `feat/cairo-litellm-management` | Claimed |
-| CHG-2026-006 | 2 | LiteLLM gateway image pinned by digest | Anees Ur Rahman | `chore/pin-litellm-image-digest` | Claimed |
-| CHG-2026-007 | 2 | Change procedure tiered by risk; one-command rehearsal database; migration rollback inventory | Anees Ur Rahman | `docs/procedure-tiering-and-rehearsal-script` | Claimed |
+| CHG-2026-005 | 1 | CAIRO manages the LiteLLM gateway: keys, teams, budgets, models, spend | Anees Ur Rahman | `feat/cairo-litellm-management` · #41 | Claimed |
+| CHG-2026-006 | 2 | LiteLLM gateway image pinned by digest | Anees Ur Rahman | #39 | Merged |
+| CHG-2026-007 | 2 | Change procedure tiered by risk; one-command rehearsal database; migration rollback inventory | Anees Ur Rahman | #40 | Merged |
 | CHG-2026-008 | 1 | LiteLLM request-log receiver, append-only mirror and reconciliation (designed in ADR-0003) | Anees Ur Rahman | not started | Claimed |
 | CHG-2026-009 | 1 | Enable the LiteLLM logging callback towards the CAIRO receiver (designed in ADR-0003) | Anees Ur Rahman | not started | Claimed |
+| CHG-2026-010 | 1 | Least-privilege database cutover: web and worker connect as `rayin_app_runtime`, not the admin login (Readiness Ledger P0-5, P0-6; ops gap list B9) | Anees Ur Rahman | design only, not started | Claimed |
 
 ## ADR numbers
 
@@ -42,6 +43,7 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | ADR-0001 | CHG-2026-002 | Fix or gate the three CI checks that failed on every PR | Merged |
 | ADR-0002 | CHG-2026-003 | Security review as a real gate | Claimed |
 | ADR-0003 | CHG-2026-005 | CAIRO as the single control plane for LiteLLM: management and request-log capture | Claimed |
+| ADR-0004 | CHG-2026-010 | Least-privilege database cutover | Claimed |
 
 The rows above for CHG-2026-001 to -003 and ADR-0000 to -0002 were reconstructed
 on 2026-09-19 from `main` and every branch on the remote; they were not claimed
