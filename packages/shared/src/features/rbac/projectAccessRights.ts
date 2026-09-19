@@ -78,6 +78,10 @@ export const projectScopes = [
   // same sensitivity level as audit logs -- these events reveal what
   // content was flagged or blocked, not just that something happened.
   "projectGuardrails:read",
+  // ACME: read trace / observation / session / score content (raw prompts).
+  // Held by every built-in role; withheld only from SECURITY, whose access
+  // is also enforced server-side by securityRoleAllowList.ts.
+  "projectData:read",
 
   // ACME addition: use the in-app ACME AI chat widget, which reads this
   // project's own trace data and sends it to an LLM via RAYIN's LiteLLM
@@ -103,12 +107,12 @@ export const projectScopes = [
   "traces:create",
   "scores:read",
   "scores:create",
+  "media:read",
   "media:create",
   "sessions:read",
   "metrics:read",
   "models:read",
   "experiments:read",
-  "mcp:access",
   "feedback:create",
 
   // ACME addition: the rayin-guardrails audit-trail push endpoint
@@ -126,6 +130,7 @@ export type ProjectScope = (typeof projectScopes)[number];
 export const projectRoleAccessRights: Record<Role, ProjectScope[]> = {
   OWNER: [
     "project:read",
+    "projectData:read",
     "project:update",
     "project:delete",
     "projectMembers:read",
@@ -186,6 +191,7 @@ export const projectRoleAccessRights: Record<Role, ProjectScope[]> = {
   ],
   ADMIN: [
     "project:read",
+    "projectData:read",
     "project:update",
     "projectMembers:read",
     "projectMembers:CUD",
@@ -245,6 +251,7 @@ export const projectRoleAccessRights: Record<Role, ProjectScope[]> = {
   ],
   MEMBER: [
     "project:read",
+    "projectData:read",
     "projectMembers:read",
     "apiKeys:read",
     "objects:publish",
@@ -290,6 +297,7 @@ export const projectRoleAccessRights: Record<Role, ProjectScope[]> = {
   ],
   VIEWER: [
     "project:read",
+    "projectData:read",
     "prompts:read",
     "evaluator:read",
     "scoreConfigs:read",
@@ -309,6 +317,10 @@ export const projectRoleAccessRights: Record<Role, ProjectScope[]> = {
     "alerts:read",
   ],
   NONE: [],
+  // ACME: Security Analyst. Guardrail events (incl. what was typed, PII
+  // masked) and audit logs; no trace/session/score content (no
+  // projectData:read), no configuration changes.
+  SECURITY: ["project:read", "projectGuardrails:read", "projectAuditLogs:read"],
 };
 
 export const projectNoneRoleComment =

@@ -12,7 +12,7 @@ import { RESOURCE_LIMIT_ERROR_MESSAGE } from "@langfuse/shared";
 
 import { getServerAuthSession } from "@/src/server/auth";
 import { sendAdminAccessWebhook } from "@/src/server/adminAccessWebhook";
-import { prisma } from "@langfuse/shared/src/db";
+import { prisma, Role } from "@langfuse/shared/src/db";
 import {
   prepareExecuteQuery,
   toClickhouseQueryOpts,
@@ -79,6 +79,13 @@ export default async function handler(
       org.projects.map((project) => ({ ...project, organization: org })),
     )
     .find((project) => project.id === projectId);
+
+  // ACME: dashboards aggregate trace data; the Security Analyst role has no
+  // access to it (web/src/features/rbac/server/securityRoleAllowList.ts).
+  if (sessionProject?.role === Role.SECURITY && session.user.admin !== true) {
+    res.status(403).json({ message: "Not available to the Security Analyst role" });
+    return;
+  }
 
   if (!sessionProject) {
     if (session.user.admin === true) {

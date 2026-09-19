@@ -1,6 +1,7 @@
 import { type Role } from "@langfuse/shared/src/db";
 
 export const organizationScopes = [
+  "projects:read",
   "projects:create",
   "projects:transfer_org",
   "organization:CRUD_apiKeys",
@@ -44,6 +45,7 @@ export const organizationRoleAccessRights: Record<Role, OrganizationScope[]> = {
   MEMBER: ["gateway:invoke", "organizationMembers:read"],
   VIEWER: [],
   NONE: [],
+  SECURITY: [],
 };
 
 export const orgNoneRoleComment =

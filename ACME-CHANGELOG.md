@@ -25,9 +25,11 @@ deploy command: build, then tag, then deploy the tagged digest. See
   image, and the customer Terraform template has never been run end to end
   (tracked as #23). Don't read `git checkout <tag>` as a rebuild.
 
-**Base version:** Langfuse `v4.35.0` (upgraded from `v4.33.0` on 2026-09-11 — see
-"Upgrade to v4.35.0" below; that was itself upgraded from `v4.17.0` on
-2026-09-10, see "Upgrade to v4.33.0"), Helm chart `2.0.0` — matches what's live
+**Base version:** Langfuse `v4.38.0` (upgraded from `v4.35.0` on 2026-09-19 — see
+"Upgrade to v4.38.0" below; before that from `v4.33.0` on 2026-09-11, see
+"Upgrade to v4.35.0", and from `v4.17.0` on 2026-09-10, see "Upgrade to
+v4.33.0"). Tags restart at `acme-v4.38.0.1` (web) and
+`worker-acme-v4.38.0.1` (worker) under this base. Helm chart `2.0.0` — matches what's live
 on `langfuse-dev.aiatacme.com` (see `Azure Blueprint/ENVIRONMENT-STUDY.md` in
 the companion infrastructure project for the full deployment audit).
 **Note on tag numbering:** existing tags (`acme-v4.33.0.1`, `.2`) were cut
@@ -1759,13 +1761,18 @@ and key. Migration `20260917090000` is forward-only by design.
 | `acme-v4.35.0.6` | `ea760228a` | Guardrail event detail view: user, machine, capture source (#19) | Exact: built from `git archive` of the commit |
 | `acme-v4.35.0.7` | `3cc5a8252` | Guardrail table display fixes (#21) | Exact |
 | `acme-v4.35.0.8` | `56dc06207` | Security Analyst role (#22) | Exact |
+| `acme-v4.38.0.1` | `9fec0e44e` | Langfuse base upgrade to v4.38.0 (#26) | Source exact; **Dockerfile not exact**: `az acr build` read a stale `web/Dockerfile` from the checkout (one-line pnpm difference, no effect on the image). See "Fix: release.sh builds from the export" below |
+| `worker-acme-v4.38.0.1` | `9fec0e44e` | First worker release through `release.sh` (#26) | Exact: built from a clean worktree at `origin/main`, ACR `Step 1/55` |
+| `acme-v4.38.0.2` | `c4a7a1c24` | Animated sign-in headline (#28); supersedes `.1` | Exact: clean worktree, ACR `Step 1/114` |
 
 Tags `.5`–`.8` were backfilled on 2026-09-18 from the ACR build records (image
 digest and run ID are in each tag's message). Earlier tags (`.1`–`.4`) predate
-digest recording. The worker is **not** covered: it still runs a mutable
-`acme-dev` image built 2026-09-11 whose source commit was never recorded, so
-it can't be traced. Its next release goes through `release.sh` as
-`worker-acme-v4.35.0.N`.
+digest recording. `web/Dockerfile` did not change between `.5` and `.8`, so the
+Dockerfile defect fixed below could not have made those builds differ from
+their commits. It first mattered at `acme-v4.38.0.1`, the first release after
+the upgrade changed that file. Since 2026-09-19 the **worker is covered too**
+(`worker-acme-v4.38.0.1`). Before that it ran the mutable `acme-dev` image,
+whose source commit was never recorded.
 
 ## 2026-09-18 — Guardrail event detail view: user, machine, capture source (acme-v4.35.0.6)
 
@@ -1873,6 +1880,153 @@ that needs a second account with the role.
 **Scope of the claim:** this makes deployments **traceable**. It does **not**
 make them **reproducible**. Rebuilding on a customer subscription is unproven
 until the Terraform end-to-end run (#23) passes.
+
+---
+
+## 2026-09-19 — Upgrade to v4.38.0
+
+**What:** Base Langfuse version bumped from `v4.35.0` to `v4.38.0` (releases
+4.36.0, 4.36.1, 4.37.0 and 4.38.0; 159 upstream commits). Same method as the
+v4.35.0 upgrade: a real `git merge` of upstream's **release tag** `v4.38.0`
+(not `upstream/main`, which carried 33 unreleased commits) on a dedicated
+`upgrade/v4.38.0` branch off `main`, landed with a **merge commit**. Never
+squash an upgrade PR: that severs the merge-base with upstream, and the next
+sync would re-conflict on every file.
+
+**Conflicts: 5, all resolved by keeping the ACME behavior on upstream's new
+structure.**
+- `.gitattributes`: both sides added lines (ACME's LF rules for `*.sh` and
+  Dockerfiles; upstream's `linguist-generated` marks for `packages/native`).
+  Kept both.
+- `page-header.tsx`: both sides added a hook call (ACME header background;
+  upstream's in-app agent launcher). Kept both.
+- `AuthenticatedLayout.tsx`: upstream removed the `TopBannerProvider` wrapper
+  and moved the feature-preview modal. Took upstream's structure and
+  re-inserted `AcmeChatWidget` and `AcmeThemeStyleInjector` in the same
+  place, right after `InAppAgentWindowHost`.
+- `pages/project/[projectId]/index.tsx`: upstream moved the whole project
+  home page to `features/dashboard/ProjectHomePage.tsx` and left a one-line
+  re-export. Took the re-export and ported ACME's only change there, the
+  Security Analyst redirect to Guardrails, into `ProjectHomePage`.
+- `CreateProjectMemberDialogContent.tsx`: deleted upstream (replaced by
+  `CreateProjectMemberDialog.tsx` in the design-system dialog refactor).
+  ACME's only change was adding `SECURITY` to the role list; ported to the
+  new file, where the `satisfies Record<Role, Role>` check requires it.
+
+**Nothing ACME dropped silently:** for all 21 other files both sides
+changed, the ACME delta after the merge has exactly the same number of
+changed lines as before it.
+
+**Upstream changes that matter for operations:**
+- **ClickHouse migration `0049_add_events_name_ngram_indexes`** (skip
+  indexes for name, user and session search). No Postgres migrations. An
+  image rollback needs no schema rollback: older code ignores extra indexes.
+- **`packages/native`**: a new Rust (napi-rs) add-on that the worker loads.
+  The worker image now installs a Rust toolchain and compiles it, so
+  worker builds take longer. Local `turbo run typecheck` also tries to build
+  it, so check packages with `tsc` directly on machines without Rust.
+- pnpm 12.3.1 → 12.4.1 (`packageManager`, both Dockerfiles).
+- New env vars are all optional (API cutoff for Cloud organizations,
+  event-propagation insert tuning, a Cloud billing webhook secret). None
+  are needed for a self-hosted deployment.
+- `ai-gateway/` changed but is still behind `restrictedFlags =
+  ["aiGateway"]`, so it is off by default. Still no overlap with the
+  LiteLLM gateway.
+
+**Released 2026-09-19** through `scripts/release/release.sh` from `9fec0e44e`
+(the #26 merge commit), web first, then worker:
+- **Web `acme-v4.38.0.1`** (ACR run `dt2p`, 13m11s). The ClickHouse migration
+  applied on startup (`49/u add_events_name_ngram_indexes`, 0.5 s). No
+  Postgres migrations were pending. Health 200.
+- **Worker `worker-acme-v4.38.0.1`** (ACR run `dt2r`, 8m01s). This is the
+  **first worker release through `release.sh`**. Until now the worker ran the
+  mutable `acme-dev` tag and showed as UNTRACED. The Rust add-on loads at
+  startup, and every queue executor starts.
+- `verify-deployed.sh`: web and worker both **TRACED** at `9fec0e44e`.
+- Verified with read-only checks only: health, pod logs, and a browser pass
+  over Home, Audit Logs and Guardrails in an existing session. No synthetic or
+  real traffic test. The deployment record in `acme-rayin-ops` lists what was
+  not verified.
+
+**Finding: `release.sh` took the Dockerfile from the checkout, not the
+export.** It passes `az acr build --file <relative path>` while running from
+the repo root it was started in. `az` read the Dockerfile from that
+checkout's working tree and only the source from the clean `git archive`.
+The checkout was on an older branch, so:
+- The first worker build (`dt2q`) used the pre-merge Dockerfile, which has no
+  Rust toolchain, and failed (`cargo metadata failed to run`). Nothing was
+  tagged or deployed.
+- The web build used a Dockerfile that differs from `main` by one line
+  (`corepack prepare pnpm@12.3.1` against `@12.4.1`). That line had no effect
+  on the image, because pnpm 12.4.1 did the install. But the `acme-v4.38.0.1`
+  tag annotation's "exact: built from git archive of this commit" claim does
+  not hold for its Dockerfile.
+- Until the script is fixed (#24: build from inside `$BUILD_DIR`), **run
+  `release.sh` only from a clean worktree at `origin/main`**. Check that
+  ACR's `Step N/<total>` matches the Dockerfile's instruction count on
+  `main`.
+
+**Pre-existing items the upgrade surfaced (not regressions):** 3
+`app-shell-chrome` client tests fail because they never mocked the ACME
+header-theme hook. Lint rules that upstream added in this range flag 4
+warnings in older ACME files. White-label gaps: upstream's `AgentToolsBanner`
+("Langfuse works great with your AI coding agents") and the "… | Langfuse"
+browser tab titles.
+
+---
+
+## 2026-09-19 — Animated brand headline on the sign-in page
+
+**What:** the sign-in page now opens with **"ACME Governance and Assurance
+Offering"** in Orbitron Black. "ACME" is in brand maroon and the rest in navy
+(`primary`). The words come into focus one after another, then a
+maroon-to-navy dash draws underneath. The owner picked this style ("option
+B") from a three-way preview. "Sign in to your account" stays below it
+unchanged.
+
+**How:**
+- `AcmeSignInHeadline` (`features/acme-enhancements/components/`) renders the
+  page's `h1`, so screen readers get the full phrase. The dash is
+  `aria-hidden`.
+- **Font bundled, not fetched:** Orbitron Black (latin subset, 6.4 KB woff2)
+  and its SIL Open Font License are committed under `web/public/fonts/`, the
+  same way as IBM Plex Mono. It's loaded with `next/font/local` inside the
+  ACME component. The sign-in page makes no runtime request to a font CDN,
+  which matters for air-gapped customer deployments. Upstream's `fonts.ts` and
+  `_app.tsx` are deliberately untouched, because the app-wide typeface
+  convention there is for a font the whole app uses.
+- **Heavy weight without a banned utility:** the repo's lint rule allows only
+  `font-bold` and `font-normal`, and the type system gives `text-*` sizes a
+  regular weight. `next/font` puts `font-weight: 900` on its own unlayered
+  class, which wins over the layered Tailwind utilities.
+- **Tokens, not raw colors:** a new `--acme-maroon` token (light and dark
+  values) exposed as `text-acme-maroon` / `from-acme-maroon`. The two
+  animations are `--animate-acme-*` tokens with keyframes in `globals.css`.
+  They use `animation-fill-mode: both`, so each word holds its start frame
+  through its stagger delay.
+- **Reduced motion:** with `prefers-reduced-motion`, the headline and dash
+  render finished, with no animation.
+- The only change inside an upstream file is one `// ACME:` insertion in
+  `SignInPage.tsx`, plus the tokens and keyframes in the ACME sections of
+  `globals.css`.
+
+**Verified locally:** web typecheck; ESLint (0 warnings) and Prettier on the
+changed files; the existing sign-in page tests (16/16) and 2 new headline
+tests. The Tailwind build was compiled to confirm every new class, delay and
+reduced-motion variant is generated, and that the delay utilities come after
+the animation shorthand in the stylesheet, so the stagger isn't reset.
+
+**Released 2026-09-19 as web `acme-v4.38.0.2`** (ACR run `dt2s`, 13m42s)
+from `c4a7a1c24`, through `release.sh` run from a clean worktree at
+`origin/main`. The ACR log shows `Step 1/114` with `pnpm@12.4.1`, so it was
+built from `main`'s own Dockerfile and its tag is exact. That also replaces
+the `acme-v4.38.0.1` web image, whose Dockerfile did not match its tag. Health
+200, 0 error lines, no pending migrations. The live bundles contain the
+headline, its animation classes and keyframes, and the bundled Orbitron font.
+Not yet checked by eye in a signed-out browser. The worker is unchanged
+(`worker-acme-v4.38.0.1`).
+
+---
 
 ## Outstanding, not yet done
 

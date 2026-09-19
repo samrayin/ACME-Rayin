@@ -13,6 +13,7 @@ const BASE_INPUT: GuardrailsEventPushInput = {
   agentId: "agent-1",
   traceId: "trace-1",
   userId: "user-1",
+  clientHost: "LAPTOP-ACME-042",
   eventTime: "2026-09-17T10:00:00.000Z",
   direction: "input",
   action: "allow",
@@ -107,5 +108,16 @@ describe("buildEventRow", () => {
   it("userId absent (caller didn't send it): stays null, not omitted", () => {
     const row = buildEventRow("proj-1", { ...BASE_INPUT, userId: null }, "unused-key");
     expect(row.userId).toBeNull();
+  });
+
+  it("carries clientHost through and marks the row as captured by push", () => {
+    const row = buildEventRow("proj-1", BASE_INPUT, "unused-key");
+    expect(row.clientHost).toBe("LAPTOP-ACME-042");
+    expect(row.source).toBe("PUSH");
+  });
+
+  it("clientHost absent (caller or older rayin-guardrails didn't send it): stays null", () => {
+    const row = buildEventRow("proj-1", { ...BASE_INPUT, clientHost: null }, "unused-key");
+    expect(row.clientHost).toBeNull();
   });
 });

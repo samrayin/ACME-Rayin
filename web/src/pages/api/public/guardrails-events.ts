@@ -35,6 +35,10 @@ const GuardrailsEventPushBody = z.object({
   // Human end-user identity -- see acmeGuardrailsEventsIngestService.ts.
   // Caller-asserted, not yet verified against an Entra ID token.
   user_id: z.string().nullable(),
+  // Machine the request came from (hostname or device id), caller-asserted
+  // like user_id. Optional, not just nullable, so a rayin-guardrails build
+  // that predates this field keeps working during a staggered rollout.
+  client_host: z.string().max(255).nullable().optional(),
   event_time: z.string().datetime(),
   direction: z.enum(["input", "output"]),
   action: z.enum(["allow", "redact", "block"]),
@@ -50,6 +54,10 @@ const GuardrailsEventPushBody = z.object({
 
 const GuardrailsEventPushResponse = z.object({
   stored: z.literal(true),
+  // true when the event was already stored (a retried push, or an earlier
+  // pull reconciliation) and nothing new was written. Additive: callers that
+  // only check the HTTP status are unaffected.
+  duplicate: z.boolean(),
 });
 
 export default withMiddlewares({
@@ -65,6 +73,7 @@ export default withMiddlewares({
         agentId: body.agent_id,
         traceId: body.trace_id,
         userId: body.user_id,
+        clientHost: body.client_host ?? null,
         eventTime: body.event_time,
         direction: body.direction,
         action: body.action,

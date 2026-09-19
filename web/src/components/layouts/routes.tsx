@@ -108,12 +108,14 @@ export const ROUTES: Route[] = [
   },
   {
     title: "Home",
+    projectRbacScopes: ["projectData:read"],
     pathname: `/project/[projectId]`,
     icon: Home,
     section: RouteSection.Main,
   },
   {
     title: "Dashboards",
+    projectRbacScopes: ["projectData:read"],
     pathname: `/project/[projectId]/dashboards`,
     icon: LayoutDashboard,
     productModule: "dashboards",
@@ -166,6 +168,7 @@ export const ROUTES: Route[] = [
   },
   {
     title: "Tracing",
+    projectRbacScopes: ["projectData:read"],
     icon: ListTree,
     productModule: "tracing",
     group: RouteGroup.Observability,
@@ -174,6 +177,7 @@ export const ROUTES: Route[] = [
   },
   {
     title: "Sessions",
+    projectRbacScopes: ["projectData:read"],
     icon: Clock,
     productModule: "tracing",
     group: RouteGroup.Observability,
@@ -182,6 +186,7 @@ export const ROUTES: Route[] = [
   },
   {
     title: "Users",
+    projectRbacScopes: ["projectData:read"],
     pathname: `/project/[projectId]/users`,
     icon: UsersIcon,
     productModule: "tracing",
@@ -208,6 +213,7 @@ export const ROUTES: Route[] = [
   },
   {
     title: "Playground",
+    projectRbacScopes: ["projectData:read"],
     pathname: "/project/[projectId]/playground",
     icon: TerminalIcon,
     productModule: "playground",
@@ -216,6 +222,7 @@ export const ROUTES: Route[] = [
   },
   {
     title: "Scores",
+    projectRbacScopes: ["projectData:read"],
     pathname: `/project/[projectId]/scores`,
     group: RouteGroup.Evaluation,
     section: RouteSection.Main,
@@ -250,6 +257,7 @@ export const ROUTES: Route[] = [
   },
   {
     title: "Experiments",
+    projectRbacScopes: ["projectData:read"],
     pathname: `/project/[projectId]/experiments`,
     icon: Beaker,
     featureFlag: "experimentsV4Enabled",
