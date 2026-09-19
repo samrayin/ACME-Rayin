@@ -34,13 +34,13 @@ import { type OrganizationScope } from "@/src/features/rbac/constants/organizati
 import { SupportButton } from "@/src/components/nav/support-button";
 import { V4MigrationNavItem } from "@/src/features/v4-migration/V4MigrationNavItem";
 import { V4SidebarToggle } from "@/src/features/events/components/V4SidebarToggle";
-import { BookACallButton } from "@/src/components/nav/book-a-call-button";
 import { SidebarMenuButton } from "@/src/components/ui/sidebar";
 import { KeyboardShortcut } from "@/src/components/design-system/KeyboardShortcut/KeyboardShortcut";
 import { useCommandMenu } from "@/src/features/command-k-menu/CommandMenuProvider";
 import { usePostHogClientCapture } from "@/src/features/posthog-analytics/usePostHogClientCapture";
 import { CloudStatusMenu } from "@/src/features/cloud-status-notification/components/CloudStatusMenu";
 import { AcmeContactSupportNavItem } from "@/src/components/nav/acme-contact-support-nav-item";
+import { AcmeLitellmGatewayNavItem } from "@/src/components/nav/acme-litellm-gateway-nav-item";
 import { type ProductModule } from "@/src/ee/features/ui-customization/productModuleSchema";
 
 export enum RouteSection {
@@ -136,6 +136,18 @@ export const ROUTES: Route[] = [
     section: RouteSection.Main,
   },
   {
+    // ACME addition (ADR-0003, CHG-2026-005): CAIRO as the only control plane
+    // for the LiteLLM gateway. Top-level, next to Guardrails: a runtime
+    // control, not a console customization. menuNode, not a plain link: the
+    // feature flag is server-only, so the item asks the server and renders
+    // nothing while CAIRO_LITELLM_MANAGEMENT_ENABLED is off.
+    title: "LLM Gateway",
+    pathname: `/project/[projectId]/acme-enhancements/llm-gateway`,
+    projectRbacScopes: ["llmGateway:read", "llmGatewayLogs:read"],
+    section: RouteSection.Main,
+    menuNode: <AcmeLitellmGatewayNavItem />,
+  },
+  {
     // ACME PREVIEW — a deliberately thin demo (acmeAssuranceDemoRouter.ts),
     // not the production Asset Inventory / Assurance features it's meant to
     // validate the concept for. Remove this nav entry (and the demo page)
@@ -145,25 +157,6 @@ export const ROUTES: Route[] = [
     pathname: `/project/[projectId]/acme-enhancements/assurance-demo`,
     icon: Gauge,
     projectRbacScopes: ["projectGuardrails:read"],
-    section: RouteSection.Main,
-  },
-  {
-    // ACME addition: review-date management for prompts (Prompt.config.
-    // reviewDate, no migration). Gated on the existing prompts:read scope
-    // rather than a new one -- see acmePromptReviewRouter.ts.
-    title: "Prompt Reviews",
-    pathname: `/project/[projectId]/acme-enhancements/prompt-reviews`,
-    icon: CalendarClock,
-    projectRbacScopes: ["prompts:read"],
-    section: RouteSection.Main,
-  },
-  {
-    // ACME addition: request/approve/reject trail for pushing a prompt
-    // version to a label -- see acmePromptApprovalRouter.ts.
-    title: "Prompt Approvals",
-    pathname: `/project/[projectId]/acme-enhancements/prompt-approvals`,
-    icon: CheckCircle2,
-    projectRbacScopes: ["prompts:read"],
     section: RouteSection.Main,
   },
   {
@@ -217,6 +210,27 @@ export const ROUTES: Route[] = [
     pathname: "/project/[projectId]/playground",
     icon: TerminalIcon,
     productModule: "playground",
+    group: RouteGroup.PromptManagement,
+    section: RouteSection.Main,
+  },
+  {
+    // ACME addition: review-date management for prompts (Prompt.config.
+    // reviewDate, no migration). Gated on the existing prompts:read scope
+    // rather than a new one -- see acmePromptReviewRouter.ts.
+    title: "Prompt Reviews",
+    pathname: `/project/[projectId]/acme-enhancements/prompt-reviews`,
+    icon: CalendarClock,
+    projectRbacScopes: ["prompts:read"],
+    group: RouteGroup.PromptManagement,
+    section: RouteSection.Main,
+  },
+  {
+    // ACME addition: request/approve/reject trail for pushing a prompt
+    // version to a label -- see acmePromptApprovalRouter.ts.
+    title: "Prompt Approvals",
+    pathname: `/project/[projectId]/acme-enhancements/prompt-approvals`,
+    icon: CheckCircle2,
+    projectRbacScopes: ["prompts:read"],
     group: RouteGroup.PromptManagement,
     section: RouteSection.Main,
   },
@@ -356,12 +370,8 @@ export const ROUTES: Route[] = [
     icon: Settings,
     section: RouteSection.Secondary,
   },
-  {
-    title: "Book a call",
-    section: RouteSection.Secondary,
-    pathname: "",
-    menuNode: <BookACallButton />,
-  },
+  // ACME: upstream's "Book a call" entry (a Langfuse sales link) is removed;
+  // CAIRO support goes through "Contact ACME Support".
   {
     title: "Support",
     icon: LifeBuoy,

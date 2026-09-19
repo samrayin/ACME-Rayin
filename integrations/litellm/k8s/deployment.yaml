@@ -24,7 +24,14 @@ spec:
     spec:
       containers:
         - name: litellm
-          image: ghcr.io/berriai/litellm:main-stable
+          # Pinned by digest (CHG-2026-006, 2026-09-19): this is the multi-arch
+          # index digest the live pod has been running since 2026-09-12 --
+          # LiteLLM 1.100.1, image built 2026-09-10, originally pulled as
+          # `main-stable`. That tag floats and has since moved, so a pod
+          # restart would have silently changed the gateway version. To
+          # upgrade: pick a release, resolve its digest, replace it here and
+          # record the change in ACME-CHANGELOG.md.
+          image: ghcr.io/berriai/litellm@sha256:a3715fa7ad8387941ab697259bd2881d68931657247a41984f90fae6d11c62bf
           args: ["--config", "/app/config/litellm-config.yaml"]
           # Image's own default user is root (confirmed via `kubectl exec ... id`
           # against the live pod, 2026-09-12) -- runAsUser is required alongside

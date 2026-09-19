@@ -23,7 +23,11 @@ jobs:
           # The token should only have the following permissions:
           # - Issues: read/write
           # - Pull requests: read-only.
-          GH_TOKEN: ${{ secrets.PR_LABELER_TOKEN }}
+          # ACME: this fork has no PR_LABELER_TOKEN secret, which left gh
+          # unauthenticated and failed this job on every PR. Fall back to the
+          # built-in token; the `permissions` block above already grants exactly
+          # what is needed, and fork PRs are skipped by the job condition.
+          GH_TOKEN: ${{ secrets.PR_LABELER_TOKEN || github.token }}
           REPO: ${{ github.repository }}
           EVENT_NAME: ${{ github.event_name }}
           LABEL_NAME: has-conflicts
