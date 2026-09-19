@@ -447,6 +447,10 @@ export enum QueueName {
   // ACME addition: nightly scan for prompts past their configured review
   // date (Prompt.config.reviewDate). See acmePromptReviewQueue.ts.
   AcmePromptReviewQueue = "acme-prompt-review-queue",
+  // ACME addition (ADR-0003, CHG-2026-008): every 5 minutes, compare
+  // LiteLLM's spend logs with CAIRO's request-log mirror, insert whatever
+  // the push missed and record the gap count. See acmeLitellmReconcileQueue.ts.
+  AcmeLitellmReconcileQueue = "acme-litellm-reconcile-queue",
 }
 
 export enum QueueJobs {
@@ -488,6 +492,7 @@ export enum QueueJobs {
   InAppAgentRunJob = "in-app-agent-run-job",
   V4LegacyApiUsageJob = "v4-legacy-api-usage-job",
   AcmePromptReviewJob = "acme-prompt-review-job",
+  AcmeLitellmReconcileJob = "acme-litellm-reconcile-job",
 }
 
 export const TraceBatchTraceSchema = z.object({

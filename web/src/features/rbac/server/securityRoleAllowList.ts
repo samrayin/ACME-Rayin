@@ -35,6 +35,10 @@ const SECURITY_ROLE_ALLOWED_PROCEDURES: ReadonlySet<string> = new Set([
   // blocked, and also requires llmGateway:* scopes SECURITY does not hold.
   "acmeLitellm.status",
   "acmeLitellm.events",
+  // CHG-2026-008: the gateway request-log mirror and its completeness status.
+  // Metadata only; both need llmGatewayLogs:read, which SECURITY holds.
+  "acmeLitellm.requestLogs",
+  "acmeLitellm.reconcileStatus",
   // App frame: project theme.
   "acmeTheme.get",
 ]);

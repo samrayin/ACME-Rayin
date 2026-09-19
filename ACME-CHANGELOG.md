@@ -2071,6 +2071,91 @@ a real CAIRO database or with the flag on.
 - Keys created outside CAIRO (5 today) are listed read-only to organisation
   owners; adopting them is out of scope.
 
+## 2026-09-19 — Gateway request logs: receiver, append-only mirror, reconciliation (no release yet)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-008 · Tier 1 · owner: Anees Ur Rahman |
+| **ADR** | [ADR-0003](acme-governance/adr/ADR-0003-cairo-litellm-control-plane.md) §4, §5 |
+| **Approval** | Pending. The owner reviews and merges; the implementer does not approve its own change. Not a production approval. |
+| **Dates** | Dev: not deployed · Staging: not available; isolated migration and rollback rehearsal performed. (2026-09-19) · Prod: not yet |
+| **Impact** | None while the flag is off: the receiver answers 404, the worker schedules nothing, two unused tables. With it on: CAIRO keeps its own record of every request through the LLM gateway (metadata only). No downtime. Client-visible once enabled. Depends on CHG-2026-005. |
+| **Schema change** | Migration `20260919180000_add_acme_litellm_request_logs` (additive; no backfill): `acme_litellm_request_logs`, `acme_litellm_reconcile_runs`, grants for the roles created by CHG-2026-005. |
+| **Rollback** | [plan](acme-governance/rollback/20260919180000_add_acme_litellm_request_logs/ROLLBACK.md): flag off; then previous image; `down.sql` only for full removal. Tested 2026-09-19 (up → down → up, 7 of 7 PASS, one command). Data lost by `down.sql`: the mirror and the reconcile history; LiteLLM's own spend logs are untouched. |
+| **Feature flag** | `CAIRO_LITELLM_REQUEST_LOG_INGEST_ENABLED`, default off, on web and worker |
+
+**What:**
+- **Receiver** `POST /api/public/litellm-request-logs`: a dedicated bearer secret
+  (`CAIRO_LITELLM_INGEST_SECRET`, at least 32 characters, compared in constant
+  time); a closed schema of the LiteLLM 1.100.1 logging payload, where an
+  unknown or malformed record is rejected, never coerced; idempotent on
+  `request_id` through the INSERT-only writer role; 4 MB and 512 records per
+  call; a per-pod rate ceiling; validate, one lookup, one bulk insert.
+- **The project is derived, never trusted:** from the payload's key hash matched
+  to `acme_litellm_keys`. Project and organisation fields in the payload are
+  ignored. A request made with a key CAIRO did not issue is stored with no
+  project and is visible to organisation owners only.
+- **Metadata only.** The payload also carries prompt and response text, error
+  messages and tracebacks, model parameters, requester headers and the user's
+  email. All of it is discarded; 24 allow-listed columns are stored.
+- **Reconciliation**, a worker job every 5 minutes: pages LiteLLM's
+  `/spend/logs/v2`, inserts what the mirror lacks, and records the **gap count**
+  for every pass, including failed ones. Matches on `request_id` or
+  `litellm_call_id`, because on a cache hit LiteLLM forms the two ids
+  independently.
+- **Screens:** a "Requests" tab on the LLM Gateway page. Above the list: last
+  reconciliation, gap count, a warning when the last success is older than 15
+  minutes, and a plain statement when nothing has arrived by push.
+- The Security Analyst allow-list gains `acmeLitellm.requestLogs` and
+  `acmeLitellm.reconcileStatus` (both need `llmGatewayLogs:read`).
+
+**Why this approach:** push gives near-real-time records but the gateway drops
+events rather than delay model traffic, so push alone can lose requests
+silently. Reconciliation makes the mirror complete and, above all, makes a gap
+visible. Verified on the running gateway before building: `/spend/logs/v2` is
+OSS and carries no prompt text; the `generic_api` logger is in LiteLLM's core
+package with no licence check; the spend-log `request_id` is the provider
+response id on success and the `litellm_call_id` on failure, and the 1.100.1
+source sets the push payload's `id` by the same rule.
+
+**Verified:** 36 receiver tests against a replayed sample carrying every field
+of the 1.100.1 payload (accepted once, duplicate skipped, unauthenticated
+refused, unknown field refused, oversize refused, project derived, no project
+for an unknown key, a marker string placed in every content field is absent
+from what is stored, and from every log sink, including when a database
+error message echoes the row: only the error name and code are logged);
+13 reconciliation tests (a real gap is found, inserted
+and counted; no false gap on a cache hit; a LiteLLM failure is recorded as a
+failed run); router RBAC denial tests for the two new procedures; 196 web and
+13 worker tests pass; typecheck clean on web, worker and shared; lint clean.
+
+**Deployment status:** source-only. Not built, not deployed.
+
+**Known-incomplete:**
+- **Push will be best-effort with no retry.** Read from the running LiteLLM
+  1.100.1 source: the plain `generic_api` logger is built with `max_retries`
+  0 and clears its queue after every send, so a batch whose POST fails for
+  any reason is dropped at once. Earlier revisions of ADR-0003 said it retried
+  and buffered 50,000 events; that was wrong and is corrected in revision 7.
+  Every push failure becomes a reconciliation gap, which is what the gap
+  count is for. CHG-2026-009 may configure retries; the owner decides.
+- **Nothing pushes yet.** Enabling the gateway's callback is CHG-2026-009, a
+  separate change that needs a LiteLLM pod restart. Until then every record
+  arrives by reconciliation, up to about 7 minutes late, and the screen says so.
+- **The append-only control is designed, not effective** while the application
+  connects as the admin login (Readiness Ledger P0-5; ops gap list B9).
+- The three remaining mandatory proofs of ADR-0003 §10 need a dev deployment:
+  the grants as `rayin_app_runtime` and through the application's own
+  connection, a real gap found by reconciliation, and no prompt text in the
+  mirror.
+- The push side of the id match is proven from source, not yet observed. How
+  `request_id` is formed for call types other than chat completions is not
+  verified.
+- The rate ceiling is per web pod, not global. The end user and source address
+  in a record are what the caller reported; they are not verified.
+- No retention job exists; nothing is purged. The owner has not set a period.
+- The UI has not been seen in a browser.
+
 ## Outstanding, not yet done
 
 - **Capabilities 4 & 5 of the 5-item GTM plan — prompt recommendation

@@ -97,6 +97,17 @@ function assertEnabled() {
   }
 }
 
+function assertRequestLogsEnabled() {
+  assertEnabled();
+  if (env.CAIRO_LITELLM_REQUEST_LOG_INGEST_ENABLED !== "true") {
+    throw new TRPCError({
+      code: "PRECONDITION_FAILED",
+      message:
+        "Gateway request logs are switched off on this deployment (CAIRO_LITELLM_REQUEST_LOG_INGEST_ENABLED).",
+    });
+  }
+}
+
 function deps(): LitellmServiceDeps {
   return { client: getLitellmClient(), db: prisma, write: writeLitellmEvent };
 }
@@ -183,7 +194,15 @@ export const acmeLitellmRouter = createTRPCRouter({
       const auditConfigured = Boolean(env.RAYIN_LITELLM_WRITER_DATABASE_URL);
       const reachable =
         enabled && configured ? await getLitellmClient().readiness() : null;
-      return { enabled, configured, auditConfigured, reachable };
+      const requestLogsEnabled =
+        env.CAIRO_LITELLM_REQUEST_LOG_INGEST_ENABLED === "true";
+      return {
+        enabled,
+        configured,
+        auditConfigured,
+        reachable,
+        requestLogsEnabled,
+      };
     }),
 
   // ----- keys -------------------------------------------------------------
@@ -530,6 +549,154 @@ export const acmeLitellmRouter = createTRPCRouter({
             email: null,
           },
         })),
+      };
+    }),
+  // ----- gateway request logs (CHG-2026-008) ------------------------------
+  /**
+   * CAIRO's append-only mirror of gateway requests. Metadata only. `scope:
+   * "project"` = requests made with keys this project issued. `scope:
+   * "unattributed"` = requests made with keys CAIRO did not issue; they
+   * belong to no project, so only an organisation OWNER may see them.
+   */
+  requestLogs: protectedProjectProcedure
+    .input(
+      z.object({
+        projectId: z.string(),
+        scope: z.enum(["project", "unattributed"]).default("project"),
+        page: z.number().int().min(0).default(0),
+        limit: z.number().int().min(1).max(100).default(50),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      throwIfNoProjectAccess({
+        session: ctx.session,
+        projectId: input.projectId,
+        scope: "llmGatewayLogs:read",
+      });
+      assertRequestLogsEnabled();
+      if (
+        input.scope === "unattributed" &&
+        ctx.session.orgRole !== "OWNER" &&
+        !ctx.session.user.admin
+      ) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message:
+            "Requests made with keys created outside CAIRO belong to no project and are visible to organisation owners only.",
+        });
+      }
+      // The project comes from the session-checked input, never from a row.
+      const where =
+        input.scope === "project"
+          ? { projectId: input.projectId }
+          : { projectId: null };
+      const [rows, totalCount] = await Promise.all([
+        ctx.prisma.acmeLitellmRequestLog.findMany({
+          where,
+          orderBy: [{ startTime: "desc" }, { id: "desc" }],
+          skip: input.page * input.limit,
+          take: input.limit,
+        }),
+        ctx.prisma.acmeLitellmRequestLog.count({ where }),
+      ]);
+      const keyIds = [
+        ...new Set(
+          rows.map((r) => r.cairoKeyId).filter((k): k is string => k !== null),
+        ),
+      ];
+      const keys = keyIds.length
+        ? await ctx.prisma.acmeLitellmKey.findMany({
+            where: { id: { in: keyIds }, projectId: input.projectId },
+            select: { id: true, displayName: true },
+          })
+        : [];
+      const nameById = new Map(keys.map((k) => [k.id, k.displayName]));
+      return {
+        totalCount,
+        logs: rows.map((r) => ({
+          id: r.id,
+          requestId: r.requestId,
+          source: r.source,
+          startTime: r.startTime.toISOString(),
+          durationMs: r.endTime
+            ? r.endTime.getTime() - r.startTime.getTime()
+            : null,
+          status: r.status,
+          errorClass: r.errorClass,
+          modelGroup: r.modelGroup ?? r.model,
+          provider: r.provider,
+          keyName: r.cairoKeyId ? (nameById.get(r.cairoKeyId) ?? null) : null,
+          keyAlias: r.keyAlias,
+          endUser: r.endUser,
+          requesterIp: r.requesterIp,
+          promptTokens: r.promptTokens,
+          completionTokens: r.completionTokens,
+          totalTokens: r.totalTokens,
+          spend: r.spend,
+          cacheHit: r.cacheHit,
+        })),
+      };
+    }),
+
+  /**
+   * Is the mirror complete? Last reconciliation, its gap count, and how the
+   * last 24 hours of records arrived. Gateway-wide counts, no request detail.
+   */
+  reconcileStatus: protectedProjectProcedure
+    .input(z.object({ projectId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      throwIfNoProjectAccess({
+        session: ctx.session,
+        projectId: input.projectId,
+        scope: "llmGatewayLogs:read",
+      });
+      assertRequestLogsEnabled();
+      const since = new Date(Date.now() - 24 * 3_600_000);
+      const [lastRun, lastSuccess, recentRuns, pushed24h, reconciled24h] =
+        await Promise.all([
+          ctx.prisma.acmeLitellmReconcileRun.findFirst({
+            orderBy: { finishedAt: "desc" },
+          }),
+          ctx.prisma.acmeLitellmReconcileRun.findFirst({
+            where: { status: "success" },
+            orderBy: { finishedAt: "desc" },
+          }),
+          ctx.prisma.acmeLitellmReconcileRun.findMany({
+            where: { finishedAt: { gte: since } },
+            orderBy: { finishedAt: "desc" },
+            take: 300,
+          }),
+          ctx.prisma.acmeLitellmRequestLog.count({
+            where: { source: "PUSH", receivedAt: { gte: since } },
+          }),
+          ctx.prisma.acmeLitellmRequestLog.count({
+            where: { source: "RECONCILE", receivedAt: { gte: since } },
+          }),
+        ]);
+      const view = (r: typeof lastRun) =>
+        r && {
+          finishedAt: r.finishedAt.toISOString(),
+          windowStart: r.windowStart.toISOString(),
+          windowEnd: r.windowEnd.toISOString(),
+          status: r.status,
+          rowsChecked: r.rowsChecked,
+          gapCount: r.gapCount,
+          inserted: r.inserted,
+          errorMessage: r.errorMessage,
+        };
+      const STALE_AFTER_MS = 15 * 60_000;
+      return {
+        lastRun: view(lastRun),
+        lastSuccess: view(lastSuccess),
+        // No successful pass in 15 minutes = the completeness claim is stale.
+        stale:
+          !lastSuccess ||
+          Date.now() - lastSuccess.finishedAt.getTime() > STALE_AFTER_MS,
+        runs24h: recentRuns.length,
+        failedRuns24h: recentRuns.filter((r) => r.status !== "success").length,
+        gapCount24h: recentRuns.reduce((n, r) => n + r.gapCount, 0),
+        pushed24h,
+        reconciled24h,
       };
     }),
 });
