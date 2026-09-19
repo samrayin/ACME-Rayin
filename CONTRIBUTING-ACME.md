@@ -11,6 +11,8 @@ an unrelated commit, and never let a change land without a changelog entry — t
 exactly how this fork started (one giant squashed commit with no record of what
 changed or why), and it's what this convention exists to prevent going forward.
 
+Every enhancement and database change also follows `acme-governance/CHANGE-PROCEDURE.md` (design note, versioned migration, rehearsed rollback, approval-accurate changelog entry).
+
 ## Commit message shape
 
 ```
