@@ -31,6 +31,8 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | CHG-2026-005 | 1 | CAIRO manages the LiteLLM gateway: keys, teams, budgets, models, spend | Anees Ur Rahman | `feat/cairo-litellm-management` | Claimed |
 | CHG-2026-006 | 2 | LiteLLM gateway image pinned by digest | Anees Ur Rahman | `chore/pin-litellm-image-digest` | Claimed |
 | CHG-2026-007 | 2 | Change procedure tiered by risk; one-command rehearsal database; migration rollback inventory | Anees Ur Rahman | `docs/procedure-tiering-and-rehearsal-script` | Claimed |
+| CHG-2026-008 | 1 | LiteLLM request-log receiver, append-only mirror and reconciliation (designed in ADR-0003) | Anees Ur Rahman | not started | Claimed |
+| CHG-2026-009 | 1 | Enable the LiteLLM logging callback towards the CAIRO receiver (designed in ADR-0003) | Anees Ur Rahman | not started | Claimed |
 
 ## ADR numbers
 
