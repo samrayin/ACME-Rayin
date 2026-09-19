@@ -5,7 +5,7 @@
 | **Change IDs** | **CHG-2026-005** management · **CHG-2026-008** request-log receiver, mirror and reconciliation · **CHG-2026-009** enabling the gateway callback (separate Heavy change: own changelog entry and rollback plan, this ADR is its design note). CHG-2026-006 (image pin) is a prerequisite, already applied. |
 | **Owner** | Anees Ur Rahman |
 | **Affected release** | Tags after `acme-v4.38.0.3`, one pull request per change ID. Each ships dark: flags off. |
-| **Status** | Accepted for build by the owner, 2026-09-19 (revision 4: grants-in-migration correction, B9). Production approval is separate and not given. |
+| **Status** | Accepted for build by the owner, 2026-09-19 (revision 8: real push payload verified against the closed schema; push side of proof 2 observed). Production approval is separate and not given. |
 | **Type** | Forward |
 | **Date** | 2026-09-19 |
 | **Author** | Claude (implementation), on the owner's instruction |
@@ -111,11 +111,42 @@ are mandatory; if one fails, work stops and the failure is reported.
    - *Authenticated:* a dedicated bearer secret `CAIRO_LITELLM_INGEST_SECRET`,
      compared in constant time; anything else gets 401. Not a project API key:
      one gateway serves every project, so no project key is the right identity.
-   - *Strict validation:* a closed schema of the LiteLLM 1.100.1 logging
-     payload. Unknown fields, wrong types and unknown event types are rejected
-     and counted, never coerced. Prompt and response fields are recognised and
-     **discarded, never stored**; CHG-009 also sets `turn_off_message_logging`
-     so they do not leave the gateway at all.
+   - *Strict validation, per record:* a closed schema of the LiteLLM 1.100.1
+     `StandardLoggingPayload` (42 fields) and its metadata (34 fields), read from
+     the running gateway's own type definitions. An unknown field, a wrong type,
+     an unknown status or a millisecond timestamp rejects **that record**; it is
+     never coerced. A batch with some bad records is answered 200 with counts
+     (the gateway drops a whole batch on any 4xx, which would throw the good
+     records away); a batch with only bad records is answered 422. Rejections
+     are logged as field paths and codes, never values.
+   - ***Deviation from LiteLLM's native behaviour, approved by the owner
+     2026-09-19: partial acceptance of a batch.*** LiteLLM's logger treats a
+     batch as all-or-nothing: one HTTP status for up to 512 records, the whole
+     batch retried on 5xx or timeout and the whole batch **dropped** on any
+     4xx. If CAIRO answered 4xx because one record in 512 was malformed, the
+     511 good records would be thrown away by the gateway. So CAIRO accepts
+     per record: the good records are written, the bad ones are rejected and
+     counted, and the batch is answered **200** with
+     `{received, inserted, duplicates, rejected}`. Only a batch in which
+     *every* record is malformed gets 422. **Consequence to keep in mind:** a
+     200 from this endpoint does not mean every record was stored, and LiteLLM
+     never learns that some were rejected. CAIRO therefore does not rely on the
+     gateway to notice: rejections are logged on the CAIRO side and the
+     rejected requests reappear as a non-zero reconciliation gap count.
+   - *Nothing from a request reaches a log.* The receiver logs in exactly two
+     places. A rejected record logs counts, field paths and validator codes,
+     never a value, never the unknown key's name, never the validator's
+     message. A write failure logs the error's class name and machine code
+     only, never its message: a Prisma or driver message can echo the values it
+     was given. A test spies on every log sink with a marker string planted in
+     every content field, in an unknown key's name and in a database error's
+     message, and asserts the marker appears nowhere.
+   - *Metadata only:* the payload carries far more than prompt and response
+     text: also `error_str`, `error_information.error_message` and `traceback`
+     (which can quote a prompt), `model_parameters`, requester headers and
+     metadata, auth metadata and the user's email. All are recognised so the
+     record validates and then **discarded**. Only an explicit allow-list of 24
+     columns is persisted. CHG-2026-009 also sets `turn_off_message_logging`.
    - *Idempotent:* unique `request_id` plus skip-duplicates. The writer needs no
      `SELECT` on the table.
    - *Project is derived, never trusted:* the payload's hashed key is looked up
@@ -129,18 +160,36 @@ are mandatory; if one fails, work stops and the failure is reported.
    - *Fast:* validate, one bulk insert, respond. No call to LiteLLM or anything
      else on this path.
 2. **Callback (CHG-009):** LiteLLM's built-in `generic_api` logger, for success
-   and failure events. Verified in the running 1.100.1: it is in the core
-   package with no licence check, batches 512 events or 5 seconds, runs off the
-   request path, logs its own errors without raising, retries on timeouts and
-   5xx, and holds at most 50,000 events in memory, dropping the oldest beyond
-   that. The secret reaches it as an environment reference, not a literal.
+   and failure events. Verified in the running 1.100.1 by reading its
+   source inside the pod: it is in the core package with no licence check,
+   batches 512 events or 5 seconds and runs off the request path.
+   **Correction, 2026-09-19 (revision 7): it does NOT retry and does NOT buffer
+   a failed batch.** Named as the plain `generic_api` callback it is built with
+   no arguments, so `max_retries` is 0; and its `async_send_batch` catches its
+   own errors and then clears the queue in a `finally` block. A batch whose
+   POST fails, for any reason and with any status, is **dropped at once**.
+   Revisions 2 to 6 of this note said it "retries on timeouts and 5xx" and
+   "holds at most 50,000 events"; both capabilities exist in the code, neither
+   is in effect in this configuration (the 50,000-event buffer applies only to
+   loggers that re-raise). **Option for CHG-2026-009, for the owner to decide at
+   the restart gate:** instead of the plain name, mount a four-line custom
+   callback module that constructs the same OSS logger with
+   `max_retries=3`, a timeout, and the header taken from the environment.
+   Retries would then cover a brief CAIRO restart; a longer outage still drops
+   events. **Verified 2026-09-19 in a throwaway pod on the pinned image** (mock model,
+   local sink, no database, live gateway untouched): the module loads from
+   beside the config file; with the sink answering 503 twice it made 3 POSTs
+   and delivered the batch, where the plain callback made 1. Still best-effort:
+   after the last retry the batch is dropped. The secret reaches it as an environment reference, not a literal.
    **Enabling or removing it requires a restart of the LiteLLM pod**, on the
    pinned digest. **Rollback of CHG-009:** remove the callback from
    `litellm-config.yaml`, re-apply the ConfigMap, restart the pod.
 3. **If CAIRO is unreachable:** the gateway keeps serving; model calls are not
-   delayed or failed. Events wait in the gateway's memory and are retried.
-   *Lost from the push path:* everything queued if the LiteLLM pod restarts
-   during the outage, and the oldest events beyond 50,000. *Recovered by
+   delayed or failed. With the plain callback **nothing waits and nothing
+   is retried**: every batch sent while CAIRO is unreachable, slow past the
+   client timeout, or answering anything but 2xx is dropped by the gateway, up
+   to 512 events or 5 seconds of traffic per flush. *Lost from the push path:*
+   all of those, plus whatever is queued if the LiteLLM pod restarts. *Recovered by
    reconciliation:* every one of those that LiteLLM wrote to its own spend
    logs. *Not recoverable by anyone:* a request LiteLLM never wrote to its spend
    logs (its database was down too), or a spend-log row deleted before the next
@@ -150,13 +199,23 @@ are mandatory; if one fails, work stops and the failure is reported.
    worker job (every 5 minutes, overlapping window) pages LiteLLM's
    `/spend/logs/v2` (verified live: in the OpenAPI schema, HTTP 200, no
    Enterprise marker, paginated, hashed key per row, no prompt or response
-   text), inserts anything missing by `request_id`, and appends one row to
+   text), inserts anything missing, and appends one row to
    `acme_litellm_reconcile_runs`: window, rows checked, **gap count**, status.
    The UI shows last successful reconcile time and gap count on the request-log
    screen, and warns when the last success is older than 15 minutes. Before the
    callback is on, every row arrives this way and the gap count equals the
    volume; the UI labels that state "push not enabled" rather than showing it
    as a fault. `/spend/logs/ui` is not used.
+   **Matching (found during the build):** a spend-log row counts as present if
+   the mirror has its `request_id` **or** its `litellm_call_id`. On a cache hit
+   LiteLLM appends `_cache_hit<time>` to the id separately on the push path and
+   the spend-log path, so the two ids differ for one request; matching on
+   `request_id` alone would report a false gap and store the request twice.
+   **Window:** rows younger than 2 minutes are left to the push; each window
+   overlaps the last successful one by 15 minutes; the first run looks back 7
+   days; at most 20,000 rows per run. A run that could not read LiteLLM, hit
+   the row ceiling or met an unreadable row is recorded as `failure` or
+   `partial`, never as a clean zero, and only a `success` advances the window.
 5. **Proof before enablement:** the receiver is tested against a replayed
    sample payload built from the 1.100.1 payload type and a real
    `/spend/logs/v2` row: accepted once, duplicate skipped, unauthenticated
@@ -210,9 +269,9 @@ Flags off: none. On: owners and admins manage gateway keys, teams, budgets and s
 | Prerequisite CHG-006 | Done 2026-09-19 11:52 UTC | pod on `sha256:a3715fa7…`, readiness healthy, database connected, 0 restarts, 5 keys present, model health unchanged |
 | **Mandatory proof 1a** — append-only grants hold for the runtime role | Pending | an `UPDATE` and a `DELETE` on each append-only table, attempted as `rayin_app_runtime` in dev, must fail; the actual error output is recorded. If either succeeds, work stops |
 | **Mandatory proof 1b** — the same statements through the application's own connection | Pending. **Expected to FAIL the control today (B9)** | the statements are expected to succeed while the application connects as the admin login. Recorded as a known failure, kept in the record until the B9 cutover closes it |
-| **Mandatory proof 2** — push `id` equals spend-log `request_id` | Pending | proven before reconciliation is built |
+| **Mandatory proof 2** — push `id` equals spend-log `request_id` | **Proven by observation on both sides, 2026-09-19, on two different proxies; not yet on one request end to end** | *Spend-log side, live gateway:* a throwaway key made one successful and one failing call; `request_id` equalled the provider response id on success and the `litellm_call_id` on failure. *Push side, throwaway proxy on the pinned image:* the pushed record's `id` equalled the response id on success and the `litellm_call_id` on failure, and `litellm_call_id` equalled the `x-litellm-call-id` response header in both. Same rule on both sides. **Exception: cache hits** (§4.4), handled by matching on `litellm_call_id` as well. The same single request seen on both paths is observed only when CHG-2026-009 is live |
 | **Mandatory proof 3** — reconciliation detects a real gap | Pending | a real request made through the gateway while the callback cannot deliver; reconciliation finds and inserts it; gap count is non-zero |
-| **Mandatory proof 4** — no prompt or response text in the mirror | Pending | a request with a known marker string; the marker is searched for in every column of the mirror |
+| **Mandatory proof 4** — no prompt or response text in the mirror | Pending | a request with a known marker string; the marker is searched for in every column of the mirror | **Partly evidenced 2026-09-19 (throwaway proxy, not dev):** with `turn_off_message_logging` on, a marker placed in the prompt was absent from the whole pushed record (`messages` and `response` arrive as `redacted-by-litellm`); the receiver discards those fields regardless. The dev run is still required |
 | A — leave dev | Pending | |
 | B — staging | `Staging: not available; isolated migration and rollback rehearsal performed.` | Pending, see `ROLLBACK.md` |
 | C — post-deploy | Pending | |
@@ -224,9 +283,8 @@ Delivered with CHG-009 as `integrations/litellm/OPERATIONS.md` (product-level; e
 **Verified on the running 1.100.1 with throwaway keys, 2026-09-19 (created and deleted; the 5 original keys untouched):** a reused alias is refused (HTTP 400 "Unique key aliases across all keys are required"), so the generation suffix is needed; `spend` on `/key/generate` is honoured (`/key/info` read back 0.004); `/key/update` with a `metadata` object **replaces** the whole object (a foreign field vanished), and with no `metadata` leaves it alone, so §3.4's read-merge-write is required; `/key/{hash}/regenerate` is refused as an Enterprise feature (HTTP 500); `tags` on a key is refused as Enterprise (HTTP 403); the `token` LiteLLM returns equals SHA-256 of the key; deleting an already-deleted key returns 404, which CAIRO treats as already revoked.
 
 **Still not verified:**
-- That the push payload's `id` equals the spend log's `request_id`. Reconciliation depends on it. It is the first check of CHG-008 against the payload type, and again on the first real event in CHG-009.
-- The exact push payload on 1.100.1. The sample is built from the type definition; a real one is first seen at enablement.
-- The logger's retry count, and that `callback_settings` header substitution from the environment works on 1.100.1 (both read in upstream `main` only).
+- How `request_id` is formed for call types other than chat completions (LiteLLM uses a per-call-type helper, `get_spend_logs_id`). Proof 2 covers chat completions only.
+- ~~The exact push payload on 1.100.1.~~ **Verified 2026-09-19:** real success and failure records pushed by a throwaway proxy on the pinned image carried exactly the 42 top-level and 34 metadata keys of the receiver's closed schema: none unknown, none missing; `startTime` and `endTime` are floats (epoch seconds); the body is a JSON array; the `Authorization` header set through `GENERIC_LOGGER_HEADERS` arrives intact. Not covered: payloads of other call types (embeddings, responses API, MCP), streaming, or a gateway with a database and teams configured.
 - **The Langfuse callback is registered but almost certainly delivers nothing:** it is in the active callback list, yet the pod has no `LANGFUSE_*` environment variables, so it has no credentials or host. Not investigated further; not changed here.
 - Network path from the LiteLLM pod to the CAIRO web Service, and from web and worker to `litellm.rayin-platform:4000`; any NetworkPolicy.
 - `/openapi.json` on the gateway is served without authentication (in-cluster only). Noted, not changed.

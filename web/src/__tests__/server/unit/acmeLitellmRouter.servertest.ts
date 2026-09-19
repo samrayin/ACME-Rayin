@@ -137,6 +137,7 @@ describe("acmeLitellm RBAC", () => {
     flag: envRecord.CAIRO_LITELLM_MANAGEMENT_ENABLED,
     url: envRecord.LITELLM_BASE_URL,
     key: envRecord.LITELLM_MASTER_KEY,
+    logs: envRecord.CAIRO_LITELLM_REQUEST_LOG_INGEST_ENABLED,
   };
   const fetchSpy = vi.spyOn(globalThis, "fetch");
 
@@ -145,6 +146,7 @@ describe("acmeLitellm RBAC", () => {
     // Unroutable on purpose. No denied call may get as far as using it.
     envRecord.LITELLM_BASE_URL = "http://litellm.invalid:4000";
     envRecord.LITELLM_MASTER_KEY = "sk-test-master-key-must-not-leak";
+    envRecord.CAIRO_LITELLM_REQUEST_LOG_INGEST_ENABLED = "true";
     touched.mockClear();
     fetchSpy.mockReset();
     fetchSpy.mockImplementation(async () => {
@@ -158,6 +160,7 @@ describe("acmeLitellm RBAC", () => {
     envRecord.CAIRO_LITELLM_MANAGEMENT_ENABLED = original.flag;
     envRecord.LITELLM_BASE_URL = original.url;
     envRecord.LITELLM_MASTER_KEY = original.key;
+    envRecord.CAIRO_LITELLM_REQUEST_LOG_INGEST_ENABLED = original.logs;
   });
 
   it("role map: CUD is owner/admin only; logs are owner/admin/security; read excludes security", () => {
@@ -207,13 +210,13 @@ describe("acmeLitellm RBAC", () => {
   });
 
   describe("Security Analyst", () => {
-    it("allow-list holds exactly status and events for this router", () => {
+    it("allow-list holds exactly the four read-only record procedures for this router", () => {
       const all = [...MUTATIONS, ...READS]
         .map(([n]) => n)
-        .concat(["status", "events"]);
+        .concat(["status", "events", "requestLogs", "reconcileStatus"]);
       expect(
         all.filter((n) => isAllowedForSecurityRole(`acmeLitellm.${n}`)).sort(),
-      ).toEqual(["events", "status"]);
+      ).toEqual(["events", "reconcileStatus", "requestLogs", "status"]);
     });
 
     it.each([...MUTATIONS, ...READS])(
@@ -300,8 +303,94 @@ describe("acmeLitellm RBAC", () => {
       configured: true,
       auditConfigured: expect.any(Boolean),
       reachable: true,
+      requestLogsEnabled: true,
     });
     expect(JSON.stringify(out)).not.toContain("sk-test-master");
     expect(JSON.stringify(out)).not.toContain("litellm.invalid");
+  });
+  describe("gateway request logs (CHG-2026-008)", () => {
+    const LOG_READS: Array<
+      [string, (c: ReturnType<typeof callerFor>) => Promise<unknown>]
+    > = [
+      ["requestLogs", (c) => c.requestLogs({ projectId: PROJECT })],
+      ["reconcileStatus", (c) => c.reconcileStatus({ projectId: PROJECT })],
+    ];
+
+    describe.each(["MEMBER", "VIEWER", "NONE"])("%s", (role) => {
+      it.each(LOG_READS)("cannot read %s", async (_name, call) => {
+        await expect(call(callerFor(role))).rejects.toMatchObject({
+          code: "FORBIDDEN",
+        });
+        expect(touched).not.toHaveBeenCalled();
+      });
+    });
+
+    it.each(LOG_READS)(
+      "the Security Analyst gets past RBAC for %s",
+      async (_name, call) => {
+        await expect(call(callerFor("SECURITY"))).rejects.toMatchObject({
+          code: "INTERNAL_SERVER_ERROR",
+        });
+        expect(touched).toHaveBeenCalled();
+      },
+    );
+
+    it("requests from keys CAIRO did not issue: refused unless the caller is an organisation OWNER", async () => {
+      for (const [role, orgRole] of [
+        ["ADMIN", "ADMIN"],
+        ["SECURITY", "SECURITY"],
+        ["OWNER", "ADMIN"],
+      ] as const) {
+        await expect(
+          callerFor(role, orgRole).requestLogs({
+            projectId: PROJECT,
+            scope: "unattributed",
+          }),
+        ).rejects.toMatchObject({ code: "FORBIDDEN" });
+      }
+      expect(touched).not.toHaveBeenCalled();
+      // An organisation owner gets through to the database.
+      await expect(
+        callerFor("OWNER", "OWNER").requestLogs({
+          projectId: PROJECT,
+          scope: "unattributed",
+        }),
+      ).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
+    });
+
+    it.each(LOG_READS)(
+      "an OWNER cannot read %s while the request-log flag is off",
+      async (_name, call) => {
+        envRecord.CAIRO_LITELLM_REQUEST_LOG_INGEST_ENABLED = "false";
+        await expect(call(callerFor("OWNER"))).rejects.toMatchObject({
+          code: "PRECONDITION_FAILED",
+        });
+        expect(touched).not.toHaveBeenCalled();
+      },
+    );
+
+    it("the project filter comes from the checked input, not from a row", async () => {
+      const seen: unknown[] = [];
+      const ctx = createInnerTRPCContext({
+        session: sessionFor("OWNER"),
+        headers: {},
+      });
+      const prismaSpy = {
+        acmeLitellmRequestLog: {
+          findMany: async (a: unknown) => {
+            seen.push(a);
+            return [];
+          },
+          count: async () => 0,
+        },
+        acmeLitellmKey: { findMany: async () => [] },
+      };
+      const caller = router.createCaller({
+        ...ctx,
+        prisma: prismaSpy as unknown as typeof ctx.prisma,
+      }).acmeLitellm;
+      await caller.requestLogs({ projectId: PROJECT });
+      expect(seen[0]).toMatchObject({ where: { projectId: PROJECT } });
+    });
   });
 });
