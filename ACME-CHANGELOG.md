@@ -2145,7 +2145,7 @@ backfilled with retrospective design notes or rollback scripts.
 |---|---|
 | **Change ID** | CHG-2026-002 · owner: Anees Ur Rahman |
 | **ADR** | [ADR-0001](acme-governance/adr/ADR-0001-ci-permanently-failing-checks.md) |
-| **Approval** | Pending. Build check: see "Verified" below. Independent check: recorded in the pull request. The owner reviews and merges; the implementer does not approve its own change. |
+| **Approval** | Approved by Anees Ur Rahman (owner), 2026-09-19. Human approval: the owner merged pull request #34 (`30425343f`) and then confirmed the approval in person. Delegated auto-approval was not used. Build check: see "Verified" below, plus the pull request's own check run (Codespell passed, labeller passed, security review skipped, no failing check). Independent check: **not run** before the merge; author and merger are the same GitHub account, so GitHub holds no formal review (Readiness Ledger N-47). |
 | **Dates** | Dev: 2026-09-19 · Staging: not applicable, no database or runtime change · Prod: not applicable, CI configuration only |
 | **Impact** | Contributors and reviewers of this repository only. No downtime. Not client-visible: nothing in a built image changes. |
 | **Schema change** | None |
@@ -2411,6 +2411,97 @@ failed run); router RBAC denial tests for the two new procedures; 196 web and
   in a record are what the caller reported; they are not verified.
 - No retention job exists; nothing is purged. The owner has not set a period.
 - The UI has not been seen in a browser.
+
+## 2026-09-19 — CI: the AI security review becomes a gate (no release)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-003 · owner: Anees Ur Rahman |
+| **ADR** | [ADR-0002](acme-governance/adr/ADR-0002-security-review-real-gate.md) |
+| **Approval** | Pending. Build check: see "Verified" below. Independent check: run before the pull request was opened; its first pass **failed** with two High findings, which are fixed in this change (see "Independent review"). The owner reviews and merges; the implementer does not approve its own change. |
+| **Dates** | Dev: 2026-09-19 · Staging: not applicable, no database or runtime change · Prod: not applicable, CI configuration only |
+| **Impact** | Contributors and reviewers of this repository. "Security review" can now fail a pull request. It **is red on every PR into `main` until the owner sets the `CLAUDE_API_KEY` secret**, and on every draft PR by design. No downtime. Not client-visible. |
+| **Schema change** | None |
+| **Rollback** | [plan](acme-governance/rollback/CHG-2026-003-security-review-gate/ROLLBACK.md): remove the required check, or revert. There is deliberately no "off" variable. Data lost: none. |
+| **Feature flag** | Repository variables `CLAUDE_SECURITY_REVIEW_BLOCK_AT` (default `HIGH`) and `CLAUDE_SECURITY_REVIEW_MODEL` (default `claude-opus-5`). `CLAUDE_SECURITY_REVIEW_ENABLED` from CHG-2026-002 is removed and no longer read. |
+
+**Why:** CHG-2026-002 stopped this check failing on every PR by making it
+opt-in, which left it skipped. The owner asked for a real gate, not a check
+that is always green. The upstream action cannot be one on its own: it is
+**fail-open**. A scan or API error becomes a warning and 0 findings; an
+unparsable model reply becomes an empty findings list with
+`review_completed: false`; real findings only produce a PR comment. In every
+case the job ends green.
+
+**What:**
+- New `.github/scripts/security_review_gate.py`, run as an "Enforce the gate"
+  step. It **fails closed**: no key, a scanner or API error, a missing, empty
+  or malformed result, or a review that did not confirm
+  `review_completed: true` all fail the job.
+- Findings at or above the blocking severity (default `HIGH`) fail the job. A
+  missing or unrecognised severity is blocking.
+- **Nothing is skipped.** GitHub counts a job skipped by a job-level `if:` as
+  passing a required check, so draft PRs, fork PRs, Dependabot PRs and a
+  missing key all run and fail with a stated reason (drafts at no API cost). The opt-in variable is
+  gone for the same reason: a disabled gate must not look like a pass.
+- The gate script and the agent-instruction files (`CLAUDE.md` and
+  `AGENTS.md` at any depth, `.claude/`, `.agents/`) come from **current
+  `main`**, dereferencing this repo's symlink chain, so a PR cannot swap the
+  gate script or the reviewer's standing instructions. This reduces prompt
+  injection; it does not end it. Planted result files are deleted first,
+  reserved tooling path names are rejected, and the gate only judges a review
+  step that succeeded.
+- Findings that upstream's LLM false-positive filter removed are surfaced as
+  warnings when at or above the threshold.
+- The workflow runs only for PRs into `main` and re-runs when a PR's base is
+  edited. The action is checked out to its own top-level path, so excluding it
+  from the scan no longer also excludes this repo's real composite actions.
+- New job "Security review gate self-test" runs the gate's 31 unit tests on
+  every PR with no API key.
+
+**Why this approach:** enforce the policy in our own workflow, in a small
+tested script, rather than patch the pinned upstream action (brittle) or
+enable it unchanged (green-washed).
+
+**Independent review:** a reviewer that did not build the change read it
+against the procedure's review area 7 before the pull request was opened.
+First pass: **2 High, 5 Medium, 6 Low, 0 Critical; the independent check did
+not pass.** High 1: an unparsed review looked like a clean result. High 2:
+skipped jobs pass required checks, and the rollback note said the opposite.
+Both are fixed here, with the Medium and Low items. **Re-review: both High
+verified fixed, no Critical or High remain, so the independent check passes
+at the procedure's threshold.** It raised four new Medium findings
+(agent-instruction symlinks, hiding code under an excluded path name, a
+draft-to-ready race, an unenforced review outcome), also fixed here; those
+last fixes have not themselves been independently re-reviewed. What remains
+is inherent to GitHub Actions or to the upstream action: ADR-0002 section 6.
+Both review reports are recorded in the pull request.
+
+**Verified:** 31 unit tests pass locally. The workflow parses as YAML.
+Pre-commit hook passed. The self-test job's result is recorded in the PR.
+**Not yet verified: an end-to-end run with a real API key**, including whether
+the API accepts `claude-opus-5`. That needs the owner's secret and is recorded
+in the PR when done.
+
+**Deployment status:** source-only. CI configuration; nothing is built or
+deployed from it.
+
+**Known-incomplete, and important:**
+- The owner must set the `CLAUDE_API_KEY` repository secret: a key used only
+  for CI, with a spend limit. The implementer does not handle key values.
+- **`main` has no branch-protection rule, so no check in this repository,
+  including this one, can block a merge.** It becomes a gate only when the
+  owner requires "Security review" and "Security review gate self-test" on
+  `main`. Until then it is a loud, honest signal.
+- A same-repo PR can still edit the workflow file itself; that is inherent to
+  `pull_request` workflows. `.github/CODEOWNERS` is upstream's and names
+  upstream staff, so it gives this fork no protection. Both need branch
+  protection with required review and a fork-owned CODEOWNERS.
+- Follow-up change: remove the bootstrap fallback to the PR's own gate script,
+  which is reachable only until this change merges.
+- Each PR diff is sent to the Anthropic API. The repository is public today,
+  so nothing new is disclosed; if it goes private this is a third-party data
+  flow to record.
 
 ## Outstanding, not yet done
 

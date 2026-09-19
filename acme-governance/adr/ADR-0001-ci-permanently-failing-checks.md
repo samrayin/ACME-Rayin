@@ -5,12 +5,12 @@
 | **Change ID** | CHG-2026-002 |
 | **Owner** | Anees Ur Rahman |
 | **Affected release** | None. CI configuration only; no image is built from it. |
-| **Status** | Proposed |
+| **Status** | Accepted |
 | **Type** | Forward |
 | **Date** | 2026-09-19 |
 | **Author** | Claude (implementation), on the owner's instruction |
-| **Approval** | Pending. The owner reviews and merges the pull request. The implementer is not an approver of its own change. |
-| **Commits / tag** | Branch `ci/fix-permanently-failing-checks`; no tag |
+| **Approval** | Approved by Anees Ur Rahman (owner), 2026-09-19. Human approval: the owner merged pull request #34 and then confirmed the approval in person. Delegated auto-approval was not used. No independent review was run before the merge, and the pull request's author and merger are the same GitHub account, so GitHub holds no formal review for it. That gap is tracked in the Readiness Ledger (N-47). |
+| **Commits / tag** | `47a67678a`, merged to `main` as `30425343f` (pull request #34); no tag |
 
 ## 1. Purpose
 Three checks were red on every pull request in this fork (seen on #29, #31 and #32):
