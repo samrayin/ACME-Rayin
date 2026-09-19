@@ -98,6 +98,31 @@ export const env = createEnv({
     // ACME_CHAT_PROMPT_CANARY_WEIGHT: fraction (0-1) of requests routed to
     // the canary label when it's set. "0.1" == roughly 1 in 10 requests.
     ACME_CHAT_PROMPT_CANARY_WEIGHT: z.string().optional(),
+    // ACME addition: CAIRO management of the LiteLLM gateway (ADR-0003,
+    // CHG-2026-005). SERVER-ONLY: none of these has or may ever get a
+    // NEXT_PUBLIC_ form.
+    //
+    // CAIRO_LITELLM_MANAGEMENT_ENABLED: the feature flag. Default off: the
+    // acmeLitellm router refuses every call, the navigation entry is hidden
+    // and CAIRO never calls LiteLLM.
+    CAIRO_LITELLM_MANAGEMENT_ENABLED: z
+      .enum(["true", "false"])
+      .optional()
+      .default("false"),
+    // LITELLM_BASE_URL: the gateway's in-cluster base URL with no trailing
+    // path, e.g. http://litellm.rayin-platform:4000 (NOT the /v1 form
+    // RAYIN_CHAT_LLM_BASE_URL uses -- management endpoints sit at the root).
+    LITELLM_BASE_URL: z.string().optional(),
+    // LITELLM_MASTER_KEY: LiteLLM's admin credential. It can mint, change
+    // and delete every virtual key. Read only inside acmeLitellmClient.ts;
+    // never returned, logged, put in an error message or stored.
+    LITELLM_MASTER_KEY: z.string().optional(),
+    // RAYIN_LITELLM_WRITER_DATABASE_URL: connection string for the
+    // rayin_litellm_writer Postgres role -- INSERT-only on the append-only
+    // LiteLLM tables, nothing else. Same pattern as
+    // RAYIN_GUARDRAILS_WRITER_DATABASE_URL above: a separate PrismaClient,
+    // and the code refuses to fall back to the general connection.
+    RAYIN_LITELLM_WRITER_DATABASE_URL: z.string().optional(),
     NEXTAUTH_SECRET:
       process.env.NODE_ENV === "production"
         ? z.string().min(1)
@@ -825,6 +850,12 @@ export const env = createEnv({
     ACME_CHAT_PROMPT_LABEL: process.env.ACME_CHAT_PROMPT_LABEL,
     ACME_CHAT_PROMPT_CANARY_LABEL: process.env.ACME_CHAT_PROMPT_CANARY_LABEL,
     ACME_CHAT_PROMPT_CANARY_WEIGHT: process.env.ACME_CHAT_PROMPT_CANARY_WEIGHT,
+    CAIRO_LITELLM_MANAGEMENT_ENABLED:
+      process.env.CAIRO_LITELLM_MANAGEMENT_ENABLED,
+    LITELLM_BASE_URL: process.env.LITELLM_BASE_URL,
+    LITELLM_MASTER_KEY: process.env.LITELLM_MASTER_KEY,
+    RAYIN_LITELLM_WRITER_DATABASE_URL:
+      process.env.RAYIN_LITELLM_WRITER_DATABASE_URL,
     SEED_SECRET_KEY: process.env.SEED_SECRET_KEY,
     NEXT_PUBLIC_DEMO_PROJECT_ID: process.env.NEXT_PUBLIC_DEMO_PROJECT_ID,
     NEXT_PUBLIC_DEMO_ORG_ID: process.env.NEXT_PUBLIC_DEMO_ORG_ID,
@@ -1153,7 +1184,8 @@ export const env = createEnv({
     ADMIN_API_KEY: process.env.ADMIN_API_KEY,
     ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
     GUARDRAILS_ENCRYPTION_KEY: process.env.GUARDRAILS_ENCRYPTION_KEY,
-    RAYIN_GUARDRAILS_WRITER_DATABASE_URL: process.env.RAYIN_GUARDRAILS_WRITER_DATABASE_URL,
+    RAYIN_GUARDRAILS_WRITER_DATABASE_URL:
+      process.env.RAYIN_GUARDRAILS_WRITER_DATABASE_URL,
     LANGFUSE_AI_GATEWAY_SERVICE_KEY:
       process.env.LANGFUSE_AI_GATEWAY_SERVICE_KEY,
     LANGFUSE_AI_GATEWAY_SERVICE_KEY_PREVIOUS:

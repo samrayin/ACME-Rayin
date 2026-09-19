@@ -78,6 +78,16 @@ export const projectScopes = [
   // same sensitivity level as audit logs -- these events reveal what
   // content was flagged or blocked, not just that something happened.
   "projectGuardrails:read",
+  // ACME addition (ADR-0003, CHG-2026-005): CAIRO management of the LiteLLM
+  // gateway. read = see this project's gateway keys (never key material),
+  // teams, model catalogue and spend. CUD = create, change, rotate and
+  // revoke keys and teams -- owner/admin only: a key spends money.
+  "llmGateway:read",
+  "llmGateway:CUD",
+  // The append-only record of gateway management actions (and, with
+  // CHG-2026-008, of gateway requests: who, which key, source address).
+  // Audit-log sensitivity: owner, admin and the Security Analyst.
+  "llmGatewayLogs:read",
   // ACME: read trace / observation / session / score content (raw prompts).
   // Held by every built-in role; withheld only from SECURITY, whose access
   // is also enforced server-side by securityRoleAllowList.ts.
@@ -129,6 +139,9 @@ export type ProjectScope = (typeof projectScopes)[number];
 
 export const projectRoleAccessRights: Record<Role, ProjectScope[]> = {
   OWNER: [
+    "llmGateway:read",
+    "llmGateway:CUD",
+    "llmGatewayLogs:read",
     "project:read",
     "projectData:read",
     "project:update",
@@ -190,6 +203,9 @@ export const projectRoleAccessRights: Record<Role, ProjectScope[]> = {
     "alerts:CUD",
   ],
   ADMIN: [
+    "llmGateway:read",
+    "llmGateway:CUD",
+    "llmGatewayLogs:read",
     "project:read",
     "projectData:read",
     "project:update",
@@ -250,6 +266,7 @@ export const projectRoleAccessRights: Record<Role, ProjectScope[]> = {
     "alerts:CUD",
   ],
   MEMBER: [
+    "llmGateway:read",
     "project:read",
     "projectData:read",
     "projectMembers:read",
@@ -296,6 +313,7 @@ export const projectRoleAccessRights: Record<Role, ProjectScope[]> = {
     "projectAiAssistant:use",
   ],
   VIEWER: [
+    "llmGateway:read",
     "project:read",
     "projectData:read",
     "prompts:read",
@@ -320,7 +338,14 @@ export const projectRoleAccessRights: Record<Role, ProjectScope[]> = {
   // ACME: Security Analyst. Guardrail events (incl. what was typed, PII
   // masked) and audit logs; no trace/session/score content (no
   // projectData:read), no configuration changes.
-  SECURITY: ["project:read", "projectGuardrails:read", "projectAuditLogs:read"],
+  SECURITY: [
+    "project:read",
+    "projectGuardrails:read",
+    "projectAuditLogs:read",
+    // The gateway's append-only record only -- not llmGateway:read, so no
+    // keys, budgets or spend (ADR-0003 §3.3).
+    "llmGatewayLogs:read",
+  ],
 };
 
 export const projectNoneRoleComment =
