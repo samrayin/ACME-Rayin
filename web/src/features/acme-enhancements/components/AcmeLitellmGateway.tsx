@@ -399,7 +399,9 @@ function KeysTab({
   const catalogue = api.acmeLitellm.catalogue.useQuery({ projectId });
   const unmanaged = api.acmeLitellm.unmanagedKeys.useQuery(
     { projectId },
-    { retry: false },
+    // FORBIDDEN means "not an organisation owner": the section is simply not
+    // shown, so no error toast.
+    { retry: false, meta: { silentHttpCodes: [403] } },
   );
 
   const [name, setName] = useState("");
@@ -1354,8 +1356,8 @@ function EventsTab({ projectId }: { projectId: string }) {
           Every change CAIRO made to the gateway for this project. An
           &quot;intent&quot; row is written before the gateway is called and an
           &quot;outcome&quot; row before the user sees a result; rows of one
-          operation share a correlation ID. The table is append-only at database
-          level. It never contains a key.
+          operation share a correlation ID. CAIRO only adds rows here; it never
+          edits or deletes them. It never contains a key.
         </p>
       </CardHeader>
       <CardContent className="pt-0">

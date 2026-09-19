@@ -744,7 +744,8 @@ export type KeyDrift = "in_sync" | "missing" | "drifted" | "unknown";
 
 function sameSet(a: string[], b: string[]) {
   return (
-    a.length === b.length && [...a].sort().join(" ") === [...b].sort().join(" ")
+    a.length === b.length &&
+    [...a].sort().join("\u0000") === [...b].sort().join("\u0000")
   );
 }
 
@@ -1066,8 +1067,12 @@ export async function listProjectTeams(
         spend: t.spend ?? null,
         // LiteLLM's team "admin" role is Enterprise-gated and would let
         // someone manage keys around CAIRO. It should never be present.
+        // The one exception: LiteLLM 1.100.1 itself adds the caller of
+        // /team/new as admin, and for the master key that caller is
+        // "default_user_id" (seen in dev). That is CAIRO's own identity,
+        // which can already do everything, so it is not a way round CAIRO.
         hasLitellmAdmin: (t.members_with_roles ?? []).some(
-          (m) => m.role === "admin",
+          (m) => m.role === "admin" && m.user_id !== LITELLM_MASTER_KEY_USER_ID,
         ),
       });
     }
@@ -1178,6 +1183,10 @@ export type CatalogueEntry = {
   health: "healthy" | "unhealthy" | "unknown";
   healthError: string | null;
 };
+
+// The user id LiteLLM gives the master key. LiteLLM adds the caller of
+// /team/new to the team as admin, so every team CAIRO creates carries it.
+const LITELLM_MASTER_KEY_USER_ID = "default_user_id";
 
 const CATALOGUE_MAX_AGE_MS = 5 * 60_000;
 
