@@ -1951,6 +1951,51 @@ CHG-2026-004 · Tier 2 · owner: Anees Ur Rahman. New `acme-governance/CHANGE-ID
 change ID or ADR number is claimed there, on `main`, before it is used anywhere. Two parallel
 sessions collided on IDs twice on 2026-09-19. Documentation only; nothing is built or deployed.
 Rollback: revert the commit.
+## 2026-09-19 — LiteLLM gateway image pinned by digest (no release)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-006 · owner: Anees Ur Rahman |
+| **ADR** | None: Tier 2 change. |
+| **Approval** | Pending. The owner reviews and merges; the implementer does not approve its own change. |
+| **Dates** | Dev: applied 2026-09-19 11:52 UTC on the owner's instruction · Staging: not applicable, no database change · Prod: not applicable |
+| **Impact** | The LiteLLM gateway in `rayin-platform` only. The digest is the one already running, so applying it does not change the version. Applying does restart the single LiteLLM pod once (a few seconds of gateway downtime), because the image field changes from a tag to a digest. Not client-visible. |
+| **Schema change** | None |
+| **Rollback** | Revert this commit and re-apply `integrations/litellm/k8s/deployment.yaml`. Data lost: none. |
+| **Feature flag** | None |
+
+**What:** `integrations/litellm/k8s/deployment.yaml` now references
+`ghcr.io/berriai/litellm@sha256:a3715fa7…c62bf` instead of the `main-stable`
+tag.
+
+**Why:** `main-stable` is a floating tag. The live pod pulled it on
+2026-09-12 and runs LiteLLM 1.100.1 (image built 2026-09-10). By 2026-09-19
+the tag pointed at a different digest (`sha256:d295634e…`), so any pod
+restart, node drain or reschedule would have changed the gateway version
+without a record. CHG-2026-005 (CAIRO management of LiteLLM) is designed
+against the endpoints verified on 1.100.1, so the version has to hold still.
+
+**Why this approach:** pin the multi-arch index digest the kubelet reports
+for the running pod, rather than picking a newer release. This records what
+is running; it is not an upgrade. Alternative rejected: pinning a version tag
+such as `v1.100.1-stable`, because a tag can be re-pushed and we did not
+verify that such a tag resolves to the running digest.
+
+**Verified:** running digest read from the pod's `imageID`; version read from
+the installed package metadata inside the pod (1.100.1); the digest resolves
+on the public registry to a linux/amd64 + linux/arm64 index.
+
+**Deployment status:** deployed to dev, 2026-09-19 11:52 UTC, from branch
+`chore/pin-litellm-image-digest` before merge, on the owner's instruction.
+`kubectl diff` showed the image line as the only difference. Rolling update,
+new pod ready before the old one stopped. Verified afterwards from inside the
+new pod, read-only: pod spec and running image are both
+`sha256:a3715fa7…`, LiteLLM 1.100.1, `/health/readiness` healthy with the
+database connected, 0 restarts, all 5 virtual keys present, and model health
+unchanged from before the change (`nvidia-nemotron` healthy; `claude-sonnet`
+unhealthy with the same "credit balance is too low" error as before).
+
+**Known-incomplete:** upgrades of this image have no documented cadence or owner.
 
 ## Outstanding, not yet done
 
