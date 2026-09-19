@@ -2008,6 +2008,68 @@ Postgres 15 that models Azure and runs up → down → up for a migration in one
 to end 2026-09-19). New `acme-governance/rollback/MIGRATION-ROLLBACK-INVENTORY.md` classifies the
 five shipped ACME migrations; inventory only, no scripts. Documentation and tooling only; nothing is
 built or deployed. Rollback: revert the commit.
+## 2026-09-19 — CAIRO manages the LiteLLM gateway: keys, teams, budgets, models, spend (no release yet)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-005 · owner: Anees Ur Rahman |
+| **ADR** | [ADR-0003](acme-governance/adr/ADR-0003-cairo-litellm-control-plane.md) |
+| **Approval** | Pending. Design accepted for build by Anees Ur Rahman, 2026-09-19. The owner reviews and merges; the implementer does not approve its own change. Not a production approval. |
+| **Dates** | Dev: not deployed · Staging: not available; isolated migration and rollback rehearsal performed. (2026-09-19) · Prod: not yet |
+| **Impact** | None while the flag is off: no navigation entry, no calls to LiteLLM, four unused tables. With it on: project owners and admins manage gateway keys, teams, budgets and spend inside CAIRO. No downtime. Client-visible once enabled. |
+| **Schema change** | Migration `20260919120000_add_acme_litellm_management` (additive; no backfill). Creates roles `rayin_litellm_writer` and `rayin_litellm_retention_purger` without passwords. |
+| **Rollback** | [plan](acme-governance/rollback/20260919120000_add_acme_litellm_management/ROLLBACK.md): flag off; then previous image; `down.sql` only for full removal. Tested 2026-09-19 (up → down → up on a throwaway database). Data lost by `down.sql`: the change record and CAIRO's key mapping; the keys keep working in LiteLLM. |
+| **Feature flag** | `CAIRO_LITELLM_MANAGEMENT_ENABLED`, default off |
+
+**What:** server-side LiteLLM client, append-only event writer, service and
+tRPC router under `web/src/features/acme-enhancements/server/litellm/`; the
+"LLM Gateway" page (keys, teams, models, spend, change record) and a nav entry
+that renders nothing while the flag is off; project scopes `llmGateway:read`,
+`llmGateway:CUD`, `llmGatewayLogs:read`; four server-only `env.mjs` entries;
+the Security Analyst allow-list gains `acmeLitellm.status` and
+`acmeLitellm.events` only.
+
+**Why this approach:** CAIRO is the only portal and its RBAC is authoritative;
+LiteLLM keys and teams are a projection tagged with `cairo_*` metadata. The
+master key stays on the server. Every mutation writes an intent row before
+LiteLLM is called and an outcome row before the user sees a result. Verified on
+the running LiteLLM 1.100.1 with throwaway keys: `/key/{key}/regenerate` and
+`tags` are refused as Enterprise features, so **rotation is CAIRO's own
+create-then-delete, not native rotation**, and tagging uses `metadata`; key
+aliases are unique (rotations carry a generation suffix); `spend` is honoured on
+create (so rotating cannot reset a budget); `/key/update` replaces the whole
+`metadata` object (so CAIRO reads, merges and writes back). Not used because
+Enterprise-only: per-model budgets, temporary budget increases,
+`/global/spend/report`, the team admin role, LiteLLM's own audit log.
+
+**Verified:** 153 unit tests pass (client, audit wrapper, service, router RBAC
+denial for MEMBER / VIEWER / NONE / Security Analyst, flag off, cross-project
+ids, no key material in errors, rows, the record or responses); typecheck and
+lint clean on every touched file; migration rehearsed up → down → up with the
+grants behaving as designed for all three roles.
+
+**Deployment status:** source-only. Not built, not deployed, never run against
+a real CAIRO database or with the flag on.
+
+**Known-incomplete:**
+- **The append-only control on `acme_litellm_events` is designed, not
+  effective.** Dev's application connects to Postgres as the admin login, which
+  owns the table, so it can update and delete rows today (Readiness Ledger
+  P0-5; `acme-rayin-ops` gap list B9). The same is true of
+  `acme_guardrail_events`. The rehearsal shows both halves: denied as
+  `rayin_app_runtime`, allowed as `postgres`.
+- Assigning a role per project needs Langfuse's `rbac-project-roles`
+  entitlement, which this deployment does not have: a user's organisation role
+  applies to every project in the organisation.
+- Spend is $0.00 in dev (the only healthy model is free tier), so cost figures
+  are untested with real money. Requests and tokens are shown alongside.
+- Environment steps not done: passwords for the two new roles,
+  `RAYIN_LITELLM_WRITER_DATABASE_URL`, `LITELLM_BASE_URL`, `LITELLM_MASTER_KEY`
+  on web. Network path web → `litellm.rayin-platform:4000` unverified.
+- The UI has not been seen in a browser. No retention job exists for the new
+  table; nothing is purged.
+- Keys created outside CAIRO (5 today) are listed read-only to organisation
+  owners; adopting them is out of scope.
 
 ## Outstanding, not yet done
 

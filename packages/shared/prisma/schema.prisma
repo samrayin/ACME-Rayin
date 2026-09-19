@@ -1051,6 +1051,140 @@ model AcmePromptApproval {
   @@map("acme_prompt_approvals")
 }
 
+// ---------------------------------------------------------------------
+// ACME: CAIRO management of the LiteLLM gateway (ADR-0003, CHG-2026-005).
+// CAIRO's RBAC is authoritative; these tables are CAIRO's own projection
+// of what it issued in LiteLLM. No FK constraint to projects on any of
+// them, same reasoning as AuditLog/AcmeGuardrailEvent: the record must
+// outlive the project. Key material is never stored -- tokenHash is
+// LiteLLM's own SHA-256 of the key, the same value LiteLLM's /key/list
+// and spend logs carry.
+// ---------------------------------------------------------------------
+
+enum AcmeLitellmKeyStatus {
+  PENDING          @map("pending") // row written, LiteLLM not yet confirmed
+  ACTIVE           @map("active")
+  REVOKED          @map("revoked")
+  ROTATED          @map("rotated") // superseded by rotatedToKeyId
+  ROTATION_PARTIAL @map("rotation_partial") // needs operator action
+  FAILED           @map("failed") // LiteLLM create never succeeded
+}
+
+model AcmeLitellmKey {
+  // Also sent to LiteLLM as metadata.cairo_key_id; drift is matched on it,
+  // not on tokenHash, so a future native rotation cannot orphan the row.
+  id              String               @id @default(cuid())
+  orgId           String               @map("org_id")
+  projectId       String               @map("project_id")
+  // Stable across rotations: every generation of "the same" key shares it.
+  lineageId       String               @map("lineage_id")
+  generation      Int                  @default(1)
+  displayName     String               @map("display_name")
+  // Unique in LiteLLM, so rotations carry a generation suffix.
+  litellmKeyAlias String               @map("litellm_key_alias")
+  // Null only while PENDING/FAILED. Kept after revoke/rotate so late
+  // request-log records still resolve to a project (CHG-2026-008).
+  tokenHash       String?              @unique(map: "acme_litellm_keys_token_hash_key") @map("token_hash")
+  litellmTeamId   String?              @map("litellm_team_id")
+  status          AcmeLitellmKeyStatus @default(PENDING)
+  models          String[]             @default([])
+  maxBudget       Float?               @map("max_budget")
+  budgetDuration  String?              @map("budget_duration")
+  rpmLimit        Int?                 @map("rpm_limit")
+  tpmLimit        Int?                 @map("tpm_limit")
+  expiresAt       DateTime?            @map("expires_at")
+  createdByUserId String               @map("created_by_user_id")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @default(now()) @updatedAt @map("updated_at")
+  revokedAt       DateTime?            @map("revoked_at")
+  revokedByUserId String?              @map("revoked_by_user_id")
+  rotatedToKeyId  String?              @map("rotated_to_key_id")
+
+  @@index([projectId, status])
+  @@index([lineageId])
+  @@map("acme_litellm_keys")
+}
+
+enum AcmeLitellmTeamStatus {
+  PENDING @map("pending")
+  ACTIVE  @map("active")
+  DELETED @map("deleted")
+  FAILED  @map("failed")
+}
+
+// A LiteLLM team belongs to exactly one CAIRO project (CAIRO itself has no
+// "team": only Organization -> Project). id doubles as the LiteLLM team_id.
+model AcmeLitellmTeam {
+  id              String                @id @default(cuid())
+  orgId           String                @map("org_id")
+  projectId       String                @map("project_id")
+  teamAlias       String                @map("team_alias")
+  status          AcmeLitellmTeamStatus @default(PENDING)
+  models          String[]              @default([])
+  maxBudget       Float?                @map("max_budget")
+  budgetDuration  String?               @map("budget_duration")
+  rpmLimit        Int?                  @map("rpm_limit")
+  tpmLimit        Int?                  @map("tpm_limit")
+  createdByUserId String                @map("created_by_user_id")
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @default(now()) @updatedAt @map("updated_at")
+  deletedAt       DateTime?             @map("deleted_at")
+
+  @@index([projectId, status])
+  @@map("acme_litellm_teams")
+}
+
+// Last good answer from LiteLLM per view, so reads degrade to "stale, as of
+// <fetchedAt>" instead of failing when the gateway is unreachable.
+model AcmeLitellmSpendSnapshot {
+  cacheKey  String   @id @map("cache_key")
+  payload   Json
+  fetchedAt DateTime @default(now()) @map("fetched_at")
+
+  @@map("acme_litellm_spend_snapshots")
+}
+
+enum AcmeLitellmEventPhase {
+  INTENT  @map("intent")
+  OUTCOME @map("outcome")
+}
+
+enum AcmeLitellmEventOutcome {
+  SUCCESS @map("success")
+  FAILURE @map("failure")
+  PARTIAL @map("partial")
+}
+
+// APPEND-ONLY, enforced by database grants in the migration, not by this
+// code: written only through the rayin_litellm_writer role (INSERT, no
+// SELECT/UPDATE/DELETE); UPDATE and DELETE are withheld from the general
+// runtime role. An INTENT row is written before LiteLLM is called and an
+// OUTCOME row before the user sees a result. Never holds key material.
+model AcmeLitellmEvent {
+  id               String                   @id @default(cuid())
+  eventTime        DateTime                 @default(now()) @map("event_time")
+  // Shared by every row of one logical operation (e.g. the 2-4 rows of a
+  // compose-and-revoke rotation).
+  correlationId    String                   @map("correlation_id")
+  phase            AcmeLitellmEventPhase
+  outcome          AcmeLitellmEventOutcome?
+  action           String
+  resourceType     String                   @map("resource_type")
+  resourceId       String                   @map("resource_id")
+  orgId            String                   @map("org_id")
+  projectId        String                   @map("project_id")
+  actorUserId      String                   @map("actor_user_id")
+  actorOrgRole     String?                  @map("actor_org_role")
+  actorProjectRole String?                  @map("actor_project_role")
+  before           Json?
+  after            Json?
+  errorMessage     String?                  @map("error_message")
+
+  @@index([projectId, eventTime])
+  @@index([correlationId])
+  @@map("acme_litellm_events")
+}
+
 model EvalTemplate {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now()) @map("created_at")
