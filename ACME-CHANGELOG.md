@@ -1997,6 +1997,18 @@ unhealthy with the same "credit balance is too low" error as before).
 
 **Known-incomplete:** upgrades of this image have no documented cadence or owner.
 
+## 2026-09-19 — Change procedure tiered by risk; one-command rehearsal database (no release)
+
+CHG-2026-007 · Tier 2 · owner: Anees Ur Rahman. `acme-governance/CHANGE-PROCEDURE.md`: Tier 1
+(schema, authentication or authorisation, secrets, guardrails, audit, client-visible) keeps the full
+artefact set; Tier 2 is one changelog line, one commit, one PR. Artefacts are produced during the
+build, ledger updates are batched per session (immediate for P0/P1), reports use four headings, and
+IDs come from the register. New `acme-governance/scripts/rehearsal-db.sh` builds a throwaway
+Postgres 15 that models Azure and runs up → down → up for a migration in one command (proven end
+to end 2026-09-19). New `acme-governance/rollback/MIGRATION-ROLLBACK-INVENTORY.md` classifies the
+five shipped ACME migrations; inventory only, no scripts. Documentation and tooling only; nothing is
+built or deployed. Rollback: revert the commit.
+
 ## Outstanding, not yet done
 
 - **Capabilities 4 & 5 of the 5-item GTM plan — prompt recommendation
