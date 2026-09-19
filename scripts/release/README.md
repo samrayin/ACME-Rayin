@@ -7,7 +7,7 @@ merged commit on main
    │
    ├─ 1. preconditions   commit is on origin/main · tag and image tag not already used
    ├─ 2. export          clean LF `git archive` of the commit (no working-tree drift)
-   ├─ 3. build           ACR build → image digest
+   ├─ 3. build           ACR build from inside the export → image digest; step total checked against the Dockerfile
    ├─ 4. TAG             annotated git tag: commit + image + digest + ACR run, pushed
    └─ 5. deploy          kubectl set image …@<digest> · annotate · rollout · health
 ```
@@ -15,6 +15,7 @@ merged commit on main
 The tag is created in step 4, **after** the build succeeds and **before** `kubectl set image`. There is no supported way to deploy a new version without it. The deploy pins the exact digest the tag records, so the running image can't differ from the tagged one even if an image tag is later overwritten in the registry.
 
 - **Rollback or redeploy:** `release.sh --env FILE --redeploy <tag>` deploys an already-released tag by its recorded digest. It creates no new tag, so a rollback never needs a manual `kubectl set image`.
+- **Always build from the export.** `az acr build` resolves a relative `--file` against the current directory, not the build context, so the script runs it from inside `$BUILD_DIR`. Before tagging, it compares ACR's `Step 1/N` with the exported Dockerfile's instruction count and refuses on a mismatch. That check catches a structurally different Dockerfile, not an edit that keeps the count; building from the export is the fix.
 - **Drift check:** `verify-deployed.sh --env FILE …` compares what is actually running against the tags and reports `UNTRACED` for anything deployed some other way. Run it after every deploy, and as a periodic check.
 
 Environment-specific values (registry, namespace, deployment names, health URL) live in env files outside this repository. Nothing environment-specific is committed here.

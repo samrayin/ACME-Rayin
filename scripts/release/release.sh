@@ -135,19 +135,33 @@ if ((DRY_RUN)); then
 else
   # LF line endings: CRLF corrupts patches/*.patch and entrypoint scripts.
   git -c core.autocrlf=false -c core.eol=lf archive "$COMMIT" | tar -x -C "$BUILD_DIR"
+  [[ -f "$BUILD_DIR/$DOCKERFILE" ]] ||
+    { echo "Refusing: $DOCKERFILE is not in the export of $COMMIT." >&2; exit 1; }
 fi
 
 step "3/5 Build in ACR"
+# `az acr build` resolves a relative --file against the *current directory*,
+# not the build context. Run from inside the export, with `.` as the context,
+# so the Dockerfile comes from the same clean tree as the source. Run from a
+# checkout on another branch, az once built the export's source with that
+# branch's older Dockerfile (2026-09-19: a worker build without its Rust
+# toolchain, and a web tag whose Dockerfile didn't match its commit).
 build=(acr build --registry "$REGISTRY" --no-logs --no-wait
   --image "$IMAGE_REPO:$VERSION" --file "$DOCKERFILE")
 [[ -n $AGENT_POOL ]] && build+=(--agent-pool "$AGENT_POOL")
 for arg in $BUILD_ARGS; do build+=(--build-arg "$arg"); done
 if ((DRY_RUN)); then
-  run az "${build[@]}" "$BUILD_DIR"
+  EXPECTED_STEPS="(dry-run)"
+else
+  # Instructions in the exported Dockerfile; ACR's log must report the same total.
+  EXPECTED_STEPS=$(grep -c -E '^(FROM|RUN|CMD|LABEL|EXPOSE|ENV|ADD|COPY|ENTRYPOINT|VOLUME|USER|WORKDIR|ARG|ONBUILD|STOPSIGNAL|HEALTHCHECK|SHELL|MAINTAINER)([[:space:]]|$)' "$BUILD_DIR/$DOCKERFILE")
+fi
+if ((DRY_RUN)); then
+  echo "[dry-run] (cd $BUILD_DIR && az ${build[*]} .)"
   RUN_ID="(dry-run)"
   DIGEST="sha256:(dry-run)"
 else
-  RUN_ID=$(az "${build[@]}" "$BUILD_DIR" 2>&1 | sed -n 's/.*Queued a build with ID: \([A-Za-z0-9]*\).*/\1/p' | head -1)
+  RUN_ID=$(cd "$BUILD_DIR" && az "${build[@]}" . 2>&1 | sed -n 's/.*Queued a build with ID: \([A-Za-z0-9]*\).*/\1/p' | head -1)
   [[ -n $RUN_ID ]] || { echo "Could not queue the ACR build." >&2; exit 1; }
   echo "ACR run $RUN_ID queued. Polling (az's own log streaming is unreliable on Windows)."
   while :; do
@@ -162,6 +176,30 @@ else
   done
   DIGEST=$(az acr task show-run --registry "$REGISTRY" --run-id "$RUN_ID" --query "outputImages[0].digest" -o tsv)
   [[ $DIGEST == sha256:* ]] || { echo "Build succeeded but reported no image digest." >&2; exit 1; }
+
+  # Sanity check before anything is tagged: ACR's step total must match the
+  # exported Dockerfile. It catches a structurally different Dockerfile (the
+  # 2026-09-19 worker build ran 50 steps instead of 55), not an edit that keeps
+  # the instruction count. Building from inside $BUILD_DIR above is the fix;
+  # this is the second line of defence. Read the run log through its SAS link:
+  # `az acr task logs` crashes on Windows consoles (cp1252) and then looks
+  # like a truncated log.
+  # A failed log read only warns (below); it never aborts a finished build.
+  registry_id=$(az acr show --name "$REGISTRY" --query id -o tsv 2>/dev/null || true)
+  log_url=$(MSYS_NO_PATHCONV=1 az rest --method post \
+    --url "https://management.azure.com${registry_id}/runs/${RUN_ID}/listLogSasUrl?api-version=2019-06-01-preview" \
+    --query logLink -o tsv 2>/dev/null || true)
+  ran_steps=$({ [[ -n $log_url ]] && curl -fsS "$log_url" || true; } |
+    sed -n 's/.*Step 1\/\([0-9]*\) : .*/\1/p' | head -1)
+  if [[ -z $ran_steps ]]; then
+    echo "Warning: could not read the step total from the ACR log for $RUN_ID; the Dockerfile match is unverified." >&2
+  elif [[ $ran_steps != "$EXPECTED_STEPS" ]]; then
+    echo "Refusing: ACR ran $ran_steps steps, but the exported $DOCKERFILE has $EXPECTED_STEPS instructions." >&2
+    echo "The build did not use the exported Dockerfile. Nothing was tagged or deployed; image $IMAGE_REPO:$VERSION must not be reused." >&2
+    exit 1
+  else
+    echo "Dockerfile verified: ACR ran $ran_steps steps, matching the export."
+  fi
 fi
 
 step "4/5 Tag the commit (before anything is deployed)"

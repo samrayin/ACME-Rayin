@@ -1881,6 +1881,27 @@ that needs a second account with the role.
 make them **reproducible**. Rebuilding on a customer subscription is unproven
 until the Terraform end-to-end run (#23) passes.
 
+**Fix (2026-09-19): release.sh builds from the export.** The first releases
+after the v4.38.0 upgrade showed that `az acr build` resolves a relative
+`--file` against the *current directory*, not the build context. Run from a
+checkout on another branch, it paired the clean export's source with that
+branch's older Dockerfile. The worker build failed (no Rust toolchain), and
+`acme-v4.38.0.1` got a Dockerfile one line different from its commit. The
+script now:
+- runs `az acr build` from inside `$BUILD_DIR` with `.` as the context;
+- refuses if the Dockerfile is missing from the export;
+- after the build and before tagging, compares ACR's `Step 1/N` (read through
+  `listLogSasUrl`, because `az acr task logs` crashes on Windows consoles)
+  with the exported Dockerfile's instruction count. It refuses on a mismatch,
+  and warns if the log can't be read.
+
+The count check is a second line of defence. It catches a structurally
+different Dockerfile, not an edit that keeps the instruction count.
+Verified: syntax check; dry run; the instruction counts match ACR's step
+totals for both Dockerfiles (web 114, worker 55); the log parser reads `114`
+from a real ACR log. Not yet exercised by a real release. The next one will.
+**rayin-guardrails' copy still needs the same change** ("keep in sync").
+
 ---
 
 ## 2026-09-19 — Upgrade to v4.38.0
