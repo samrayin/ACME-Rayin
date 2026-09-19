@@ -15,7 +15,13 @@ permissions:
 jobs:
   security-review:
     name: Security review
-    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    # ACME: opt-in. This job needs a CLAUDE_API_KEY secret (a paid API key, and
+    # it sends each PR diff to the Anthropic API). Without one it failed on
+    # every PR, which hid real failures. It is skipped, not red, until the
+    # owner sets the secret AND the repository variable
+    # CLAUDE_SECURITY_REVIEW_ENABLED=true (Settings > Secrets and variables >
+    # Actions > Variables).
+    if: vars.CLAUDE_SECURITY_REVIEW_ENABLED == 'true' && github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
