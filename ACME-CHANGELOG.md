@@ -1804,6 +1804,46 @@ ACME Support". Navigation only: no routes, permissions or data change.
 **Verified:** by code review only. Not type-checked or viewed in a browser
 yet (dependencies are not installed in this checkout); check after deploy.
 
+## 2026-09-19 — Independent customer-delivery readiness audit
+
+**What:** a report-only, outsider-style audit of whether CAIRO can be handed
+to a paying customer who runs the Terraform template in their own
+subscription. It covered secrets, application security, the Terraform module
+and customer template, containers and the build pipeline, air-gapped
+delivery, compliance alignment and licensing. No code, configuration or
+infrastructure was changed.
+
+**Result:** **Not Ready.** 65 findings (1 Critical, 32 High, 26 Medium,
+6 Low), each with evidence and a recommended fix, ordered into four
+remediation phases. Phases 0 and 1 (40 items) must close before a customer
+handoff; that would move the result to Ready with Conditions.
+
+**Where the detail lives:** the full report and its Excel remediation
+checklist are private records, and the Readiness Ledger carries the summary
+(revision 15, section 08a, new rows N-37 to N-45). Finding detail is
+deliberately not reproduced in this public repository. Fixes that touch this
+repo will land as their own PRs, each with its own changelog entry that names
+the audit ID it closes.
+
+**Areas with product work to come from it:** the customer template's scope
+and install steps, authentication and telemetry defaults in the Terraform
+module, image tagging and build provenance, audit coverage of governance
+changes, licence notices in the shipped images, and remaining upstream
+branding.
+
+**Method and limits:** manual review of every Terraform file, Dockerfile and
+manifest; `terraform fmt` and `validate`; `pnpm audit`; a pattern-based secret
+scan of the tree and fork-side history; code review of the ACME features.
+Not verified, and not to be read as a pass: image sizes and CVEs, a
+clean-environment `terraform plan` and apply, static analysis and Terraform
+policy scans (tools not installed), and the live environment.
+
+**Correction recorded:** the audit's first version rated one audit-trail
+finding Critical on the strength of a stale document in an old checkout that
+was 165 commits behind `main`. Cross-checking the Readiness Ledger caught it
+and the report was corrected the same day. Reviews should run from a clean
+worktree at `origin/main`.
+
 ## Outstanding, not yet done
 
 - **Capabilities 4 & 5 of the 5-item GTM plan — prompt recommendation
