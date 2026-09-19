@@ -22,6 +22,7 @@ import { cloudUsageMeteringQueueProcessor } from "./queues/cloudUsageMeteringQue
 import { cloudSpendAlertQueueProcessor } from "./queues/cloudSpendAlertQueue";
 import { cloudFreeTierUsageThresholdQueueProcessor } from "./queues/cloudFreeTierUsageThresholdQueue";
 import { acmePromptReviewQueueProcessor } from "./queues/acmePromptReviewQueue";
+import { acmeLitellmReconcileQueueProcessor } from "./queues/acmeLitellmReconcileQueue";
 import { monitorQueueProcessor } from "./queues/monitorQueue";
 import { inAppAgentRunQueueProcessor } from "./queues/inAppAgentRunQueue";
 import { WorkerManager } from "./queues/workerManager";
@@ -43,6 +44,7 @@ import {
   CloudFreeTierUsageThresholdQueue,
   CloudUsageMeteringQueue,
   AcmePromptReviewQueue,
+  AcmeLitellmReconcileQueue,
   V4LegacyApiUsageQueue,
   EventPropagationQueue,
   EvalExecutionQueue,
@@ -448,6 +450,18 @@ if (env.QUEUE_CONSUMER_ACME_PROMPT_REVIEW_QUEUE_IS_ENABLED === "true") {
   WorkerManager.register(
     QueueName.AcmePromptReviewQueue,
     acmePromptReviewQueueProcessor,
+    { concurrency: 1 },
+  );
+}
+
+// ACME addition (ADR-0003, CHG-2026-008). Off unless the request-log feature
+// is switched on: no queue, no schedule, no calls to LiteLLM.
+if (env.CAIRO_LITELLM_REQUEST_LOG_INGEST_ENABLED === "true") {
+  AcmeLitellmReconcileQueue.getInstance();
+
+  WorkerManager.register(
+    QueueName.AcmeLitellmReconcileQueue,
+    acmeLitellmReconcileQueueProcessor,
     { concurrency: 1 },
   );
 }

@@ -62,6 +62,7 @@ import {
 import { api, type RouterOutputs } from "@/src/utils/api";
 import { useHasProjectAccess } from "@/src/features/rbac";
 import { showErrorToast, showSuccessToast } from "@/src/features/notifications";
+import { AcmeLitellmRequestLogs } from "@/src/features/acme-enhancements/components/AcmeLitellmRequestLogs";
 
 type KeyRow = RouterOutputs["acmeLitellm"]["keys"]["keys"][number];
 
@@ -1581,6 +1582,9 @@ export function AcmeLitellmGateway({ projectId }: { projectId: string }) {
           {canReadLogs ? (
             <TabsBarTrigger value="record">Change record</TabsBarTrigger>
           ) : null}
+          {canReadLogs && s.requestLogsEnabled ? (
+            <TabsBarTrigger value="requests">Requests</TabsBarTrigger>
+          ) : null}
         </TabsBarList>
         {canRead ? (
           <>
@@ -1609,6 +1613,11 @@ export function AcmeLitellmGateway({ projectId }: { projectId: string }) {
         {canReadLogs ? (
           <TabsBarContent value="record" className="mt-6">
             <EventsTab projectId={projectId} />
+          </TabsBarContent>
+        ) : null}
+        {canReadLogs && s.requestLogsEnabled ? (
+          <TabsBarContent value="requests" className="mt-6">
+            <AcmeLitellmRequestLogs projectId={projectId} />
           </TabsBarContent>
         ) : null}
       </TabsBar>

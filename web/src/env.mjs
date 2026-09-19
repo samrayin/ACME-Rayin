@@ -123,6 +123,19 @@ export const env = createEnv({
     // RAYIN_GUARDRAILS_WRITER_DATABASE_URL above: a separate PrismaClient,
     // and the code refuses to fall back to the general connection.
     RAYIN_LITELLM_WRITER_DATABASE_URL: z.string().optional(),
+    // ACME addition (ADR-0003, CHG-2026-008): the request-log receiver,
+    // POST /api/public/litellm-request-logs. SERVER-ONLY.
+    // CAIRO_LITELLM_REQUEST_LOG_INGEST_ENABLED: default off = the route
+    // answers 404 and nothing is written.
+    CAIRO_LITELLM_REQUEST_LOG_INGEST_ENABLED: z
+      .enum(["true", "false"])
+      .optional()
+      .default("false"),
+    // CAIRO_LITELLM_INGEST_SECRET: the bearer secret the LiteLLM gateway's
+    // logging callback presents. Not a project API key: one gateway serves
+    // every project. At least 32 characters or every request is refused. It
+    // can only append well-formed rows: no read, no update.
+    CAIRO_LITELLM_INGEST_SECRET: z.string().optional(),
     NEXTAUTH_SECRET:
       process.env.NODE_ENV === "production"
         ? z.string().min(1)
@@ -856,6 +869,9 @@ export const env = createEnv({
     LITELLM_MASTER_KEY: process.env.LITELLM_MASTER_KEY,
     RAYIN_LITELLM_WRITER_DATABASE_URL:
       process.env.RAYIN_LITELLM_WRITER_DATABASE_URL,
+    CAIRO_LITELLM_REQUEST_LOG_INGEST_ENABLED:
+      process.env.CAIRO_LITELLM_REQUEST_LOG_INGEST_ENABLED,
+    CAIRO_LITELLM_INGEST_SECRET: process.env.CAIRO_LITELLM_INGEST_SECRET,
     SEED_SECRET_KEY: process.env.SEED_SECRET_KEY,
     NEXT_PUBLIC_DEMO_PROJECT_ID: process.env.NEXT_PUBLIC_DEMO_PROJECT_ID,
     NEXT_PUBLIC_DEMO_ORG_ID: process.env.NEXT_PUBLIC_DEMO_ORG_ID,

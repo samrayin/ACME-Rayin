@@ -341,6 +341,16 @@ const EnvSchema = z.object({
   QUEUE_CONSUMER_ACME_PROMPT_REVIEW_QUEUE_IS_ENABLED: z
     .enum(["true", "false"])
     .default("true"),
+  // ACME addition (ADR-0003, CHG-2026-008): reconciliation of the LiteLLM
+  // request-log mirror. One flag for both capture paths: the same name the
+  // web receiver uses, default off, so nothing runs until an operator turns
+  // the feature on. The other three are the same values web uses.
+  CAIRO_LITELLM_REQUEST_LOG_INGEST_ENABLED: z
+    .enum(["true", "false"])
+    .default("false"),
+  LITELLM_BASE_URL: z.string().optional(),
+  LITELLM_MASTER_KEY: z.string().optional(),
+  RAYIN_LITELLM_WRITER_DATABASE_URL: z.string().optional(),
   QUEUE_CONSUMER_CLOUD_SPEND_ALERT_QUEUE_IS_ENABLED: z
     .enum(["true", "false"])
     .default("true"),

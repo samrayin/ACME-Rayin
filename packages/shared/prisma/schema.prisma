@@ -1185,6 +1185,86 @@ model AcmeLitellmEvent {
   @@map("acme_litellm_events")
 }
 
+// ---------------------------------------------------------------------
+// ACME: CAIRO's own append-only record of every request that went through
+// the LiteLLM gateway (ADR-0003, CHG-2026-008). Metadata only -- never
+// prompt or response text. Two capture paths write here, both through the
+// rayin_litellm_writer role: PUSH (the gateway's logging callback, near
+// real time) and RECONCILE (a scheduled pass over LiteLLM's own spend logs
+// that inserts whatever the push missed). No FK to projects: the record
+// must outlive the project.
+// ---------------------------------------------------------------------
+
+enum AcmeLitellmRequestLogSource {
+  PUSH      @map("push")
+  RECONCILE @map("reconcile")
+}
+
+model AcmeLitellmRequestLog {
+  id               String                      @id @default(cuid())
+  // Idempotency key: LiteLLM's spend-log request_id == the push payload's
+  // id (verified on 1.100.1: the provider response id on success, the
+  // litellm_call_id on failure). Plain unique index + skipDuplicates, so
+  // the writer needs no SELECT.
+  requestId        String                      @unique(map: "acme_litellm_request_logs_request_id_key") @map("request_id")
+  // Second matching key for reconciliation: on a cache hit LiteLLM appends
+  // "_cache_hit<time>" to the id independently on each path, so request_id
+  // differs between push and spend log while this does not.
+  litellmCallId    String?                     @map("litellm_call_id")
+  source           AcmeLitellmRequestLogSource
+  receivedAt       DateTime                    @default(now()) @map("received_at")
+  startTime        DateTime                    @map("start_time")
+  endTime          DateTime?                   @map("end_time")
+  status           String
+  callType         String?                     @map("call_type")
+  model            String?
+  modelGroup       String?                     @map("model_group")
+  provider         String?
+  // LiteLLM's SHA-256 of the virtual key. Never the key.
+  apiKeyHash       String?                     @map("api_key_hash")
+  keyAlias         String?                     @map("key_alias")
+  litellmTeamId    String?                     @map("litellm_team_id")
+  endUser          String?                     @map("end_user")
+  requesterIp      String?                     @map("requester_ip")
+  promptTokens     Int?                        @map("prompt_tokens")
+  completionTokens Int?                        @map("completion_tokens")
+  totalTokens      Int?                        @map("total_tokens")
+  spend            Float?
+  cacheHit         Boolean?                    @map("cache_hit")
+  errorClass       String?                     @map("error_class")
+  // DERIVED at insert by matching apiKeyHash to acme_litellm_keys. Never
+  // taken from the payload, never rewritten. Null = the key was not issued
+  // by CAIRO; such rows are visible to organisation owners only.
+  orgId            String?                     @map("org_id")
+  projectId        String?                     @map("project_id")
+  cairoKeyId       String?                     @map("cairo_key_id")
+
+  @@index([projectId, startTime])
+  @@index([startTime])
+  @@index([litellmCallId])
+  @@index([apiKeyHash])
+  @@map("acme_litellm_request_logs")
+}
+
+// One row per completed reconciliation pass. gapCount is the number of
+// requests LiteLLM had and the mirror did not. A silent gap is worse than
+// no mirror, so this is what the UI shows. Append-only, same grants.
+model AcmeLitellmReconcileRun {
+  id           String   @id @default(cuid())
+  startedAt    DateTime @map("started_at")
+  finishedAt   DateTime @default(now()) @map("finished_at")
+  windowStart  DateTime @map("window_start")
+  windowEnd    DateTime @map("window_end")
+  rowsChecked  Int      @map("rows_checked")
+  gapCount     Int      @map("gap_count")
+  inserted     Int
+  status       String
+  errorMessage String?  @map("error_message")
+
+  @@index([finishedAt])
+  @@map("acme_litellm_reconcile_runs")
+}
+
 model EvalTemplate {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now()) @map("created_at")
