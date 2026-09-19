@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type ReactNode } from "react";
 import { MessageCircle, X, Send } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import { Textarea } from "@/src/components/ui/textarea";
@@ -19,11 +19,6 @@ type ChatMessage = { role: "user" | "assistant"; content: string };
  * windows visually competing for the same stacking band.
  */
 export function AcmeChatWidget({ projectId }: { projectId: string }) {
-  const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState("");
-  const scrollRef = useRef<HTMLDivElement>(null);
-
   // UX-only: hides the launcher for roles that lack "projectAiAssistant:use"
   // (VIEWER) so it doesn't sit there as a button that always errors. The
   // real boundary is the server-side throwIfNoProjectAccess check in
@@ -32,6 +27,30 @@ export function AcmeChatWidget({ projectId }: { projectId: string }) {
     projectId,
     scope: "projectAiAssistant:use",
   });
+
+  return (
+    <AcmeChatAccessGate allowed={canUse}>
+      <AcmeChatPanel projectId={projectId} />
+    </AcmeChatAccessGate>
+  );
+}
+
+// Headless gate: passes the panel through only for users allowed to chat.
+function AcmeChatAccessGate({
+  allowed,
+  children,
+}: {
+  allowed: boolean;
+  children: ReactNode;
+}) {
+  return allowed ? children : null;
+}
+
+function AcmeChatPanel({ projectId }: { projectId: string }) {
+  const [open, setOpen] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState("");
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const sendMessage = api.acmeChat.sendMessage.useMutation();
 
@@ -66,15 +85,13 @@ export function AcmeChatWidget({ projectId }: { projectId: string }) {
     );
   };
 
-  if (!canUse) return null;
-
   return (
     <Layer name="panel">
       <div className="pointer-events-none fixed inset-0">
         {open ? (
           <div className="pointer-events-auto fixed bottom-20 right-6 flex h-[520px] w-96 flex-col overflow-hidden rounded-lg border bg-background shadow-xl">
             <div className="flex items-center justify-between border-b px-4 py-3">
-              <div className="flex items-center gap-2 font-semibold">
+              <div className="flex items-center gap-2 font-bold">
                 <MessageCircle className="h-4 w-4" />
                 ACME AI
               </div>

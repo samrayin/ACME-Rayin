@@ -35,7 +35,7 @@ export function AcmeSignInHeadline() {
         <span className={cn(word, "text-acme-maroon [animation-delay:150ms]")}>
           ACME
         </span>{" "}
-        <span className={cn(word, "[animation-delay:330ms]")}>Governance</span>
+        <span className={cn(word, "[animation-delay:330ms]")}>Governance</span>{" "}
         <br />
         <span className={cn(word, "[animation-delay:510ms]")}>and</span>{" "}
         <span className={cn(word, "[animation-delay:690ms]")}>Assurance</span>{" "}

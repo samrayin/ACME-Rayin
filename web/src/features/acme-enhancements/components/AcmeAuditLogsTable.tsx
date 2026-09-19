@@ -8,7 +8,7 @@
  */
 import { DataTable } from "@/src/components/table/data-table";
 import { type LangfuseColumnDef } from "@/src/components/table/types";
-import { api } from "@/src/utils/api";
+import { api, type RouterOutputs } from "@/src/utils/api";
 import { safeExtract } from "@/src/utils/map-utils";
 import { useQueryParams, withDefault, NumberParam } from "use-query-params";
 import { ConnectedIOTableCell } from "@/src/components/table/ConnectedIOTableCell";
@@ -16,7 +16,6 @@ import { Avatar } from "@/src/components/design-system/Avatar/Avatar";
 import { cn } from "@/src/utils/tailwind";
 import { useRowHeightLocalStorage } from "@/src/components/table/data-table-row-height-switch";
 import { DataTableToolbar } from "@/src/components/table/data-table-toolbar";
-import { type RouterOutputs } from "@/src/utils/api";
 import { SettingsTableCard } from "@/src/components/layouts/settings-table-card";
 
 type AcmeAuditLogRow = RouterOutputs["acmeAuditLogs"]["all"]["data"][number];
