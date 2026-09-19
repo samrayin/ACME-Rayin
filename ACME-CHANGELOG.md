@@ -1945,6 +1945,13 @@ deployed from it.
 stay queued because this fork has no runner for them. That is a separate
 gap, not addressed here.
 
+## 2026-09-19 — Change ID register (no release)
+
+CHG-2026-004 · Tier 2 · owner: Anees Ur Rahman. New `acme-governance/CHANGE-ID-REGISTER.md`: a
+change ID or ADR number is claimed there, on `main`, before it is used anywhere. Two parallel
+sessions collided on IDs twice on 2026-09-19. Documentation only; nothing is built or deployed.
+Rollback: revert the commit.
+
 ## Outstanding, not yet done
 
 - **Capabilities 4 & 5 of the 5-item GTM plan — prompt recommendation
