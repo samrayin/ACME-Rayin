@@ -56,6 +56,13 @@ vi.mock("@/src/components/nav/topbar-brand", () => ({
   TopbarBrand: () => null,
 }));
 
+// ACME: PageHeader tints its strip via this hook, which runs a tRPC query;
+// this test renders without a tRPC provider, so stub it to "no tint".
+vi.mock(
+  "@/src/features/acme-enhancements/theme/useAcmeHeaderBackgroundClassName",
+  () => ({ useAcmeHeaderBackgroundClassName: () => "" }),
+);
+
 const sidebarArgs = {
   navItems: {
     ungrouped: [{ title: "Home", url: "/", icon: Home, isActive: true }],

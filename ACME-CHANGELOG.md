@@ -1793,6 +1793,26 @@ Not yet checked by eye in a signed-out browser. The worker is unchanged
 
 ---
 
+## 2026-09-19 — Cleanup: ACME lint warnings, layout test mock, headline text
+
+Pre-existing issues surfaced by the v4.38.0 upgrade's checks. None of them is a
+behavior change for users.
+- `app-shell-chrome.clienttest.tsx`: 3 tests had failed on `main` since
+  `page-header` started calling the ACME header-theme hook, which runs a tRPC
+  query the test has no provider for. The hook is now mocked to "no tint"
+  (`// ACME:` comment in the upstream test file).
+- `AcmeChatWidget`: the access check moved into a small pass-through gate
+  around the unchanged panel. The repo's `no-null-render` rule allows a
+  children-only gate, but not a full component that returns `null`. The
+  header uses `font-bold`, the design system's single bold weight, instead of
+  the banned `font-semibold`.
+- `AcmeAuditLogsTable`: two imports from `@/src/utils/api` merged into one.
+- `AcmeSignInHeadline`: a space before the line break, so the heading's text
+  reads "Governance and" rather than "Governanceand" when copied or indexed.
+  The accessible name was already right.
+
+---
+
 ## Outstanding, not yet done
 
 - **Capabilities 4 & 5 of the 5-item GTM plan — prompt recommendation
