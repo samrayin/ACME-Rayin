@@ -98,14 +98,25 @@ describe("Security Analyst allow-list", () => {
 });
 
 describe("Security Analyst scopes", () => {
-  it("has exactly guardrail read, audit log read and project read", () => {
+  it("has exactly guardrail read, audit log read, gateway log read and project read", () => {
+    // llmGatewayLogs:read added by ADR-0003 (CHG-2026-005): the append-only
+    // record of LiteLLM gateway changes lives in its own table, so it is not
+    // visible through projectAuditLogs:read. Logs only -- NOT llmGateway:read
+    // (keys, budgets, spend), which the next test pins.
     expect([...projectRoleAccessRights.SECURITY].sort()).toEqual(
       [
+        "llmGatewayLogs:read",
         "project:read",
         "projectAuditLogs:read",
         "projectGuardrails:read",
       ].sort(),
     );
+  });
+
+  it("cannot see or manage gateway keys, budgets or spend", () => {
+    for (const scope of ["llmGateway:read", "llmGateway:CUD"] as const) {
+      expect(projectRoleAccessRights.SECURITY).not.toContain(scope);
+    }
   });
 
   it("cannot read trace content, use the AI assistant, or change the project", () => {

@@ -40,6 +40,7 @@ import { useCommandMenu } from "@/src/features/command-k-menu/CommandMenuProvide
 import { usePostHogClientCapture } from "@/src/features/posthog-analytics/usePostHogClientCapture";
 import { CloudStatusMenu } from "@/src/features/cloud-status-notification/components/CloudStatusMenu";
 import { AcmeContactSupportNavItem } from "@/src/components/nav/acme-contact-support-nav-item";
+import { AcmeLitellmGatewayNavItem } from "@/src/components/nav/acme-litellm-gateway-nav-item";
 import { type ProductModule } from "@/src/ee/features/ui-customization/productModuleSchema";
 
 export enum RouteSection {
@@ -133,6 +134,18 @@ export const ROUTES: Route[] = [
     icon: ShieldAlert,
     projectRbacScopes: ["projectGuardrails:read"],
     section: RouteSection.Main,
+  },
+  {
+    // ACME addition (ADR-0003, CHG-2026-005): CAIRO as the only control plane
+    // for the LiteLLM gateway. Top-level, next to Guardrails: a runtime
+    // control, not a console customization. menuNode, not a plain link: the
+    // feature flag is server-only, so the item asks the server and renders
+    // nothing while CAIRO_LITELLM_MANAGEMENT_ENABLED is off.
+    title: "LLM Gateway",
+    pathname: `/project/[projectId]/acme-enhancements/llm-gateway`,
+    projectRbacScopes: ["llmGateway:read", "llmGatewayLogs:read"],
+    section: RouteSection.Main,
+    menuNode: <AcmeLitellmGatewayNavItem />,
   },
   {
     // ACME PREVIEW — a deliberately thin demo (acmeAssuranceDemoRouter.ts),
