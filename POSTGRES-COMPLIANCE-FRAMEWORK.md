@@ -20,10 +20,24 @@ noted, not silently folded into the "must do now" scope — see the assumptions
 inline and the "Open decisions" section at the end.
 
 **Companion convention:** like `ACME-CHANGELOG.md`, this doc distinguishes
-*source-only* recommendations from anything *live* — nothing here has been
-implemented yet. Once the two PRs land, whoever does the Terraform work should
-treat the "Roles to be created" and "Authentication model" sections as the spec,
-and the eventual `ACME-CHANGELOG.md` entry for that work should link back here.
+*source-only* recommendations from anything *live*.
+
+**Implementation status (2026-09-18):** the core of this design has shipped
+and been verified in a real deployment. §2's four roles and the
+`acme_guardrail_events` schema changes ship as migration
+`20260917090000_add_acme_guardrail_events_push_support` (`ACME-Rayin` PR #17,
+merged as `6610fd8cf`), together with `POST /api/public/guardrails-events`,
+the §4.2 self-approval guard, and caller-asserted `user_id` on guardrail
+events. §2.2's least-privilege model for `rayin_guardrails_writer` has been
+verified against a deployed database, not just designed (see §2.2), and
+§3.4's dedicated `GUARDRAILS_ENCRYPTION_KEY` is in use for `block`-tier
+content. **Not yet built:** the §1.3 retention purge job; moving the
+application's runtime connection (`DATABASE_URL`) onto `rayin_app_runtime`;
+and running start-up migrations as `rayin_migrator` rather than the runtime
+connection (see §2.2). Role credential provisioning is not yet automated in
+the product's Terraform module — whoever does that work should still treat
+"Roles to be created" and "Authentication model" as the spec. The
+`ACME-CHANGELOG.md` entry for 2026-09-17/18 records what shipped.
 
 ---
 
@@ -83,6 +97,21 @@ earlier tiered proposal (1yr/3–5yr/1yr) below, which is kept as historical
 context for the reasoning, not as the active policy. This was a business
 decision, not an engineering one, and is no longer PENDING — see Open
 Decisions §1 for the record of the change.
+
+**IMPLEMENTATION STATUS (2026-09-18): the purge job is NOT BUILT.**
+`rayin_retention_purger` exists with the right grants, but there is no
+scheduled job, no Blob Archive write path, and therefore no purging — so
+until it ships, retention in any deployment is unbounded in practice and
+the 30-day policy is a stated intention, not an enforced control. Name that
+plainly to a customer: in a BFSI audit, a gap between the documented
+control and the operating one is itself a finding. Build it with the
+interval as a configurable parameter (Open Decisions §1).
+
+Test rows written to `acme_guardrail_events` (e.g. by a post-deployment
+smoke test) are **not** deleted by hand: the table is append-only by design,
+and a privileged `DELETE` against it is exactly what its immutability exists
+to rule out. Record them as test data and let them age out under retention —
+which, again, requires the purge job to exist.
 
 | Tier | Retention | Mechanism |
 |---|---|---|
@@ -185,6 +214,41 @@ plane. Practical implications that matter for this design:
 
 ### 2.2 Roles
 
+**STATUS: APPLIED AND VERIFIED (2026-09-17/18).** All four roles are created
+by migration `20260917090000` (§2.3). Before the writer role's connection
+string was handed to the application, its actual capability was tested
+against a deployed database — the design claim was not taken on trust:
+
+| Check | Result |
+|---|---|
+| Connects as `rayin_guardrails_writer` | Yes |
+| `INSERT` on `acme_guardrail_events` | Yes |
+| `SELECT` / `UPDATE` / `DELETE` on `acme_guardrail_events` | **No** — denied |
+| `SELECT` on `api_keys`, `projects` | **No** — denied |
+
+That is the "blast radius stops at one audit table" property below,
+confirmed rather than asserted. Recommend every deployment repeats this
+check before wiring the writer connection in.
+
+**Per-role status in the product:**
+
+| Role | Status |
+|---|---|
+| `rayin_migrator` | Created. Not yet used — see the start-up-migration note below |
+| `rayin_app_runtime` | Created. Moving `DATABASE_URL` onto it is a separate, not-yet-done cutover |
+| `rayin_guardrails_writer` | Created and in use by `POST /api/public/guardrails-events`; exercised end to end with a real blocked request |
+| `rayin_retention_purger` | Created. Unused until the §1.3 purge job exists |
+
+**Start-up migrations must move off the runtime connection before the
+`DATABASE_URL` cutover.** `web/entrypoint.sh` runs `prisma db execute` and
+`prisma migrate deploy` on every pod start using `DIRECT_URL`, which defaults
+to `DATABASE_URL`. Once `DATABASE_URL` is `rayin_app_runtime` (no DDL rights),
+this is harmless while no migration is pending — which is exactly why it will
+go unnoticed — and then the first image carrying a new migration fails to
+start. Either run migrations as `rayin_migrator` from a dedicated Job with
+start-up migration disabled, or set `DIRECT_URL` to a `rayin_migrator`
+connection explicitly.
+
 Four roles, each used by exactly one credential/connection-string, each with the
 minimum privilege that role's job requires:
 
@@ -239,6 +303,15 @@ password provisioning, since the migration deliberately creates roles
 without one. Recommend one supervised dry run against the real server
 before or during first production use, but this is no longer an
 untested, unknown-risk step.
+
+**Closed out (2026-09-17):** the fix this test validated shipped as commit
+`6fcc72f06` (`GRANT rayin_migrator TO <admin role>;` before `REASSIGN OWNED
+BY`, squash-merged in `6610fd8cf`), and the migration then applied cleanly
+to a real managed Postgres 15 server. Lesson worth keeping for any future
+role migration: test against a non-superuser admin role that models the
+managed service's actual privileges, not a local superuser — a superuser
+bypasses exactly the membership check that fails in production. Test
+migrations against disposable databases only, never a shared one.
 
 Run once, from the `postgres` (`azure_pg_admin`) connection, as part of
 environment bootstrap — **not** repeated per deployment via application code:
@@ -496,6 +569,27 @@ column. Rationale:
   it just stops today's decision from making that gap worse by conflating two
   data categories under one non-rotatable secret.
 
+**STATUS: ADOPTED (2026-09-17/18).** `GUARDRAILS_ENCRYPTION_KEY` is a
+separate key from `ENCRYPTION_KEY`, supplied to `langfuse-web` as its own
+secret reference, and `block`-tier content is stored encrypted under it
+server-side — verified end to end with a real blocked request.
+This work does not change how `ENCRYPTION_KEY` behaves: the product still has
+no re-encryption tooling for it, so changing it blind would make every
+existing LLM-API-key and SSO-secret ciphertext permanently unreadable.
+
+A related correctness fix shipped alongside it: commit `5c6430fb5`
+(squash-merged in `6610fd8cf`) pins an explicit `authTagLength` in the
+AES-256-GCM `createCipheriv`/`createDecipheriv` calls rather than relying on
+the default. Found by Semgrep — a latent defect in the shared encryption
+utility this section depends on, not something introduced by the key split.
+
+**Still open:** the new key has no rotation mechanism either. The split
+bought blast-radius separation, as intended; it did not buy rotatability.
+Building re-encryption tooling for `GUARDRAILS_ENCRYPTION_KEY` is far cheaper
+while `raw_content_encrypted` holds little data than once real customer
+traffic flows through the endpoint — the same "cheap now, expensive to
+retrofit" argument this section already makes, applied one level further.
+
 ---
 
 ## 4. Scope review (app-level RBAC)
@@ -530,6 +624,10 @@ rejection, not a warning, if the reviewing user's id matches the request's
 `requestedBy`. One-line guard in the existing router, no schema or scope
 change. This closes the specific gap a BFSI audit tests for directly ("can
 an Owner approve their own prompt promotion?") — the answer is now no.
+Shipped in `ACME-Rayin` PR #17 (`6610fd8cf`). Its end-to-end check in a
+deployed environment needs a real user requesting and then trying to
+approve their own request; recommend every deployment runs that check as
+part of acceptance.
 
 Note this does not by itself close the separate, larger gap noted in the
 2026-09-17 architecture review: a user with `prompts:CUD` can still set a
@@ -612,6 +710,12 @@ supplied later, not hardcoded from the proposals below.
    purge job (§2, `rayin_retention_purger`) should still read the interval
    from a configurable parameter, not a hardcoded literal, so a future
    per-customer override doesn't require a code change.
+
+   **IMPLEMENTATION STATUS (2026-09-18): NOT BUILT.** The decision is
+   recorded (commit `0dcb45ed6`, squash-merged in `6610fd8cf`) and
+   `rayin_retention_purger` exists with the right grants, but no purge job or
+   archive write path exists yet — see §1.3. Until it does, the 30-day policy
+   is not enforced.
 2. **STATUS: PENDING — Legal basis for exempting `block`-tier content from
    erasure requests** (§1.3) — whether "security audit trail, legitimate
    interest/legal obligation" is a sufficient documented basis to retain raw
@@ -670,3 +774,14 @@ resolution and its rationale.
    protects is designed to no longer be PCI-scoped data. Revisit HSM tier only
    if a specific customer's compliance regime mandates hardware-backed key
    custody regardless of PCI scope.
+
+   **Scope correction (2026-09-18):** the "yes, do it" stands, but it is not
+   a per-secret step that rides along with a deployment. Writing a secret to
+   Key Vault does not make it reach a pod: the cluster needs a delivery
+   mechanism (the Key Vault CSI driver or External Secrets Operator), and the
+   product's Terraform module does not yet install one. Until it does,
+   secrets — `GUARDRAILS_ENCRYPTION_KEY` included — are held as Kubernetes
+   Secrets, and a deployment's secrets should not be described to a customer
+   or an auditor as Key Vault-backed. Adopting Key Vault is a
+   standing-infrastructure change (CSI or ESO, plus the Terraform to manage it
+   and the vault's contents).

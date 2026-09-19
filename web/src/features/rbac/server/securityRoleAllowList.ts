@@ -29,6 +29,16 @@ const SECURITY_ROLE_ALLOWED_PROCEDURES: ReadonlySet<string> = new Set([
   "acmeAssuranceDemo.liveAssurance",
   // Project audit log.
   "acmeAuditLogs.all",
+  // Append-only record of LiteLLM gateway management actions (ADR-0003).
+  // status is the app frame's "is this feature on" check. Every other
+  // acmeLitellm procedure -- keys, teams, spend, all mutations -- stays
+  // blocked, and also requires llmGateway:* scopes SECURITY does not hold.
+  "acmeLitellm.status",
+  "acmeLitellm.events",
+  // CHG-2026-008: the gateway request-log mirror and its completeness status.
+  // Metadata only; both need llmGatewayLogs:read, which SECURITY holds.
+  "acmeLitellm.requestLogs",
+  "acmeLitellm.reconcileStatus",
   // App frame: project theme.
   "acmeTheme.get",
 ]);

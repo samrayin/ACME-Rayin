@@ -8,13 +8,22 @@ go to production with full context, not as a pile of undocumented patches.
 into an unrelated change), and gets an entry here in the same commit. See
 `CONTRIBUTING-ACME.md` for the exact process.
 
-**Versioning:** every change that reaches the live deployment gets an annotated git
-tag at that commit, `acme-v4.33.0.N` (N incrementing: `.1`, `.2`, ...), pushed to
-`origin`. The tag message lists the full current ACME feature set, so
-`git clone` + `git checkout <tag>` reliably reconstructs exactly what was live at
-that point — no need to replay commit history or guess which combination of patches
-was actually deployed. See "Tagging convention" below for what a tag does and does
-not capture.
+**Versioning:** every version that reaches a deployment gets an annotated git
+tag at the exact commit it was built from (`acme-v4.35.0.N`). From `acme-v4.35.0.5`
+on, the tag also records the image, its digest and the ACR build run. Since
+2026-09-18 the tag is created by `scripts/release/release.sh`, which **is** the
+deploy command: build, then tag, then deploy the tagged digest. See
+`scripts/release/README.md`.
+
+**What a tag does and does not give you:**
+- **Traceable:** for any running image you can find the exact commit, and this
+  changelog says what that commit contains.
+  `scripts/release/verify-deployed.sh` checks the running images against the tags.
+- **Not reproducible end to end, yet.** A tag says *what* was running. It does
+  **not** prove the environment can be stood up fresh on a customer subscription.
+  That needs infrastructure, secrets, configuration and seed data beyond the
+  image, and the customer Terraform template has never been run end to end
+  (tracked as #23). Don't read `git checkout <tag>` as a rebuild.
 
 **Base version:** Langfuse `v4.38.0` (upgraded from `v4.35.0` on 2026-09-19 — see
 "Upgrade to v4.38.0" below; before that from `v4.33.0` on 2026-09-11, see
@@ -1648,6 +1657,253 @@ highest-risk item of the five. Held for a separate session.
 
 ---
 
+## 2026-09-17/18 — Durable guardrail audit trail: shipped and verified end to end
+
+The feature that replaces "the dashboard pulls guardrail events whenever it
+happens to be open" with a durable write pushed for every guardrail
+decision. The push is asynchronous by design — a detached background task
+with retries — so it never adds latency to the guard decision itself; if it
+cannot deliver, the event stays in the service's local buffer. Design
+reference: `POSTGRES-COMPLIANCE-FRAMEWORK.md`, whose status
+notes are updated alongside this entry.
+
+**What shipped:**
+
+| Item | Repo | Commit |
+|---|---|---|
+| PR #17 — `POST /api/public/guardrails-events`, migration `20260917090000_add_acme_guardrail_events_push_support`, four least-privilege Postgres roles, self-approval guard, `user_id` on guardrail events, dedicated guardrails encryption key | `ACME-Rayin` | `6610fd8cf` |
+| PR #3 — push logic + end-user identity in the guardrails service | `rayin-guardrails` | — |
+| PR #4 — render `event_time` as UTC with a `Z` suffix | `rayin-guardrails` | `158a1d006` |
+| PR #5 — make push failures visible (health status, status endpoint, alertable log) | `rayin-guardrails` | `a86a3a730` |
+
+- **Push endpoint.** `rayin-guardrails` writes every decision to
+  `POST /api/public/guardrails-events`, authenticated with a project API key.
+  The project is derived from the key; any `project_id` in the body is
+  ignored.
+- **Four Postgres roles** (compliance framework §2): `rayin_migrator` (DDL
+  owner), `rayin_app_runtime` (general traffic), `rayin_guardrails_writer`
+  (`INSERT`-only on `acme_guardrail_events` — the endpoint's own connection),
+  `rayin_retention_purger` (age-gated `DELETE`, for the retention job).
+- **Self-approval guard** on prompt approvals: `approve` now rejects with
+  `FORBIDDEN` when the reviewer is the requester (framework §4.2).
+- **User identity on guardrail events.** Events carry the end user's
+  `user_id`. **This is caller-asserted** — it is what the guardrails service
+  reports, not yet verified against an identity token. Treat it as
+  attribution, not authentication, until token verification exists.
+- **Tiered content storage** by decision (framework §1.1): `allow` stores
+  metadata only, `redact` stores findings and redacted text, and `block`
+  stores the raw content encrypted server-side under a dedicated
+  `GUARDRAILS_ENCRYPTION_KEY`, separate from Langfuse's shared
+  `ENCRYPTION_KEY` (framework §3.4).
+
+**Bugs found and fixed, and what each one teaches:**
+
+| Commit | Bug | Lesson |
+|---|---|---|
+| `6fcc72f06` | On Postgres 15, `REASSIGN OWNED BY` fails with "permission denied to reassign objects" unless the admin role first holds `GRANT rayin_migrator TO <admin>`. | A local superuser bypasses the membership check. Test role migrations as a non-superuser admin that models the managed service's real privileges. |
+| `5c6430fb5` | AES-256-GCM `createDecipheriv` relied on the default auth-tag length instead of pinning `authTagLength`. Found by Semgrep. | Pin every GCM parameter explicitly; keep static analysis on crypto code. |
+| `rayin-guardrails` #4 (`158a1d006`) | The service rendered `event_time` with a `+00:00` offset; the endpoint validates with zod's `z.string().datetime()`, which by default accepts only `Z`. **Every push was rejected.** | Fixed where the non-canonical value was produced. The endpoint's schema was deliberately **not** widened: loosening an audit endpoint's input validation to fit one client is the wrong direction. |
+| `rayin-guardrails` #5 (`a86a3a730`) | The push path failed silently: errors were logged, nothing consumed the log, and the health check stayed green. | A control whose purpose is "every decision is durably recorded" needs its own failure signal. `/healthz` now reports an `audit_push` status in its body while still returning HTTP 200 (the path is both liveness and readiness probe, so failing it would restart or de-route the guard itself); an authenticated `/v1/audit-push/status` endpoint gives detail; failures emit the alertable log signature `audit_push_failed`. |
+
+**Verification:**
+
+- A real blocked request produced a complete audit row — `event_id`,
+  `user_id` and encrypted `block`-tier content — after the fixes above.
+- Project isolation holds: unauthenticated and wrong-key requests get 401;
+  a body-supplied `project_id` is ignored and the row lands under the
+  authenticating key's own project.
+- `rayin_guardrails_writer` verified to hold `INSERT` only: `SELECT`,
+  `UPDATE` and `DELETE` on the audit table, and `SELECT` on `api_keys`/
+  `projects`, are all denied. The blast radius of a bug or compromise in
+  the guardrails service stops at "can append rows to one audit table."
+
+**Build lessons for anyone building this product on Windows:**
+
+1. **Build from a clean export at a short path, not the repo checkout.** The
+   checkout plus `node_modules` exceeds the 260-character path limit.
+2. **Make that export with LF line endings preserved:**
+   `git -c core.autocrlf=false -c core.eol=lf archive --format=tar HEAD`.
+   With `core.autocrlf=true`, a plain `git archive` rewrites
+   `patches/*.patch` to CRLF and `pnpm install --frozen-lockfile` fails with
+   `ERR_PNPM_INVALID_PATCH`. **Recommended product fix (not made in this
+   change):** add `patches/*.patch text eol=lf` to `.gitattributes` so the
+   trap disappears for everyone.
+3. **`az acr build` on Windows can crash while streaming logs** (a console
+   encoding error in the CLI's log renderer); the build itself may still
+   succeed server-side. Use `--no-logs`, check the run's status, and read
+   the run log through the registry management API rather than the CLI
+   streamer — which tends to die before the line that explains a real
+   failure.
+
+**Process findings:**
+
+- A pre-merge smoke test applied a migration to a shared database before
+  the change was merged. Run pre-merge tests against disposable databases
+  only.
+- A record of a completed cleanup did not match actual state. Verify
+  completed actions against state, not against the command having run.
+- Audit-table test rows are **not** deleted: the table is append-only by
+  design, and a privileged `DELETE` would contradict that. They age out under
+  retention — once the purge job exists (see "Outstanding").
+
+Operational security findings from this deployment are tracked privately (INC-2026-09-17-01).
+
+**Rollback considerations:** previous images ignore the new roles, columns
+and key. Migration `20260917090000` is forward-only by design.
+
+---
+
+## Release index
+
+| Tag | Commit | What | Source certainty |
+|---|---|---|---|
+| `acme-v4.35.0.5` | `6610fd8cf` | Durable guardrail audit trail (#17) | Inferred: `main` head at build time; ACR doesn't record the source commit |
+| `acme-v4.35.0.6` | `ea760228a` | Guardrail event detail view: user, machine, capture source (#19) | Exact: built from `git archive` of the commit |
+| `acme-v4.35.0.7` | `3cc5a8252` | Guardrail table display fixes (#21) | Exact |
+| `acme-v4.35.0.8` | `56dc06207` | Security Analyst role (#22) | Exact |
+| `acme-v4.38.0.1` | `9fec0e44e` | Langfuse base upgrade to v4.38.0 (#26) | Source exact; **Dockerfile not exact**: `az acr build` read a stale `web/Dockerfile` from the checkout (one-line pnpm difference, no effect on the image). See "Fix: release.sh builds from the export" below |
+| `worker-acme-v4.38.0.1` | `9fec0e44e` | First worker release through `release.sh` (#26) | Exact: built from a clean worktree at `origin/main`, ACR `Step 1/55` |
+| `acme-v4.38.0.2` | `c4a7a1c24` | Animated sign-in headline (#28); supersedes `.1` | Exact: clean worktree, ACR `Step 1/114` |
+
+Tags `.5`–`.8` were backfilled on 2026-09-18 from the ACR build records (image
+digest and run ID are in each tag's message). Earlier tags (`.1`–`.4`) predate
+digest recording. `web/Dockerfile` did not change between `.5` and `.8`, so the
+Dockerfile defect fixed below could not have made those builds differ from
+their commits. It first mattered at `acme-v4.38.0.1`, the first release after
+the upgrade changed that file. Since 2026-09-19 the **worker is covered too**
+(`worker-acme-v4.38.0.1`). Before that it ran the mutable `acme-dev` image,
+whose source commit was never recorded.
+
+## 2026-09-18 — Guardrail event detail view: user, machine, capture source (acme-v4.35.0.6)
+
+**What:** The Guardrails dashboard stored events but only listed them, showing
+the time without the date, no user and no machine, and rows couldn't be
+opened.
+- **Table:** full date and time, plus User and Machine columns.
+- **Detail panel:** each row opens a panel with date and time, user, machine,
+  agent, direction, policy, action, redacted text (redactions only), whether
+  encrypted blocked content exists (never revealed), a trace link, the event
+  ID, and whether the event came in by push or pull. CAIRO roadmap Phase 1,
+  "clickable jailbreak detail view".
+
+**Database:** migration `20260918120000` adds `client_host` (the machine) and
+`source` (`push` | `pull`) to `acme_guardrail_events`. Both are nullable, and
+existing rows are deliberately not backfilled (append-only audit table).
+
+**Capture fixes:**
+- **Silent drop:** the dashboard's pull reconciliation could store a
+  metadata-only row before the push for the same event landed. The unique
+  index then silently dropped the richer push row (user, redacted text,
+  encrypted content). Pull now only stores events that have an `event_id` and
+  are at least 60 s old, past the push's worst case (~17.5 s), so it only
+  fills genuine gaps (`acmeGuardrailsPullBackfill.ts`).
+- **Duplicates:** the push endpoint now returns `duplicate: true|false`
+  instead of always implying a write.
+
+**Companion:** rayin-guardrails #6 sends `client_host` in the push and the buffer.
+
+**Verified:** on dev with **one synthetic smoke-test call** (user and machine
+set by hand in the test request). The push succeeded, and the stored row was
+read back through the detail panel. Unit tests: 15/15.
+
+**Known incomplete:**
+- **No real caller sends `user_id` or `client_host` yet** (#20), so real
+  events show "—".
+- **Both values are caller-asserted, not verified** (Ledger N-34).
+
+## 2026-09-18 — Guardrail table display fixes (acme-v4.35.0.7)
+
+**What:** Two display bugs from the detail view:
+- The date overlapped the User column. The table is fixed-layout, and the
+  date cell didn't wrap.
+- The detail panel flashed "Loading…" while closing, because the query was
+  disabled mid-animation.
+
+Display only; no data changes. **Verified** in the browser on dev.
+
+## 2026-09-18 — Security Analyst role (acme-v4.35.0.8)
+
+**What:** A new role, `SECURITY` ("Security Analyst"), for investigating
+guardrail decisions without access to trace content, which is where raw
+prompts and PII live.
+- **Can:** see guardrail events and audit logs.
+- **Cannot:** change guardrail policies, use the AI assistant, or open traces,
+  sessions, scores or dashboards.
+
+This is PR 1 of 3 of the owner-approved guardrail RBAC design. Next: masked
+"what was typed" for the analyst, then owner-granted, logged reveal of raw
+content.
+
+**Enforcement:** upstream, trace, session and score reads only check project
+membership, so every member can read raw prompts.
+- **Server-side allow-list** (`securityRoleAllowList.ts`), applied in every
+  path that grants project access: three tRPC middlewares, trace download,
+  observation I/O, and the dashboard query stream.
+- **Blocked by default:** anything not on the allow-list is refused, including
+  routers added by future upstream merges.
+- **New scope `projectData:read`:** granted to every existing role, so
+  there's no change for current users. It gates the content pages in the
+  navigation.
+
+**Database:** migration `20260918200000` adds the enum value (additive).
+
+**Constraints:**
+- **Organisation-level only:** project role overrides are Enterprise-gated in
+  Langfuse.
+- **Member and Viewer still read raw PII in traces,** as upstream does.
+  Fixing that needs ingestion masking.
+
+**Verified:** 31 unit tests. On dev, the migration applied and health returns
+200. **Not yet verified with a real Security Analyst session in the browser**:
+that needs a second account with the role.
+
+## 2026-09-18 — Release traceability: tags, release script, changelog check
+
+**What:**
+- **Backfilled tags:** `acme-v4.35.0.5`–`.8` backfilled with image digests;
+  see the Release index above.
+- **`scripts/release/release.sh` is now the deploy command.** It builds from a
+  clean export of a merged commit, creates and pushes the annotated tag
+  (commit, image, digest, ACR run), then deploys that exact digest with
+  `kubectl set image …@sha256`. The tag is created after a successful build
+  and before the deploy. Rollbacks use `--redeploy <tag>`, so no deploy needs
+  a manual `kubectl set image`.
+- **`scripts/release/verify-deployed.sh`** reports every running image as
+  TRACED or UNTRACED. On 2026-09-18 it reported web TRACED (`.8`) and worker
+  UNTRACED (`acme-dev`).
+- **`.github/workflows/acme-changelog-check.yml`** fails a PR that changes
+  product code without updating this file, unless it carries the
+  `no-changelog` label.
+- **rayin-guardrails** got the same scripts, check and a first CHANGELOG in
+  the same pass.
+
+**Scope of the claim:** this makes deployments **traceable**. It does **not**
+make them **reproducible**. Rebuilding on a customer subscription is unproven
+until the Terraform end-to-end run (#23) passes.
+
+**Fix (2026-09-19): release.sh builds from the export.** The first releases
+after the v4.38.0 upgrade showed that `az acr build` resolves a relative
+`--file` against the *current directory*, not the build context. Run from a
+checkout on another branch, it paired the clean export's source with that
+branch's older Dockerfile. The worker build failed (no Rust toolchain), and
+`acme-v4.38.0.1` got a Dockerfile one line different from its commit. The
+script now:
+- runs `az acr build` from inside `$BUILD_DIR` with `.` as the context;
+- refuses if the Dockerfile is missing from the export;
+- after the build and before tagging, compares ACR's `Step 1/N` (read through
+  `listLogSasUrl`, because `az acr task logs` crashes on Windows consoles)
+  with the exported Dockerfile's instruction count. It refuses on a mismatch,
+  and warns if the log can't be read.
+
+The count check is a second line of defence. It catches a structurally
+different Dockerfile, not an edit that keeps the instruction count.
+Verified: syntax check; dry run; the instruction counts match ACR's step
+totals for both Dockerfiles (web 114, worker 55); the log parser reads `114`
+from a real ACR log. Not yet exercised by a real release. The next one will.
+**rayin-guardrails' copy still needs the same change** ("keep in sync").
+
+---
+
 ## 2026-09-19 — Upgrade to v4.38.0
 
 **What:** Base Langfuse version bumped from `v4.35.0` to `v4.38.0` (releases
@@ -1945,6 +2201,217 @@ deployed from it.
 stay queued because this fork has no runner for them. That is a separate
 gap, not addressed here.
 
+## 2026-09-19 — Change ID register (no release)
+
+CHG-2026-004 · Tier 2 · owner: Anees Ur Rahman. New `acme-governance/CHANGE-ID-REGISTER.md`: a
+change ID or ADR number is claimed there, on `main`, before it is used anywhere. Two parallel
+sessions collided on IDs twice on 2026-09-19. Documentation only; nothing is built or deployed.
+Rollback: revert the commit.
+## 2026-09-19 — LiteLLM gateway image pinned by digest (no release)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-006 · owner: Anees Ur Rahman |
+| **ADR** | None: Tier 2 change. |
+| **Approval** | Pending. The owner reviews and merges; the implementer does not approve its own change. |
+| **Dates** | Dev: applied 2026-09-19 11:52 UTC on the owner's instruction · Staging: not applicable, no database change · Prod: not applicable |
+| **Impact** | The LiteLLM gateway in `rayin-platform` only. The digest is the one already running, so applying it does not change the version. Applying does restart the single LiteLLM pod once (a few seconds of gateway downtime), because the image field changes from a tag to a digest. Not client-visible. |
+| **Schema change** | None |
+| **Rollback** | Revert this commit and re-apply `integrations/litellm/k8s/deployment.yaml`. Data lost: none. |
+| **Feature flag** | None |
+
+**What:** `integrations/litellm/k8s/deployment.yaml` now references
+`ghcr.io/berriai/litellm@sha256:a3715fa7…c62bf` instead of the `main-stable`
+tag.
+
+**Why:** `main-stable` is a floating tag. The live pod pulled it on
+2026-09-12 and runs LiteLLM 1.100.1 (image built 2026-09-10). By 2026-09-19
+the tag pointed at a different digest (`sha256:d295634e…`), so any pod
+restart, node drain or reschedule would have changed the gateway version
+without a record. CHG-2026-005 (CAIRO management of LiteLLM) is designed
+against the endpoints verified on 1.100.1, so the version has to hold still.
+
+**Why this approach:** pin the multi-arch index digest the kubelet reports
+for the running pod, rather than picking a newer release. This records what
+is running; it is not an upgrade. Alternative rejected: pinning a version tag
+such as `v1.100.1-stable`, because a tag can be re-pushed and we did not
+verify that such a tag resolves to the running digest.
+
+**Verified:** running digest read from the pod's `imageID`; version read from
+the installed package metadata inside the pod (1.100.1); the digest resolves
+on the public registry to a linux/amd64 + linux/arm64 index.
+
+**Deployment status:** deployed to dev, 2026-09-19 11:52 UTC, from branch
+`chore/pin-litellm-image-digest` before merge, on the owner's instruction.
+`kubectl diff` showed the image line as the only difference. Rolling update,
+new pod ready before the old one stopped. Verified afterwards from inside the
+new pod, read-only: pod spec and running image are both
+`sha256:a3715fa7…`, LiteLLM 1.100.1, `/health/readiness` healthy with the
+database connected, 0 restarts, all 5 virtual keys present, and model health
+unchanged from before the change (`nvidia-nemotron` healthy; `claude-sonnet`
+unhealthy with the same "credit balance is too low" error as before).
+
+**Known-incomplete:** upgrades of this image have no documented cadence or owner.
+
+## 2026-09-19 — Change procedure tiered by risk; one-command rehearsal database (no release)
+
+CHG-2026-007 · Tier 2 · owner: Anees Ur Rahman. `acme-governance/CHANGE-PROCEDURE.md`: Tier 1
+(schema, authentication or authorisation, secrets, guardrails, audit, client-visible) keeps the full
+artefact set; Tier 2 is one changelog line, one commit, one PR. Artefacts are produced during the
+build, ledger updates are batched per session (immediate for P0/P1), reports use four headings, and
+IDs come from the register. New `acme-governance/scripts/rehearsal-db.sh` builds a throwaway
+Postgres 15 that models Azure and runs up → down → up for a migration in one command (proven end
+to end 2026-09-19). New `acme-governance/rollback/MIGRATION-ROLLBACK-INVENTORY.md` classifies the
+five shipped ACME migrations; inventory only, no scripts. Documentation and tooling only; nothing is
+built or deployed. Rollback: revert the commit.
+## 2026-09-19 — CAIRO manages the LiteLLM gateway: keys, teams, budgets, models, spend (no release yet)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-005 · owner: Anees Ur Rahman |
+| **ADR** | [ADR-0003](acme-governance/adr/ADR-0003-cairo-litellm-control-plane.md) |
+| **Approval** | Pending. Design accepted for build by Anees Ur Rahman, 2026-09-19. The owner reviews and merges; the implementer does not approve its own change. Not a production approval. |
+| **Dates** | Dev: not deployed · Staging: not available; isolated migration and rollback rehearsal performed. (2026-09-19) · Prod: not yet |
+| **Impact** | None while the flag is off: no navigation entry, no calls to LiteLLM, four unused tables. With it on: project owners and admins manage gateway keys, teams, budgets and spend inside CAIRO. No downtime. Client-visible once enabled. |
+| **Schema change** | Migration `20260919120000_add_acme_litellm_management` (additive; no backfill). Creates roles `rayin_litellm_writer` and `rayin_litellm_retention_purger` without passwords. |
+| **Rollback** | [plan](acme-governance/rollback/20260919120000_add_acme_litellm_management/ROLLBACK.md): flag off; then previous image; `down.sql` only for full removal. Tested 2026-09-19 (up → down → up on a throwaway database). Data lost by `down.sql`: the change record and CAIRO's key mapping; the keys keep working in LiteLLM. |
+| **Feature flag** | `CAIRO_LITELLM_MANAGEMENT_ENABLED`, default off |
+
+**What:** server-side LiteLLM client, append-only event writer, service and
+tRPC router under `web/src/features/acme-enhancements/server/litellm/`; the
+"LLM Gateway" page (keys, teams, models, spend, change record) and a nav entry
+that renders nothing while the flag is off; project scopes `llmGateway:read`,
+`llmGateway:CUD`, `llmGatewayLogs:read`; four server-only `env.mjs` entries;
+the Security Analyst allow-list gains `acmeLitellm.status` and
+`acmeLitellm.events` only.
+
+**Why this approach:** CAIRO is the only portal and its RBAC is authoritative;
+LiteLLM keys and teams are a projection tagged with `cairo_*` metadata. The
+master key stays on the server. Every mutation writes an intent row before
+LiteLLM is called and an outcome row before the user sees a result. Verified on
+the running LiteLLM 1.100.1 with throwaway keys: `/key/{key}/regenerate` and
+`tags` are refused as Enterprise features, so **rotation is CAIRO's own
+create-then-delete, not native rotation**, and tagging uses `metadata`; key
+aliases are unique (rotations carry a generation suffix); `spend` is honoured on
+create (so rotating cannot reset a budget); `/key/update` replaces the whole
+`metadata` object (so CAIRO reads, merges and writes back). Not used because
+Enterprise-only: per-model budgets, temporary budget increases,
+`/global/spend/report`, the team admin role, LiteLLM's own audit log.
+
+**Verified:** 153 unit tests pass (client, audit wrapper, service, router RBAC
+denial for MEMBER / VIEWER / NONE / Security Analyst, flag off, cross-project
+ids, no key material in errors, rows, the record or responses); typecheck and
+lint clean on every touched file; migration rehearsed up → down → up with the
+grants behaving as designed for all three roles.
+
+**Deployment status:** source-only. Not built, not deployed, never run against
+a real CAIRO database or with the flag on.
+
+**Known-incomplete:**
+- **The append-only control on `acme_litellm_events` is designed, not
+  effective.** Dev's application connects to Postgres as the admin login, which
+  owns the table, so it can update and delete rows today (Readiness Ledger
+  P0-5; `acme-rayin-ops` gap list B9). The same is true of
+  `acme_guardrail_events`. The rehearsal shows both halves: denied as
+  `rayin_app_runtime`, allowed as `postgres`.
+- Assigning a role per project needs Langfuse's `rbac-project-roles`
+  entitlement, which this deployment does not have: a user's organisation role
+  applies to every project in the organisation.
+- Spend is $0.00 in dev (the only healthy model is free tier), so cost figures
+  are untested with real money. Requests and tokens are shown alongside.
+- Environment steps not done: passwords for the two new roles,
+  `RAYIN_LITELLM_WRITER_DATABASE_URL`, `LITELLM_BASE_URL`, `LITELLM_MASTER_KEY`
+  on web. Network path web → `litellm.rayin-platform:4000` unverified.
+- The UI has not been seen in a browser. No retention job exists for the new
+  table; nothing is purged.
+- Keys created outside CAIRO (5 today) are listed read-only to organisation
+  owners; adopting them is out of scope.
+
+## 2026-09-19 — Gateway request logs: receiver, append-only mirror, reconciliation (no release yet)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-008 · Tier 1 · owner: Anees Ur Rahman |
+| **ADR** | [ADR-0003](acme-governance/adr/ADR-0003-cairo-litellm-control-plane.md) §4, §5 |
+| **Approval** | Pending. The owner reviews and merges; the implementer does not approve its own change. Not a production approval. |
+| **Dates** | Dev: not deployed · Staging: not available; isolated migration and rollback rehearsal performed. (2026-09-19) · Prod: not yet |
+| **Impact** | None while the flag is off: the receiver answers 404, the worker schedules nothing, two unused tables. With it on: CAIRO keeps its own record of every request through the LLM gateway (metadata only). No downtime. Client-visible once enabled. Depends on CHG-2026-005. |
+| **Schema change** | Migration `20260919180000_add_acme_litellm_request_logs` (additive; no backfill): `acme_litellm_request_logs`, `acme_litellm_reconcile_runs`, grants for the roles created by CHG-2026-005. |
+| **Rollback** | [plan](acme-governance/rollback/20260919180000_add_acme_litellm_request_logs/ROLLBACK.md): flag off; then previous image; `down.sql` only for full removal. Tested 2026-09-19 (up → down → up, 7 of 7 PASS, one command). Data lost by `down.sql`: the mirror and the reconcile history; LiteLLM's own spend logs are untouched. |
+| **Feature flag** | `CAIRO_LITELLM_REQUEST_LOG_INGEST_ENABLED`, default off, on web and worker |
+
+**What:**
+- **Receiver** `POST /api/public/litellm-request-logs`: a dedicated bearer secret
+  (`CAIRO_LITELLM_INGEST_SECRET`, at least 32 characters, compared in constant
+  time); a closed schema of the LiteLLM 1.100.1 logging payload, where an
+  unknown or malformed record is rejected, never coerced; idempotent on
+  `request_id` through the INSERT-only writer role; 4 MB and 512 records per
+  call; a per-pod rate ceiling; validate, one lookup, one bulk insert.
+- **The project is derived, never trusted:** from the payload's key hash matched
+  to `acme_litellm_keys`. Project and organisation fields in the payload are
+  ignored. A request made with a key CAIRO did not issue is stored with no
+  project and is visible to organisation owners only.
+- **Metadata only.** The payload also carries prompt and response text, error
+  messages and tracebacks, model parameters, requester headers and the user's
+  email. All of it is discarded; 24 allow-listed columns are stored.
+- **Reconciliation**, a worker job every 5 minutes: pages LiteLLM's
+  `/spend/logs/v2`, inserts what the mirror lacks, and records the **gap count**
+  for every pass, including failed ones. Matches on `request_id` or
+  `litellm_call_id`, because on a cache hit LiteLLM forms the two ids
+  independently.
+- **Screens:** a "Requests" tab on the LLM Gateway page. Above the list: last
+  reconciliation, gap count, a warning when the last success is older than 15
+  minutes, and a plain statement when nothing has arrived by push.
+- The Security Analyst allow-list gains `acmeLitellm.requestLogs` and
+  `acmeLitellm.reconcileStatus` (both need `llmGatewayLogs:read`).
+
+**Why this approach:** push gives near-real-time records but the gateway drops
+events rather than delay model traffic, so push alone can lose requests
+silently. Reconciliation makes the mirror complete and, above all, makes a gap
+visible. Verified on the running gateway before building: `/spend/logs/v2` is
+OSS and carries no prompt text; the `generic_api` logger is in LiteLLM's core
+package with no licence check; the spend-log `request_id` is the provider
+response id on success and the `litellm_call_id` on failure, and the 1.100.1
+source sets the push payload's `id` by the same rule.
+
+**Verified:** 36 receiver tests against a replayed sample carrying every field
+of the 1.100.1 payload (accepted once, duplicate skipped, unauthenticated
+refused, unknown field refused, oversize refused, project derived, no project
+for an unknown key, a marker string placed in every content field is absent
+from what is stored, and from every log sink, including when a database
+error message echoes the row: only the error name and code are logged);
+13 reconciliation tests (a real gap is found, inserted
+and counted; no false gap on a cache hit; a LiteLLM failure is recorded as a
+failed run); router RBAC denial tests for the two new procedures; 196 web and
+13 worker tests pass; typecheck clean on web, worker and shared; lint clean.
+
+**Deployment status:** source-only. Not built, not deployed.
+
+**Known-incomplete:**
+- **Push will be best-effort with no retry.** Read from the running LiteLLM
+  1.100.1 source: the plain `generic_api` logger is built with `max_retries`
+  0 and clears its queue after every send, so a batch whose POST fails for
+  any reason is dropped at once. Earlier revisions of ADR-0003 said it retried
+  and buffered 50,000 events; that was wrong and is corrected in revision 7.
+  Every push failure becomes a reconciliation gap, which is what the gap
+  count is for. CHG-2026-009 may configure retries; the owner decides.
+- **Nothing pushes yet.** Enabling the gateway's callback is CHG-2026-009, a
+  separate change that needs a LiteLLM pod restart. Until then every record
+  arrives by reconciliation, up to about 7 minutes late, and the screen says so.
+- **The append-only control is designed, not effective** while the application
+  connects as the admin login (Readiness Ledger P0-5; ops gap list B9).
+- The three remaining mandatory proofs of ADR-0003 §10 need a dev deployment:
+  the grants as `rayin_app_runtime` and through the application's own
+  connection, a real gap found by reconciliation, and no prompt text in the
+  mirror.
+- The push side of the id match is proven from source, not yet observed. How
+  `request_id` is formed for call types other than chat completions is not
+  verified.
+- The rate ceiling is per web pod, not global. The end user and source address
+  in a record are what the caller reported; they are not verified.
+- No retention job exists; nothing is purged. The owner has not set a period.
+- The UI has not been seen in a browser.
+
 ## 2026-09-19 — CI: the AI security review becomes a gate (no release)
 
 | | |
@@ -2037,6 +2504,16 @@ deployed from it.
   flow to record.
 
 ## Outstanding, not yet done
+
+- **Rebuild on a customer platform is unproven (#23, P0, next).** Tags and
+  this changelog make deployments traceable, not reproducible. The customer
+  Terraform template has never been run end to end, and two known defects
+  block a fresh apply: the database name mismatch (N-26) and the self-signed
+  TLS certificate (N-27). Secrets, seed data (including the chicken-and-egg
+  push API key) and several untagged components (worker, LiteLLM,
+  rayin-proxy) are also still manual. See #23 for the acceptance test.
+- **Worker image is untraceable.** It still runs `acme-dev`, built 2026-09-11,
+  source commit unknown. Release it via `release.sh` to close this.
 
 - **Capabilities 4 & 5 of the 5-item GTM plan — prompt recommendation
   engine and automated optimization.** Deliberately not built 2026-09-16
