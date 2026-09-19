@@ -1781,6 +1781,16 @@ tests. The Tailwind build was compiled to confirm every new class, delay and
 reduced-motion variant is generated, and that the delay utilities come after
 the animation shorthand in the stylesheet, so the stagger isn't reset.
 
+**Released 2026-09-19 as web `acme-v4.38.0.2`** (ACR run `dt2s`, 13m42s)
+from `c4a7a1c24`, through `release.sh` run from a clean worktree at
+`origin/main`. The ACR log shows `Step 1/114` with `pnpm@12.4.1`, so it was
+built from `main`'s own Dockerfile and its tag is exact. That also replaces
+the `acme-v4.38.0.1` web image, whose Dockerfile did not match its tag. Health
+200, 0 error lines, no pending migrations. The live bundles contain the
+headline, its animation classes and keyframes, and the bundled Orbitron font.
+Not yet checked by eye in a signed-out browser. The worker is unchanged
+(`worker-acme-v4.38.0.1`).
+
 ---
 
 ## Outstanding, not yet done
