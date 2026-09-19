@@ -1883,6 +1883,68 @@ approver (Readiness Ledger N-46 and N-47, both open, both to close before the
 first customer production deployment); historical changes are not yet
 backfilled with retrospective design notes or rollback scripts.
 
+## 2026-09-19 — CI: three checks that failed on every PR (no release)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-002 · owner: Anees Ur Rahman |
+| **ADR** | [ADR-0001](acme-governance/adr/ADR-0001-ci-permanently-failing-checks.md) |
+| **Approval** | Pending. Build check: see "Verified" below. Independent check: recorded in the pull request. The owner reviews and merges; the implementer does not approve its own change. |
+| **Dates** | Dev: 2026-09-19 · Staging: not applicable, no database or runtime change · Prod: not applicable, CI configuration only |
+| **Impact** | Contributors and reviewers of this repository only. No downtime. Not client-visible: nothing in a built image changes. |
+| **Schema change** | None |
+| **Rollback** | [plan](acme-governance/rollback/CHG-2026-002-ci-checks/ROLLBACK.md): revert the merge commit. Data lost: none. |
+| **Feature flag** | Repository variable `CLAUDE_SECURITY_REVIEW_ENABLED`, default unset (off) |
+
+**Why:** Codespell, "Label PRs with conflicts" and "Security review" were red
+on every pull request in this fork (seen on #29, #31 and #32), for reasons
+unrelated to any change. A check that is always red hides the day it fails
+for a real reason, and it trains reviewers to merge past red.
+
+**What:**
+- **Codespell:** the whole failure was two words. `aks` (Azure Kubernetes
+  Service; codespell reads it as a misspelling of "ask", 78 hits across the
+  Terraform module, the customer template and these docs) is added to the
+  ignore list in `.codespellrc`. The one real typo, a misspelt "Whether" in
+  the `use_ddos_protection` description in
+  `infra/langfuse-terraform-azure/variables.tf`, is fixed.
+- **Label PRs with conflicts:** the job read a `PR_LABELER_TOKEN` secret this
+  fork does not have, so `gh` ran unauthenticated and exited 1. It now falls
+  back to the built-in `github.token`. The workflow's `permissions` block
+  already grants exactly what the job needs (pull requests: read, issues:
+  write), and fork PRs were already skipped. Setting the secret later still
+  takes precedence.
+- **Security review:** the job needs a `CLAUDE_API_KEY` secret (a paid API
+  key; it also sends each PR diff to the Anthropic API). Rather than fail
+  without one, it is now **opt-in**: skipped unless the repository variable
+  `CLAUDE_SECURITY_REVIEW_ENABLED` is `true`. To turn it on, set the secret
+  and the variable. Whether to fund and enable it is an owner decision; until
+  then the PR shows "skipped", not a false red. CodeQL and the existing
+  "Security scan" job are unaffected and still run.
+
+**Why this approach:** fix what is genuinely broken (the typo, the missing
+token), and make the one check that needs an owner decision explicitly
+opt-in rather than deleting it. Alternatives rejected: deleting the two
+workflows (loses them on the next upstream sync and hides the decision), and
+adding `continue-on-error` (keeps a check that can never go red).
+
+**Upstream sync note:** two upstream workflow files are edited, each in one
+place, with an `ACME:` comment. Expect a small, obvious conflict if upstream
+changes those lines.
+
+**Verified:** `codespell` run locally with the workflow's arguments reports
+no errors on this branch; `terraform fmt -check` passes on the edited file;
+both workflow files parse as YAML; the pre-commit hook (format check and
+lint) passed. The two workflow changes can only be proven by this PR's own
+check run; the result is recorded in the PR.
+
+**Deployment status:** source-only. CI configuration; nothing is built or
+deployed from it.
+
+**Known-incomplete:** the heavy test jobs (lint, tests, docker build, e2e)
+stay queued because this fork has no runner for them. That is a separate
+gap, not addressed here.
+
 ## Outstanding, not yet done
 
 - **Capabilities 4 & 5 of the 5-item GTM plan — prompt recommendation
