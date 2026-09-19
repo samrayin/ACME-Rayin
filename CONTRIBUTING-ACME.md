@@ -1,7 +1,9 @@
 # Contributing to this fork (ACME conventions)
 
 This file governs ACME-specific changes to this Langfuse fork. For contributing to
-Langfuse itself, see the upstream `CONTRIBUTING.md`.
+Langfuse itself, see the upstream `CONTRIBUTING.md`. For the broader process —
+branching, environments, CI/CD, infrastructure, and secrets, across all of
+RAYIN's repos — see [`ACME-DEVELOPMENT-FRAMEWORK.md`](ACME-DEVELOPMENT-FRAMEWORK.md).
 
 ## The one rule that matters
 
