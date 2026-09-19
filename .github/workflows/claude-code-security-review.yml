@@ -2,30 +2,91 @@ name: Security review
 
 on:
   pull_request:
+    # ACME: only PRs into main. Without this filter a PR could be opened against a base
+    # branch that lacks the gate script, pass using its own copy, then be retargeted.
+    # "edited" re-runs the review when a PR's base branch is changed.
+    branches:
+      - main
     types:
       - opened
       - reopened
       - synchronize
       - ready_for_review
+      - edited
 
 permissions:
   contents: read
   pull-requests: write
 
+# ACME: "edited" also fires on title and body edits, so a PR can queue several paid
+# runs. Keep only the newest. Never narrow this with a job-level `if:`: a skipped run
+# would replace an earlier red result with a pass.
+concurrency:
+  group: security-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
+  # ACME: the gate logic is tested on every PR, with no API key needed, so the
+  # enforcement step below cannot rot unnoticed.
+  gate-self-test:
+    name: Security review gate self-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run gate unit tests
+        run: python3 -m unittest discover -s .github/scripts -p "test_*.py" -v
+
   security-review:
     name: Security review
-    # ACME: opt-in. This job needs a CLAUDE_API_KEY secret (a paid API key, and
-    # it sends each PR diff to the Anthropic API). Without one it failed on
-    # every PR, which hid real failures. It is skipped, not red, until the
-    # owner sets the secret AND the repository variable
-    # CLAUDE_SECURITY_REVIEW_ENABLED=true (Settings > Secrets and variables >
-    # Actions > Variables).
-    if: vars.CLAUDE_SECURITY_REVIEW_ENABLED == 'true' && github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    # ACME (CHG-2026-003, ADR-0002): this check is built to be REQUIRED on main. It is a
+    # gate only once the owner adds it to a branch-protection rule; until then it is a
+    # loud, honest signal.
+    #
+    # GitHub treats a job SKIPPED by a job-level `if:` as PASSING a required check. So
+    # there is NO job-level `if:`. Every PR into main RUNS, and fails closed:
+    #  - a draft PR: red at no API cost (a skipped draft would leave a "pass" on the
+    #    commit that a quick ready-then-merge could use before the real run reports);
+    #  - no CLAUDE_API_KEY (not set yet, a fork PR, a Dependabot PR): red, with a reason;
+    #  - scanner or API error, or a review that did not complete: red;
+    #  - a finding at or above CLAUDE_SECURITY_REVIEW_BLOCK_AT (default HIGH): red.
+    # There is deliberately no "off" variable: a disabled gate must not look like a pass.
+    # To bypass it, the owner removes the required check or merges as an administrator,
+    # both of which are visible in the repository audit log.
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
+      - name: Explain why this PR cannot be reviewed (fails closed)
+        shell: bash
+        env:
+          HAS_KEY: ${{ secrets.CLAUDE_API_KEY != '' }}
+          IS_DRAFT: ${{ github.event.pull_request.draft }}
+          IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          if [ "$IS_DRAFT" = "true" ]; then
+            echo "::error title=Draft PR: not security-reviewed::Draft PRs are not reviewed, to save cost. Mark the PR ready for review to run the gate."
+            exit 1
+          fi
+          if [ "$HAS_KEY" = "true" ]; then
+            echo "API key available; the review will run."
+            exit 0
+          fi
+          if [ "$IS_FORK" = "true" ]; then
+            echo "::error title=Security review cannot run on a fork PR::GitHub withholds secrets from fork PRs, so this change has NOT been security-reviewed. A maintainer must review it and push the branch into this repository to run the gate."
+          elif [ "$ACTOR" = "dependabot[bot]" ]; then
+            echo "::error title=Security review cannot run on a Dependabot PR::GitHub withholds Actions secrets from Dependabot PRs, so this change has NOT been security-reviewed. Add CLAUDE_API_KEY as a Dependabot secret, or have a maintainer review and re-push it."
+          else
+            echo "::error title=Security review is not configured::The CLAUDE_API_KEY repository secret is not set, so this change has NOT been security-reviewed. The owner must set it (Settings > Secrets and variables > Actions)."
+          fi
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -33,27 +94,87 @@ jobs:
           fetch-depth: 2
           persist-credentials: false
 
+      # ACME: upstream excludes a directory NAME anywhere in a path, so a PR could hide
+      # code from the reviewer under e.g. web/src/x/.acme-gate-base/. Reserve the names.
+      # Also delete any results file the PR planted, before anything else can fail.
+      - name: Reject reserved paths and planted results
+        shell: bash
+        run: |
+          rm -f "$GITHUB_WORKSPACE/claudecode-results.json" "$GITHUB_WORKSPACE/findings.json"
+          if git ls-files | grep -qE '(^|/)\.acme-(gate-base|security-review-action)(/|$)'; then
+            echo "::error title=Reserved path in PR::This PR adds a path named .acme-gate-base or .acme-security-review-action. Those names are excluded from the security review, so they may not be used."
+            exit 1
+          fi
+
+      # ACME: trusted copies from the BASE branch: the gate script, and the agent
+      # instruction files the reviewer would otherwise load from the PR.
+      - name: Checkout trusted files from the base branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # By name, so it is always current main, not a base.sha that may be stale.
+          ref: ${{ github.event.pull_request.base.ref }}
+          path: .acme-gate-base
+          # Non-cone patterns: CLAUDE.md and AGENTS.md match at ANY depth.
+          sparse-checkout: |
+            .github/scripts
+            .claude
+            .agents
+            CLAUDE.md
+            AGENTS.md
+          sparse-checkout-cone-mode: false
+          fetch-depth: 1
+          persist-credentials: false
+
+      # ACME: the reviewer is an LLM agent run inside the PR checkout. It loads CLAUDE.md
+      # and AGENTS.md (at any depth), .claude/ (settings, hooks, permissions), .agents/
+      # and .mcp.json from the working tree, so a PR could tell it to report nothing.
+      # In this repo CLAUDE.md -> AGENTS.md -> .agents/AGENTS.md are SYMLINKS, so the
+      # copies must be dereferenced (-L) or the link would still resolve to the PR's
+      # file. Delete every PR copy, then restore the base branch's. The PR's changes to
+      # these files are still in the diff that is reviewed. Residual: instructions a PR
+      # hides in ordinary code or docs that the reviewer reads.
+      - name: Neutralise PR-controlled agent instructions
+        shell: bash
+        run: |
+          set -euo pipefail
+          find . -path ./.acme-gate-base -prune -o \
+            \( -name CLAUDE.md -o -name AGENTS.md -o -name CLAUDE.local.md \) -print0 | xargs -0 -r rm -f
+          rm -rf .claude .agents .mcp.json
+          for dir in .claude .agents; do
+            if [ -d ".acme-gate-base/$dir" ]; then cp -RL ".acme-gate-base/$dir" "./$dir"; fi
+          done
+          ( cd .acme-gate-base && find . \( -name CLAUDE.md -o -name AGENTS.md \) -print0 ) |
+            while IFS= read -r -d '' f; do
+              mkdir -p "$(dirname "$f")"
+              # -L follows the symlink chain inside the base checkout; a dangling link
+              # is simply left deleted.
+              cp -L ".acme-gate-base/$f" "$f" 2>/dev/null || echo "skipped dangling link: $f"
+            done
+          echo "Instruction files restored from base: $(find . -path ./.acme-gate-base -prune -o \( -name CLAUDE.md -o -name AGENTS.md \) -print | wc -l)"
+
+      # ACME: checked out to its own top-level path, not under .github/actions/, so that
+      # excluding it from the scan does not also exclude this repo's real composite actions.
       - name: Checkout Claude Code security review action
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: anthropics/claude-code-security-review
           ref: 0c6a49f1fa56a1d472575da86a94dbc1edb78eda
-          path: .github/actions/claude-code-security-review
+          path: .acme-security-review-action
           fetch-depth: 1
           persist-credentials: false
 
       - name: Patch Claude API validation model
         shell: bash
         run: |
-          python <<'PY'
+          # -I: isolated mode, so a PR-committed pathlib.py or os.py in the repo root
+          # cannot be imported by this step.
+          python3 -I - <<'PY'
           import os
           from pathlib import Path
 
           action_path = (
               Path(os.environ["GITHUB_WORKSPACE"])
-              / ".github"
-              / "actions"
-              / "claude-code-security-review"
+              / ".acme-security-review-action"
               / "claudecode"
               / "claude_api_client.py"
           )
@@ -68,9 +189,40 @@ jobs:
           PY
 
       - name: Run Claude Code security review
-        uses: ./.github/actions/claude-code-security-review
+        id: review
+        uses: ./.acme-security-review-action
         with:
           claude-api-key: ${{ secrets.CLAUDE_API_KEY }}
-          claude-model: claude-opus-4-1-20250805
+          # ACME: upstream pinned claude-opus-4-1-20250805. Overridable without a code
+          # change through the CLAUDE_SECURITY_REVIEW_MODEL repository variable.
+          claude-model: ${{ vars.CLAUDE_SECURITY_REVIEW_MODEL || 'claude-opus-5' }}
           comment-pr: true
+          # Must stay true: with false, a cache hit skips the scan and the gate would
+          # have no fresh result to judge.
           run-every-commit: true
+          # Do not let the reviewer scan its own checked-out tooling.
+          exclude-directories: .acme-security-review-action,.acme-gate-base
+
+      - name: Enforce the gate (fail closed)
+        if: always()
+        shell: bash
+        env:
+          BLOCK_AT: ${{ vars.CLAUDE_SECURITY_REVIEW_BLOCK_AT || 'HIGH' }}
+          REVIEW_OUTCOME: ${{ steps.review.outcome }}
+        run: |
+          if [ "$REVIEW_OUTCOME" != "success" ]; then
+            echo "::error title=Security review did not run::The review step outcome was '$REVIEW_OUTCOME', so there is no trustworthy result to judge. Failing closed. See the earlier step's error for the reason."
+            exit 1
+          fi
+          GATE=".acme-gate-base/.github/scripts/security_review_gate.py"
+          if [ -f "$GATE" ]; then
+            echo "Using the gate script from the base branch."
+          else
+            # BOOTSTRAP ONLY: reachable only until the PR that adds the script merges,
+            # because this workflow runs only for PRs into main. Remove this fallback
+            # in the follow-up change named in ADR-0002, so a missing script fails closed.
+            GATE=".github/scripts/security_review_gate.py"
+            echo "::warning::Gate script is not on the base branch yet; using the copy from this PR (bootstrap only)."
+          fi
+          echo "Review step outcome: $REVIEW_OUTCOME. Blocking severity: $BLOCK_AT."
+          python3 -I "$GATE" "$GITHUB_WORKSPACE/claudecode-results.json" "$BLOCK_AT"
