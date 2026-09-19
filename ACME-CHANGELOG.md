@@ -2156,6 +2156,61 @@ failed run); router RBAC denial tests for the two new procedures; 196 web and
 - No retention job exists; nothing is purged. The owner has not set a period.
 - The UI has not been seen in a browser.
 
+## 2026-09-19 — LiteLLM gateway pushes request logs to CAIRO (source only; NOT enabled)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-009 · Tier 1 · owner: Anees Ur Rahman |
+| **ADR** | [ADR-0003](acme-governance/adr/ADR-0003-cairo-litellm-control-plane.md) §4.2, §4.3 |
+| **Approval** | Pending. **Enabling it restarts the LiteLLM pod and is gated on the owner's explicit go-ahead.** The implementer does not approve its own change. |
+| **Dates** | Dev: not applied · Staging: not available; isolated migration and rollback rehearsal performed. (2026-09-19, configuration rehearsal in a throwaway pod; no migration in this change) · Prod: not yet |
+| **Impact** | None until applied. When applied: **one restart of the LiteLLM gateway pod** (rolling, image pinned by digest, the old pod serves until the new one is ready). Afterwards each gateway request is pushed to CAIRO within seconds. Model traffic is never delayed or failed by the push. |
+| **Schema change** | None |
+| **Rollback** | [plan](acme-governance/rollback/CHG-2026-009-litellm-request-log-callback/ROLLBACK.md): remove the `callbacks` line, re-apply the ConfigMap, **restart the LiteLLM pod**. Untested in dev. Data lost: none; reconciliation keeps mirroring. |
+| **Feature flag** | None on the gateway: the `callbacks` line is the switch, and it only takes effect at pod start. The CAIRO receiver stays behind `CAIRO_LITELLM_REQUEST_LOG_INGEST_ENABLED`. |
+
+**What:** `integrations/litellm/config/cairo_request_log_callback.py` (new) and
+one `callbacks` entry plus `turn_off_message_logging: true` in
+`litellm-config.yaml`; `CAIRO_REQUEST_LOG_ENDPOINT` on the Deployment;
+`CAIRO_INGEST_SECRET` in the Secret example; the ConfigMap command now carries
+both files. New `integrations/litellm/OPERATIONS.md`: how to tell the
+integration is healthy, what the reconcile gap count means, what to do when it
+is not zero.
+
+**Why this approach:** LiteLLM 1.100.1's plain `generic_api` callback is built
+with `max_retries` 0 and clears its queue after every send, so a failed batch
+is dropped at once (read from the running version's source). The module builds
+the same open-source logger with three retries, a timeout and the header from
+the environment. Push stays best-effort by design; reconciliation
+(CHG-2026-008) is what makes the record complete. `turn_off_message_logging`
+keeps prompt and response text inside the gateway; note that it also applies to
+the existing `langfuse` callback.
+
+**Verified:** in a throwaway pod on the pinned image, with a mock model and a
+local sink, the live gateway untouched: the module loads from beside the config
+file; success and failure records carry exactly the 42 top-level and 34
+metadata fields of CAIRO's closed schema; the pushed `id` equals the response
+id on success and the `litellm_call_id` on failure; a marker placed in the
+prompt is absent from the pushed record; with the sink answering 503 twice the
+module made 3 POSTs and delivered. YAML and the module parse.
+
+**Deployment status:** source-only. **Nothing has been applied to any gateway.**
+
+**Known-incomplete:**
+- Never enabled or rolled back on a real gateway. The in-cluster Service URL in
+  the Deployment is read from the dev cluster's Service list, not exercised;
+  no NetworkPolicy engine is enforced there (Readiness Ledger N-33), so the
+  path is expected to be open, not proven.
+- If `CAIRO_REQUEST_LOG_ENDPOINT` or `CAIRO_INGEST_SECRET` is missing the new
+  pod fails at start-up and never becomes ready (the old pod keeps serving).
+  Apply the Secret key and env value before the ConfigMap.
+- Rotating the ingest secret needs a gateway restart.
+- Payloads of other call types (embeddings, responses API, MCP) and streaming
+  have not been checked against the closed schema; an unknown field rejects
+  that record and shows as a reconciliation gap.
+- The existing `langfuse` callback registration is left as it is (Readiness
+  Ledger N-20, fail-open); not in scope here.
+
 ## Outstanding, not yet done
 
 - **Capabilities 4 & 5 of the 5-item GTM plan — prompt recommendation
