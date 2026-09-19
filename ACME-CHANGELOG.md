@@ -2080,3 +2080,87 @@ gap, not addressed here.
   never actually been run end-to-end, since no real customer deployment
   exists yet. First real customer onboarding should treat this as the first
   live test of that sequence, not an already-proven path.
+
+---
+
+## 2026-09-15 — CI/CD typecheck gate, Terraform validate gate, Terraform .gitignore hygiene
+
+**What:**
+- `.github/workflows/typecheck.yml` (new file): a dedicated `pnpm run typecheck`
+  (`turbo run typecheck --filter=!ai-gateway`) job on the default
+  `ubuntu-latest` GitHub-hosted runner, on every PR and on push to `main`.
+- `.github/workflows/terraform-validate.yml` (new file): `terraform fmt -check`
+  and `terraform validate` (via `terraform init -backend=false`, no cloud
+  credentials) against `deploy/azure/` and `deploy/customer-template/`,
+  triggered only when a PR touches paths under those two directories.
+- `.gitignore`: added `.terraform/` and `*.tfstate*` (repo root, applies to
+  every Terraform config in the tree).
+
+**Why this approach:** `ACME-DEVELOPMENT-FRAMEWORK.md` §3 and §4. Production
+images are built with `NEXT_IGNORE_BUILD_ERRORS=true` to dodge an OOM on the
+build agent, which is how an RBAC scope rename (`auditLogs:read` →
+`projectAuditLogs:read`) shipped and silently broke the Audit Logs nav item —
+nothing else typechecked that build. A typecheck-only job carries far less
+memory pressure than a full Next.js build, so it's safe on the default
+runner without touching the existing `pipeline.yml` build/release workflow
+at all (this PR adds two new workflow files; it does not modify
+`pipeline.yml`). The Terraform gate and `.gitignore` entries close the gap
+that already forced abandoning `feat/promptfoo-evals` once (60-219MB of
+provider binaries committed to git history with no `.gitignore`
+protection).
+
+**Verification actually performed (read this before trusting either gate is
+green):**
+- `pnpm run typecheck --filter=!ai-gateway` was run locally against this
+  base (`main` @ `6658a4b52`) and **fails today**, unrelated to this PR:
+  4 pre-existing TypeScript errors in
+  `web/src/features/acme-enhancements/components/AcmeAuditLogsTable.tsx`
+  (missing `viewConfig` prop) and
+  `web/src/features/acme-enhancements/server/acmeChatRouter.ts` (a
+  nonexistent `normalizeOrderByForTable` export and two `TracesTableUiReturnType`
+  property accesses that no longer exist). These predate this PR — confirmed
+  the same two files exist as-is on `origin/main` — and are exactly the kind
+  of regression this gate exists to catch going forward; they are
+  intentionally **not** fixed here (out of scope for a CI/tooling PR). The
+  new `Typecheck` job will show red on this PR and on `main` until a
+  follow-up fixes them.
+- `terraform validate` was run locally (Terraform CLI v1.16.2 happened to be
+  available) against both `deploy/azure/` and `deploy/customer-template/`
+  using `terraform init -backend=false` — both pass cleanly (provider/module
+  deprecation warnings only, no errors).
+- `terraform fmt -check -recursive` was also run locally and **fails today**
+  for both directories on pre-existing formatting drift unrelated to this
+  PR (alignment-only whitespace: `deploy/azure/main.tf`,
+  `deploy/azure/versions.tf`, `deploy/customer-template/main.tf`). Not
+  fixed here for the same reason as the typecheck errors above — the new
+  `Terraform Validate` job will show red until a follow-up runs
+  `terraform fmt` on those three files.
+- `terraform plan` was intentionally never run — no cloud credentials were
+  used or required anywhere in this work.
+
+**Deployment status:** source/CI-only. These are GitHub Actions workflow and
+`.gitignore` changes — there is nothing to build or deploy to
+`langfuse-dev.aiatacme.com`; "done" here means merged and green in Actions,
+not deployed.
+
+**Known-incomplete:**
+- `.terraform.lock.hcl` still needs to be generated (`terraform init`) and
+  committed for both `deploy/azure/` and `deploy/customer-template/` —
+  intentionally not done in this change; doing it correctly needs a real
+  `terraform init` run from a machine intended to be the source of truth for
+  provider versions, which is a separate, deliberate action, not a side
+  effect of adding a CI gate.
+- The pre-existing `pnpm run typecheck` and `terraform fmt -check` failures
+  called out above are real and will make both new gates red immediately;
+  they need their own follow-up fixes.
+- Neither new workflow is (yet) a *required* branch-protection check — see
+  `ACME-DEVELOPMENT-FRAMEWORK.md` §3's "promote checks to required one at a
+  time, verified green on `main` before flipping the switch" guidance;
+  these can't be promoted to required until the failures above are fixed.
+- While verifying this, found `ACME-Rayin` currently has **no branch
+  protection or ruleset configured on `main` at all** (`GET
+  repos/samrayin/ACME-Rayin/branches/main/protection` → 404, rulesets →
+  `[]`) — direct pushes to `main` are possible today, which contradicts
+  `ACME-DEVELOPMENT-FRAMEWORK.md` §1's description of live branch
+  protection. Not fixed here (out of scope for this PR), flagging since it
+  changes the "how does this land" assumption the framework document makes.
