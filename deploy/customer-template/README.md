@@ -96,6 +96,76 @@ Re-run step 2 (the two `az acr import` commands) whenever RayIn ships a new
 version for this customer, then bump `web_image_tag`/`worker_image_tag` in
 `terraform.tfvars` and re-apply — same pattern as any other image upgrade.
 
+## TLS certificate — one-time customer step, before the first apply
+
+The Application Gateway serves HTTPS with **the customer's own publicly
+trusted certificate** (from their usual CA, covering `domain`), read from a
+Key Vault the customer controls. The template no longer issues a
+self-signed certificate by default: browsers, the Langfuse SDKs and most
+corporate proxies reject one, and a BFSI/government security review will
+flag it.
+
+What Terraform does with it: reads the certificate from
+`tls_key_vault_id` / `tls_certificate_name` (the plan fails early with
+"not found" if this step was skipped), grants the gateway's user-assigned
+identity **Key Vault Secrets User** on that vault (the RBAC role that gives
+it secret *get*, which is how Application Gateway reads the PFX), and points
+the gateway's listener at the certificate's **versionless** secret ID — so
+when the customer renews it in Key Vault, the gateway picks up the new
+version on its own (Application Gateway polls every 4 hours); no re-apply.
+
+**Customer (or whoever holds the certificate) does this once:**
+
+1. Have a Key Vault in the customer's subscription using the **Azure RBAC**
+   permission model (not access policies). A dedicated one outside this
+   deployment's resource group is best, so the certificate outlives any
+   rebuild of the environment:
+
+   ```bash
+   az group create --name rg-customer-certs --location <region>
+   az keyvault create --name <kv-name> --resource-group rg-customer-certs      --location <region> --enable-rbac-authorization true
+   ```
+
+2. Import the certificate — a PFX/PKCS#12 file with the full chain and the
+   private key, subject or SAN covering `domain`. The person importing
+   needs "Key Vault Certificates Officer" on the vault. The PFX password is
+   typed at the prompt, never put in a file or in shell history:
+
+   ```bash
+   read -rs PFX_PASSWORD
+   az keyvault certificate import --vault-name <kv-name>      --name <certificate-name> --file ./<customer-domain>.pfx      --password "$PFX_PASSWORD"
+   unset PFX_PASSWORD
+   ```
+
+3. Give the identity that runs `terraform apply` permission on that vault:
+   "Key Vault Certificate User" (to read the certificate at plan time) and
+   the right to create a role assignment on it ("User Access Administrator"
+   or "Role Based Access Control Administrator", scoped to the vault).
+
+4. If the vault's firewall is enabled, allow trusted Microsoft services
+   (`--bypass AzureServices`) — Application Gateway reads it as one — plus
+   the network `terraform plan` runs from.
+
+5. Put the vault's resource ID and the certificate name in
+   `terraform.tfvars`:
+
+   ```hcl
+   tls_key_vault_id     = "/subscriptions/<sub>/resourceGroups/rg-customer-certs/providers/Microsoft.KeyVault/vaults/<kv-name>"
+   tls_certificate_name = "<certificate-name>"
+   ```
+
+Point the customer's DNS (`domain`) at the gateway's public IP after the
+first apply, as before.
+
+**Test environments only:** `tls_certificate_mode = "self_signed"` restores
+the old behavior (a self-signed certificate issued in the deployment's own
+Key Vault, no customer step). Never use it for a customer-facing
+environment.
+
+**Not yet proven end to end:** this path is `terraform validate`-clean but
+has not been applied against a real subscription yet — the first real
+customer (or test) deployment is its first live run.
+
 ## Why each customer needs their own state storage
 
 Terraform's "state" is its own record of what it built — and it contains
@@ -139,7 +209,11 @@ see `../azure/versions.tf` and `../azure/README.md`).
      --scope "/subscriptions/<customer-subscription-id>/resourceGroups/rg-langfuse-tfstate/providers/Microsoft.Storage/storageAccounts/st<customername>tfstate"
    ```
 
-3. **Copy and fill in the two example files** (both gitignored — never
+3. **Import the customer's TLS certificate into Key Vault** — see "TLS
+   certificate" above. The first `plan` fails without it (unless this is a
+   test environment using `tls_certificate_mode = "self_signed"`).
+
+4. **Copy and fill in the two example files** (both gitignored — never
    commit your filled-in copies):
 
    ```bash
@@ -148,7 +222,7 @@ see `../azure/versions.tf` and `../azure/README.md`).
    # edit both with this customer's real values
    ```
 
-4. **Initialize, plan, review, apply:**
+5. **Initialize, plan, review, apply:**
 
    ```bash
    terraform init -backend-config=<customername>.backend.hcl
@@ -231,6 +305,13 @@ locations instead of the public ones.
   brand new random database password, NextAuth secret, and encryption key
   for every fresh deployment — there's nothing to remember to rotate or
   keep unique per customer.
+- **Third-party telemetry is off.** The module sets
+  `TELEMETRY_ENABLED=false` on web and worker (`telemetry_enabled`, default
+  `false`), and the RayIn web image no longer falls back to Langfuse's own
+  PostHog project when no PostHog key is configured.
+- **One database name everywhere.** `postgres_database_name` (default
+  `langfuse`) names both the database Terraform creates and the one the app
+  connects to.
 - **The Redis Cluster compatibility fix** ACME hit in production
   (`REDIS_CLUSTER_ENABLED=false` + a hash-tag key prefix) is built into the
   module itself and applies automatically — not something this template or

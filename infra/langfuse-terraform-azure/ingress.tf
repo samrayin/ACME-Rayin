@@ -112,6 +112,21 @@ resource "azurerm_role_assignment" "keyvault_secrets_user" {
   skip_service_principal_aad_check = true
 }
 
+# ACME: in key_vault TLS mode the certificate lives in the customer's own Key
+# Vault, not the module-created one above, so the gateway identity needs "get"
+# access there too. "Key Vault Secrets User" is the RBAC role that grants
+# secrets/get, which is how Application Gateway reads a certificate's PFX.
+# Requires the customer vault to use the Azure RBAC permission model.
+resource "azurerm_role_assignment" "appgw_customer_certificate" {
+  count = var.tls_certificate_mode == "key_vault" ? 1 : 0
+
+  scope                = var.tls_key_vault_id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_user_assigned_identity.appgw.principal_id
+
+  skip_service_principal_aad_check = true
+}
+
 # Enable Azure Application Gateway Ingress Controller
 resource "azurerm_application_gateway" "this" {
   name                = module.naming.application_gateway.name
@@ -151,9 +166,11 @@ resource "azurerm_application_gateway" "this" {
     public_ip_address_id = azurerm_public_ip.appgw.id
   }
 
+  # ACME: self-signed (test only) or the customer's Key Vault certificate,
+  # per var.tls_certificate_mode -- see tls.tf.
   ssl_certificate {
     name                = var.name
-    key_vault_secret_id = azurerm_key_vault_certificate.this.versionless_secret_id
+    key_vault_secret_id = local.tls_key_vault_secret_id
   }
 
   backend_address_pool {
@@ -217,6 +234,10 @@ resource "azurerm_application_gateway" "this" {
       ssl_certificate,
     ]
   }
+
+  # ACME: the gateway identity's Key Vault role must have propagated before
+  # the gateway first reads the certificate.
+  depends_on = [time_sleep.key_vault_rbac_propagation]
 }
 
 resource "azurerm_public_ip" "appgw" {

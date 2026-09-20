@@ -43,10 +43,27 @@ module "langfuse" {
   postgres_sku_name       = "GP_Standard_D2s_v3"
   postgres_storage_mb     = 32768
 
+  # Pinned so the module's 2026-09-18 database-name fix (TF-07 / N-26) plans
+  # NO change here. The app has always used the "langfuse" database (the Helm
+  # value was hard-coded), while the Terraform-managed resource imported into
+  # this state is the separate, naming-module-generated "psqldb-langfuse"
+  # (see import-state.sh). Without the legacy override the module would plan
+  # to replace that resource with one named "langfuse". Only for this
+  # already-imported state -- new deployments never set it.
+  postgres_database_name                 = "langfuse"
+  legacy_postgres_database_resource_name = "psqldb-langfuse"
+
   redis_sku_name          = "Balanced_B3"
   redis_high_availability = true
 
   app_gateway_capacity = 1
+
+  # The live dev gateway serves the module-issued self-signed certificate.
+  # The module default became "key_vault" on 2026-09-18 (TF-09 / N-27); pin the
+  # old behavior so this state keeps its certificate (a `moved` block in the
+  # module carries it to its new address). Switching dev to a trusted
+  # certificate is a separate, deliberate change.
+  tls_certificate_mode = "self_signed"
   use_ddos_protection  = true
 
   langfuse_helm_chart_version = "2.0.0"
@@ -55,9 +72,9 @@ module "langfuse" {
   # infra/langfuse-terraform-azure/variables.tf), pinned explicitly here so
   # this file stays correct even if those defaults ever change upstream.
   web_image_repository    = "acmelangfuseacr.azurecr.io/langfuse-web"
-  web_image_tag            = "acme-dev"
+  web_image_tag           = "acme-dev"
   worker_image_repository = "acmelangfuseacr.azurecr.io/langfuse-worker"
-  worker_image_tag         = "acme-dev"
+  worker_image_tag        = "acme-dev"
 
   # Redis Cluster compatibility fix (found 2026-09-10, during the v4.33.0
   # upgrade) is now built into the module itself (langfuse.tf) -- it applies

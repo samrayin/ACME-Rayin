@@ -65,6 +65,30 @@ module "langfuse" {
 }
 ```
 
+## Later ACME changes (2026-09-18)
+
+Not part of the original four-variable patch above; each line is also in
+`ACME-CHANGELOG.md`, and any future upstream re-base has to carry them too.
+
+- **Database name (TF-07 / N-26)** — `postgres_database_name` (default
+  `langfuse`) now names the `azurerm_postgresql_flexible_server_database`
+  resource *and* the Helm `postgresql.auth.database` value. Upstream named the
+  resource `psqldb-<name>` via the naming module while hard-coding `langfuse`
+  in the Helm values, so a fresh deployment pointed the app at a database it
+  never created. `legacy_postgres_database_resource_name` exists only so ACME
+  dev's already-imported state (which manages `psqldb-langfuse`) does not plan
+  a replacement.
+- **TLS (TF-09 / N-27)** — `tls_certificate_mode`, default `key_vault`: the
+  Application Gateway reads a publicly trusted certificate from the customer's
+  own Key Vault (`tls_key_vault_id` + `tls_certificate_name`) through its
+  user-assigned identity, which is granted "Key Vault Secrets User" on that
+  vault. `self_signed` (the old behavior) is an explicit opt-in for test
+  environments. A `moved` block in `tls.tf` carries existing states'
+  certificate to its new `[0]` address.
+- **Telemetry (TF-65 / N-32)** — `telemetry_enabled` (default `false`) sets the
+  chart's `langfuse.features.telemetryEnabled`, i.e. `TELEMETRY_ENABLED` on
+  web and worker.
+
 ## Deployment status
 
 See `ACME-CHANGELOG.md` at the repo root for the up-to-date status.
