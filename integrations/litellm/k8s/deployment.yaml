@@ -48,6 +48,12 @@ spec:
           envFrom:
             - secretRef:
                 name: litellm-provider-keys
+          env:
+            # CAIRO request-log push (CHG-2026-009). In-cluster Service of the
+            # CAIRO web tier; never through the public gateway. The bearer
+            # secret, CAIRO_INGEST_SECRET, comes from litellm-provider-keys.
+            - name: CAIRO_REQUEST_LOG_ENDPOINT
+              value: http://langfuse-web.langfuse.svc.cluster.local:3000/api/public/litellm-request-logs
           resources:
             requests:
               cpu: 250m
@@ -83,5 +89,6 @@ spec:
             #   kubectl create configmap litellm-config \
             #     --namespace rayin-platform \
             #     --from-file=litellm-config.yaml=../config/litellm-config.yaml \
+            #     --from-file=cairo_request_log_callback.py=../config/cairo_request_log_callback.py \
             #     --dry-run=client -o yaml | kubectl apply -f -
             name: litellm-config

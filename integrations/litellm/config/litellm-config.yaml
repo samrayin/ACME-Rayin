@@ -61,6 +61,19 @@ general_settings:
 litellm_settings:
   success_callback: ["langfuse"]
   failure_callback: ["langfuse"]
+  # CAIRO request-log push (ADR-0003, CHG-2026-009). Loads
+  # cairo_request_log_callback.py from beside this file (same ConfigMap) and
+  # sends one metadata record per request to CAIRO's receiver. Needs
+  # CAIRO_REQUEST_LOG_ENDPOINT and CAIRO_INGEST_SECRET in the pod's
+  # environment: the module raises at start-up without them, and the pod will
+  # not become ready. Adding or removing this line takes effect only when the
+  # pod RESTARTS.
+  callbacks: ["cairo_request_log_callback.cairo_request_log"]
+  # Prompt and response text never leave the gateway through ANY logging
+  # callback: they arrive as "redacted-by-litellm". CAIRO's receiver discards
+  # those fields anyway; this makes sure they are not sent in the first place.
+  # Note it applies to the langfuse callback above as well.
+  turn_off_message_logging: true
 
 # Starter virtual keys — one per team/use case, per README.md "Open
 # decisions" #3 (2026-09-12: $50/key, confirmed -- per-key, not a shared
