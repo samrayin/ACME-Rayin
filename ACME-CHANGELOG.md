@@ -2492,13 +2492,10 @@ running at the time, were not captured.
   Terraform template has never been run end to end, and two known defects
   block a fresh apply: the database name mismatch (N-26) and the self-signed
   TLS certificate (N-27). Secrets, seed data (including the chicken-and-egg
-  push API key) are also still manual. See #23 for the acceptance test.
-  (Updated 2026-09-20: the worker is now released and tagged, the LiteLLM
-  image is pinned by digest (CHG-2026-006), and the unused rayin-proxy was
-  removed from dev.)
-- ~~**Worker image is untraceable.**~~ **Closed 2026-09-19:** the worker was
-  released with `release.sh` as `worker-acme-v4.38.0.2`, traceable to its
-  source commit, and `verify-deployed.sh` reports it TRACED.
+  push API key) and several untagged components (worker, LiteLLM,
+  rayin-proxy) are also still manual. See #23 for the acceptance test.
+- **Worker image is untraceable.** It still runs `acme-dev`, built 2026-09-11,
+  source commit unknown. Release it via `release.sh` to close this.
 
 - **Capabilities 4 & 5 of the 5-item GTM plan — prompt recommendation
   engine and automated optimization.** Deliberately not built 2026-09-16
