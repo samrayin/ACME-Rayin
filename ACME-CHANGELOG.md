@@ -2453,6 +2453,28 @@ at in a browser after the fix.
 **Known-incomplete:** the other findings of the pass are listed in ADR-0003 §13
 and are not fixed here.
 
+## 2026-09-20 — Two statements in "Outstanding" that were no longer true (no release)
+
+CHG-2026-013 · Tier 2 · owner: Anees Ur Rahman. Documentation only: no code,
+schema, configuration or client-visible change. Rollback is to revert the
+commit. Found while doing the CHG-2026-012 records catch-up and deliberately
+split out of it, because both corrections were outside that change's
+registered scope.
+
+- **"Worker image is untraceable ... still runs `acme-dev`"** — closed on
+  2026-09-19. The worker was released with `release.sh` as
+  `worker-acme-v4.38.0.2`, traceable to its source commit, and
+  `verify-deployed.sh` reports it TRACED.
+- **"several untagged components (worker, LiteLLM, rayin-proxy) are also still
+  manual"** — the worker is tagged as above; the LiteLLM gateway image is
+  pinned by digest (CHG-2026-006); and `rayin-proxy` no longer exists. It was
+  unused (0 requests in 7 days) and was removed from dev on 2026-09-20 during
+  the R-05 guardrails-secret rotation.
+
+**Not changed:** no Readiness Ledger rating, status or approval state, and
+nothing else in the "Outstanding" list. The remaining items there were not
+re-checked as part of this change.
+
 ## Outstanding, not yet done
 
 - **Rebuild on a customer platform is unproven (#23, P0, next).** Tags and
@@ -2460,10 +2482,13 @@ and are not fixed here.
   Terraform template has never been run end to end, and two known defects
   block a fresh apply: the database name mismatch (N-26) and the self-signed
   TLS certificate (N-27). Secrets, seed data (including the chicken-and-egg
-  push API key) and several untagged components (worker, LiteLLM,
-  rayin-proxy) are also still manual. See #23 for the acceptance test.
-- **Worker image is untraceable.** It still runs `acme-dev`, built 2026-09-11,
-  source commit unknown. Release it via `release.sh` to close this.
+  push API key) are also still manual. See #23 for the acceptance test.
+  (Updated 2026-09-20: the worker is now released and tagged, the LiteLLM
+  image is pinned by digest (CHG-2026-006), and the unused rayin-proxy was
+  removed from dev.)
+- ~~**Worker image is untraceable.**~~ **Closed 2026-09-19:** the worker was
+  released with `release.sh` as `worker-acme-v4.38.0.2`, traceable to its
+  source commit, and `verify-deployed.sh` reports it TRACED.
 
 - **Capabilities 4 & 5 of the 5-item GTM plan — prompt recommendation
   engine and automated optimization.** Deliberately not built 2026-09-16
