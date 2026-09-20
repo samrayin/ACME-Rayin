@@ -48,20 +48,34 @@ model_list:
   # 0 remaining). One day of eval testing consumed it, because every
   # /v1/guard call costs one judge call.
   #
-  # CONFIRM THE MODEL SLUG BEFORE APPLYING. A Groq entry was added and removed
-  # on 2026-09-12 because the slug this account had access to no longer existed
-  # on Groq's lineup. Slugs below are placeholders: check each against the
-  # provider's current model list, and against what this account can actually
-  # call, before the ConfigMap is updated. Applying an entry with a dead slug
-  # gives a model that reports healthy and fails at call time.
+  # SLUGS VERIFIED 2026-09-20 against each provider's live model list, queried
+  # with these accounts' own keys from a throwaway pod - i.e. what these accounts
+  # can actually call, not what the docs advertise. The 2026-09-12 Groq failure is
+  # explained: Groq's lineup no longer carries ANY Llama 3.x chat model, so the
+  # slug used then is simply gone. Re-verify before any future apply - a dead slug
+  # reports healthy in the catalogue and fails at call time.
+  #
+  # Pinned, not a floating alias. Gemini offers gemini-flash-latest and similar;
+  # those drift exactly as a mutable image tag does, which is what CHG-2026-006
+  # pinned the gateway image by digest to avoid.
+  #
+  # WEEK 2 INPUT, found while verifying these slugs: this Groq account can call
+  # dedicated safety classifiers - meta-llama/llama-prompt-guard-2-86m and -22m
+  # (Llama Prompt Guard 2, purpose-built jailbreak/prompt-injection detection)
+  # and openai/gpt-oss-safeguard-20b. Those are candidates for the v5 P0 ("swap
+  # the judge model to a dedicated safety classifier") and a better structural
+  # fit for N-56 than any chat model, since a classifier returns a label rather
+  # than free text that must be string-matched. NOT added here: they are
+  # classifiers, not chat models, so whether they work through NeMo's
+  # self_check_input path needs testing, not assuming.
   - model_name: groq-judge
     litellm_params:
-      model: groq/<confirm-current-slug>
+      model: groq/openai/gpt-oss-20b
       api_key: os.environ/GROQ_API_KEY
 
   - model_name: gemini-judge
     litellm_params:
-      model: gemini/<confirm-current-slug>
+      model: gemini/gemini-2.5-flash-lite
       api_key: os.environ/GEMINI_API_KEY
 
   # OpenAI — configured-but-dormant. Uncomment once this provider is confirmed live.
