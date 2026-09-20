@@ -2424,7 +2424,7 @@ CHG-2026-011; it said "source-only" when merged.)
 | **Change ID** | CHG-2026-011 · Tier 1 (clients can see it) · owner: Anees Ur Rahman |
 | **ADR** | [ADR-0003](acme-governance/adr/ADR-0003-cairo-litellm-control-plane.md) §13 (revision 9). No new ADR. |
 | **Approval** | Pending. The owner reviews and merges; the implementer does not approve its own change. Not a production approval. |
-| **Dates** | Dev: not deployed · Staging: not applicable, no database change · Prod: not yet |
+| **Dates** | Dev: deployed 2026-09-20 04:59 UTC as web `acme-v4.38.0.5`, digest `sha256:55b267aee5041d097d99af5192c1a7d9240409faae5844d9ff95a1a1d23843b8`, the four fixes re-checked in a browser; worker unchanged · Staging: not applicable, no database change · Prod: not yet |
 | **Impact** | Console only. No API, schema, role or gateway change. |
 | **Schema change** | None |
 | **Rollback** | Revert the commit and redeploy the previous web tag with `scripts/release/release.sh --redeploy`. Nothing to undo in data. |
@@ -2447,11 +2447,43 @@ admin who is not an organisation owner.
   the `\u0000` escape; same behaviour.
 
 **Verified:** 26 service unit tests pass (one new); typecheck clean on web;
-lint clean on the changed files. **Not verified:** not deployed, so not looked
-at in a browser after the fix.
+lint clean on the changed files. **Not verified:** the console was not checked
+as an organisation OWNER after the fix (checked as a non-owner ADMIN).
 
 **Known-incomplete:** the other findings of the pass are listed in ADR-0003 §13
 and are not fixed here.
+
+## 2026-09-19 — Sidebar: prompt pages grouped, "Book a call" removed (released as `acme-v4.38.0.3`)
+
+| | |
+|---|---|
+| **Change ID** | None. [#31](https://github.com/samrayin/ACME-Rayin/pull/31) merged before the change-ID register (CHG-2026-004) existed. Recorded here by CHG-2026-012 so the release has a changelog line. |
+| **ADR** | None. Navigation only. |
+| **Approval** | Merged and released by the owner. Not an independent review. |
+| **Dates** | Dev: released 2026-09-19, tag created 11:59 +03:00; exact rollout completion time not captured · Staging: not available · Prod: not yet |
+| **Impact** | Navigation only. No route, API, schema or permission change. |
+| **Schema change** | None |
+| **Rollback** | `scripts/release/release.sh --env <env file> --redeploy acme-v4.38.0.2`. Nothing to undo in data. |
+| **Feature flag** | None |
+
+**What:** "Prompt Reviews" and "Prompt Approvals" moved into the sidebar's
+Prompt Management group, after Prompts and Playground; upstream's "Book a call"
+entry and its unused `book-a-call-button.tsx` removed.
+
+**Released as:** web `acme-v4.38.0.3`, squash commit `f7c251b41`, ACR run
+`dt2t`, digest `sha256:8e11ca7ad59af9f286c4ee61e04437ccdf670a261448b058d5447c20704e8386`.
+It replaced `acme-v4.38.0.2`. The worker was not touched.
+
+**Deviation, recorded honestly:** `release.sh` was not yet on `main` (#24 was
+still open), so it was run from a copy taken from the release branch, and from
+a working clone rather than a clean detached worktree — a deviation from the
+N-35 interim control. The build input still matches the tag, because
+`release.sh` builds from `git archive` of the commit and reported "Dockerfile
+verified: ACR ran 114 steps, matching the export".
+
+**Not verified:** the visible change was not checked in a browser by the
+releasing session. Build start, end and duration, and the worker version
+running at the time, were not captured.
 
 ## Outstanding, not yet done
 
