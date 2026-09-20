@@ -35,6 +35,7 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | CHG-2026-009 | 1 | Enable the LiteLLM logging callback towards the CAIRO receiver (designed in ADR-0003) | Anees Ur Rahman | not started | Claimed |
 | CHG-2026-010 | 1 | Least-privilege database cutover: web and worker connect as `rayin_app_runtime`, not the admin login (Readiness Ledger P0-5, P0-6; ops gap list B9) | Anees Ur Rahman | design only, not started | Claimed |
 | CHG-2026-011 | 1 | LLM Gateway console fixes found in the first dev browser pass: error toast for non-owners, false gateway-side-admin badge, wording that overstated the append-only control, NUL byte in a source file (covered by ADR-0003; no new ADR) | Anees Ur Rahman | `fix/litellm-gateway-ui-pass` | Claimed |
+| CHG-2026-012 | 2 | Records catch-up, documentation only: this register's rows for CHG-2026-005, -008, -009, -010, -011 and ADR-0003 brought in line with what is merged; changelog line for release `acme-v4.38.0.3` | Anees Ur Rahman | `docs/records-catchup-chg-2026-012` | Claimed |
 
 ## ADR numbers
 
