@@ -26,8 +26,14 @@ Both are right. Neither is sufficient, and one cannot currently be satisfied.
 ### F2 — The rail check has no timeout and no exception handling.
 `app/guardrails_engine.py:177-197`: `check_input` calls `await _rails().generate_async(...)` with neither; `check_output` likewise. A slow judge model hangs `/v1/guard` indefinitely; any exception leaves `guard()` as a 500. A gateway-side timeout is necessary but **not sufficient** — it fires while the guardrails pod keeps the hung upstream call running, leaking work. **The timeout must exist on both sides**, and guardrails must decide explicitly what a rail failure means.
 
-### F3 — The judge model is unhealthy today. Fail-closed now would be a total outage.
-The catalogue reports `claude-sonnet` **Unhealthy** — credit balance. That is the model the jailbreak rail calls. With F2 unfixed and fail-closed on, every request would be refused.
+### F3 — The judge path has no quota headroom, on either provider. Fail-closed now would be a total outage.
+The catalogue reports `claude-sonnet` **Unhealthy** — Anthropic credit balance. The rail's actual judge is `nvidia-nemotron`, served through **OpenRouter's free tier**, and on 2026-09-20 at 21:20 UTC that tier was **exhausted**: `HTTP 429, "Rate limit exceeded: free-models-per-day"`, `X-RateLimit-Limit: 50`, `X-RateLimit-Remaining: 0`, `limit_source: openrouter_free_tier_daily`, resetting at 00:00 UTC. **Both judge paths were out of quota at the same moment.** A single day's testing — roughly sixty guard calls across two eval suites and a latency measurement — consumed it, because every `/v1/guard` call costs one judge call.
+
+So this is not "a model is temporarily unhealthy". **A guardrail intended to inspect every prompt cannot sit behind a fifty-request daily cap.** Under `enforce` a provider 429 is a fail-closed condition: every request refused, because the rail cannot reach a verdict. Quota headroom sized to real traffic is a prerequisite, not an operational detail.
+
+The same call also demonstrates **F2** end to end: the provider's 429 propagated out of `check_input`, which has no exception handling, and surfaced as an HTTP 500 from `/v1/guard`. An upstream quota error became an unhandled server error.
+
+**Free-tier terms are a week-2 decision, not a tonight decision.** Before OpenRouter, Groq or Gemini becomes the permanent judge model, each provider's free-tier terms must be checked for **training and logging use of submitted data**. The judge model receives the full prompt text of every request the guardrail inspects — for a BFSI product that is the most sensitive traffic in the system, and a free tier that reserves the right to train on it is disqualifying regardless of latency or accuracy. Establish the terms before the model, not after.
 
 ### F4 — Guardrails runs a mutable, untraceable image.
 `rayin-guardrails:event-client-host` — a branch-shaped tag, never through `release.sh`. Making all model traffic depend on a service whose running code cannot be traced to a commit is not defensible, and it is cheap to fix.
