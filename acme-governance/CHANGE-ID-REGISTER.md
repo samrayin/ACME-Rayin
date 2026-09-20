@@ -38,6 +38,7 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | CHG-2026-012 | 2 | Records catch-up, documentation only: this register's rows for CHG-2026-005, -008, -009, -010, -011 and ADR-0003 brought in line with what is merged; changelog line for release `acme-v4.38.0.3` | Anees Ur Rahman | `docs/records-catchup-chg-2026-012` · #53 | Claimed |
 | CHG-2026-013 | 2 | Changelog "Outstanding" section: two statements that were no longer true (worker traceability; worker / LiteLLM / rayin-proxy listed as untagged). Found during CHG-2026-012 and split out of it because they were outside its registered scope | Anees Ur Rahman | `docs/changelog-outstanding-corrections` · #55 | Claimed |
 | CHG-2026-014 | 1 | Enforce the guardrail on the LiteLLM gateway path: a custom guardrail hook calling `rayin-guardrails`, with an explicit timeout, a measured latency budget, and a staged move from record-only to fail-closed (Readiness Ledger H-01 / N-38; designed in ADR-0005) | Anees Ur Rahman | `docs/claim-chg-2026-014` | Claimed |
+| CHG-2026-015 | 1 | Add `groq-judge` and `gemini-judge` to the LiteLLM model list alongside `nvidia-nemotron`, reading their keys from the gateway Secret. **Source only** — no ConfigMap edit and no gateway restart, both of which stay a separate owner gate. Prompted by the judge path having no quota headroom (ADR-0005 F3) | Anees Ur Rahman | `docs/claim-chg-2026-015` | Claimed |
 
 ## ADR numbers
 
