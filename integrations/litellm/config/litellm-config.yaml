@@ -73,6 +73,19 @@ model_list:
       model: groq/openai/gpt-oss-20b
       api_key: os.environ/GROQ_API_KEY
 
+  # CHG-2026-016 — the safety model the guardrail rail is intended to use.
+  # Distinct from groq-judge (a general chat model) because its purpose is
+  # different: gpt-oss-safeguard-20b is trained to emit a bare safety verdict,
+  # which is what NeMo's is_content_safe parser actually requires. See
+  # ADR-0005 §F5: that parser takes only the FIRST TWO WORDS of the reply,
+  # matches safe/unsafe/yes/no, and falls through to UNSAFE on anything else —
+  # so a model that opens with preamble blocks every request. Staged and
+  # untested: no call has been made through this entry.
+  - model_name: groq-safeguard
+    litellm_params:
+      model: groq/openai/gpt-oss-safeguard-20b
+      api_key: os.environ/GROQ_API_KEY
+
   - model_name: gemini-judge
     litellm_params:
       model: gemini/gemini-2.5-flash-lite
