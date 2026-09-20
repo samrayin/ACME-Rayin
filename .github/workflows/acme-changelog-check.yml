@@ -1,0 +1,50 @@
+name: ACME changelog check
+
+# Every PR that changes product code must add an ACME-CHANGELOG.md entry in
+# the same PR, so the changelog can't fall behind what is merged and
+# released. Opt out only with the "no-changelog" label, for changes with no
+# user-visible or deployable effect.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  changelog:
+    name: Changelog entry for product changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require ACME-CHANGELOG.md when product code changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SKIP_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'no-changelog') }}
+        run: |
+          set -euo pipefail
+          changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
+          product=$(printf '%s\n' "$changed" \
+            | grep -E '^(web|worker|packages|ee|infra|deploy|integrations|rayin|scripts)/' \
+            | grep -vE '\.md$' || true)
+          if [ -z "$product" ]; then
+            echo "No product code changed; no changelog entry needed."
+            exit 0
+          fi
+          if printf '%s\n' "$changed" | grep -qx 'ACME-CHANGELOG.md'; then
+            echo "ACME-CHANGELOG.md is updated in this PR."
+            exit 0
+          fi
+          if [ "$SKIP_LABEL" = "true" ]; then
+            echo "::warning::Product code changed without a changelog entry; allowed by the no-changelog label."
+            exit 0
+          fi
+          echo "::error::This PR changes product code but not ACME-CHANGELOG.md. Add an entry, or apply the 'no-changelog' label if the change has no user-visible or deployable effect."
+          printf 'Product files changed:\n%s\n' "$product"
+          exit 1
