@@ -2145,7 +2145,7 @@ backfilled with retrospective design notes or rollback scripts.
 |---|---|
 | **Change ID** | CHG-2026-002 · owner: Anees Ur Rahman |
 | **ADR** | [ADR-0001](acme-governance/adr/ADR-0001-ci-permanently-failing-checks.md) |
-| **Approval** | Pending. Build check: see "Verified" below. Independent check: recorded in the pull request. The owner reviews and merges; the implementer does not approve its own change. |
+| **Approval** | Approved by Anees Ur Rahman (owner), 2026-09-19. Human approval: the owner merged pull request #34 (`30425343f`) and then confirmed the approval in person. Delegated auto-approval was not used. Build check: see "Verified" below, plus the pull request's own check run (Codespell passed, labeller passed, security review skipped, no failing check). Independent check: **not run** before the merge; author and merger are the same GitHub account, so GitHub holds no formal review (Readiness Ledger N-47). |
 | **Dates** | Dev: 2026-09-19 · Staging: not applicable, no database or runtime change · Prod: not applicable, CI configuration only |
 | **Impact** | Contributors and reviewers of this repository only. No downtime. Not client-visible: nothing in a built image changes. |
 | **Schema change** | None |
