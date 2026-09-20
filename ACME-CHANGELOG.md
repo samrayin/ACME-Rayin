@@ -2271,7 +2271,7 @@ built or deployed. Rollback: revert the commit.
 | **Change ID** | CHG-2026-005 · owner: Anees Ur Rahman |
 | **ADR** | [ADR-0003](acme-governance/adr/ADR-0003-cairo-litellm-control-plane.md) |
 | **Approval** | Pending. Design accepted for build by Anees Ur Rahman, 2026-09-19. The owner reviews and merges; the implementer does not approve its own change. Not a production approval. |
-| **Dates** | Dev: not deployed · Staging: not available; isolated migration and rollback rehearsal performed. (2026-09-19) · Prod: not yet |
+| **Dates** | Dev: deployed 2026-09-19, web `acme-v4.38.0.4` and worker `worker-acme-v4.38.0.2`, flag turned on the same day · Staging: not available; isolated migration and rollback rehearsal performed. (2026-09-19) · Prod: not yet |
 | **Impact** | None while the flag is off: no navigation entry, no calls to LiteLLM, four unused tables. With it on: project owners and admins manage gateway keys, teams, budgets and spend inside CAIRO. No downtime. Client-visible once enabled. |
 | **Schema change** | Migration `20260919120000_add_acme_litellm_management` (additive; no backfill). Creates roles `rayin_litellm_writer` and `rayin_litellm_retention_purger` without passwords. |
 | **Rollback** | [plan](acme-governance/rollback/20260919120000_add_acme_litellm_management/ROLLBACK.md): flag off; then previous image; `down.sql` only for full removal. Tested 2026-09-19 (up → down → up on a throwaway database). Data lost by `down.sql`: the change record and CAIRO's key mapping; the keys keep working in LiteLLM. |
@@ -2304,8 +2304,10 @@ ids, no key material in errors, rows, the record or responses); typecheck and
 lint clean on every touched file; migration rehearsed up → down → up with the
 grants behaving as designed for all three roles.
 
-**Deployment status:** source-only. Not built, not deployed, never run against
-a real CAIRO database or with the flag on.
+**Deployment status:** deployed to dev 2026-09-19 as `acme-v4.38.0.4` and
+`worker-acme-v4.38.0.2`, flag off at first and turned on the same day on the
+owner's instruction. Not in production. (Line corrected by CHG-2026-011; it
+said "source-only" when merged.)
 
 **Known-incomplete:**
 - **The append-only control on `acme_litellm_events` is designed, not
@@ -2334,7 +2336,7 @@ a real CAIRO database or with the flag on.
 | **Change ID** | CHG-2026-008 · Tier 1 · owner: Anees Ur Rahman |
 | **ADR** | [ADR-0003](acme-governance/adr/ADR-0003-cairo-litellm-control-plane.md) §4, §5 |
 | **Approval** | Pending. The owner reviews and merges; the implementer does not approve its own change. Not a production approval. |
-| **Dates** | Dev: not deployed · Staging: not available; isolated migration and rollback rehearsal performed. (2026-09-19) · Prod: not yet |
+| **Dates** | Dev: deployed 2026-09-19, web `acme-v4.38.0.4` and worker `worker-acme-v4.38.0.2`, flag turned on the same day · Staging: not available; isolated migration and rollback rehearsal performed. (2026-09-19) · Prod: not yet |
 | **Impact** | None while the flag is off: the receiver answers 404, the worker schedules nothing, two unused tables. With it on: CAIRO keeps its own record of every request through the LLM gateway (metadata only). No downtime. Client-visible once enabled. Depends on CHG-2026-005. |
 | **Schema change** | Migration `20260919180000_add_acme_litellm_request_logs` (additive; no backfill): `acme_litellm_request_logs`, `acme_litellm_reconcile_runs`, grants for the roles created by CHG-2026-005. |
 | **Rollback** | [plan](acme-governance/rollback/20260919180000_add_acme_litellm_request_logs/ROLLBACK.md): flag off; then previous image; `down.sql` only for full removal. Tested 2026-09-19 (up → down → up, 7 of 7 PASS, one command). Data lost by `down.sql`: the mirror and the reconcile history; LiteLLM's own spend logs are untouched. |
@@ -2385,7 +2387,10 @@ and counted; no false gap on a cache hit; a LiteLLM failure is recorded as a
 failed run); router RBAC denial tests for the two new procedures; 196 web and
 13 worker tests pass; typecheck clean on web, worker and shared; lint clean.
 
-**Deployment status:** source-only. Not built, not deployed.
+**Deployment status:** deployed to dev 2026-09-19 in the same images as
+CHG-2026-005, flag turned on the same day on the owner's instruction. Proofs 1,
+3 and 4 run in dev: see ADR-0003 §10. Not in production. (Line corrected by
+CHG-2026-011; it said "source-only" when merged.)
 
 **Known-incomplete:**
 - **Push will be best-effort with no retry.** Read from the running LiteLLM
@@ -2411,6 +2416,42 @@ failed run); router RBAC denial tests for the two new procedures; 196 web and
   in a record are what the caller reported; they are not verified.
 - No retention job exists; nothing is purged. The owner has not set a period.
 - The UI has not been seen in a browser.
+
+## 2026-09-19 — LLM Gateway console: fixes from the first real-browser pass (no release yet)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-011 · Tier 1 (clients can see it) · owner: Anees Ur Rahman |
+| **ADR** | [ADR-0003](acme-governance/adr/ADR-0003-cairo-litellm-control-plane.md) §13 (revision 9). No new ADR. |
+| **Approval** | Pending. The owner reviews and merges; the implementer does not approve its own change. Not a production approval. |
+| **Dates** | Dev: not deployed · Staging: not applicable, no database change · Prod: not yet |
+| **Impact** | Console only. No API, schema, role or gateway change. |
+| **Schema change** | None |
+| **Rollback** | Revert the commit and redeploy the previous web tag with `scripts/release/release.sh --redeploy`. Nothing to undo in data. |
+| **Feature flag** | Behind the existing `CAIRO_LITELLM_MANAGEMENT_ENABLED` and `CAIRO_LITELLM_REQUEST_LOG_INGEST_ENABLED`. |
+
+**What:** found by clicking through the console in dev, signed in as a project
+admin who is not an organisation owner.
+- No more red "Forbidden" toast on the Keys and Requests tabs for people who
+  are not organisation owners. The owner-only queries still answer 403; the
+  page already shows that inline, so the two queries mark 403 as silent.
+- Teams no longer all show "Has a gateway-side admin". LiteLLM adds the master
+  key's own user (`default_user_id`) as admin of every team it creates; that
+  membership is ignored, any other admin is still flagged. New unit test.
+- The change record and the request list no longer say the tables are
+  "append-only at database level". That control is designed but not effective
+  while the application connects as the admin login (Readiness Ledger P0-5,
+  CHG-2026-010). They now say: CAIRO only adds rows here.
+- `acmeLitellmService.ts` held two literal NUL bytes, so local `git diff` and
+  `grep` treated it as binary (GitHub rendered its diff in #41 normally). Now
+  the `\u0000` escape; same behaviour.
+
+**Verified:** 26 service unit tests pass (one new); typecheck clean on web;
+lint clean on the changed files. **Not verified:** not deployed, so not looked
+at in a browser after the fix.
+
+**Known-incomplete:** the other findings of the pass are listed in ADR-0003 §13
+and are not fixed here.
 
 ## Outstanding, not yet done
 

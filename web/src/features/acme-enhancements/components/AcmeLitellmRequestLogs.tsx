@@ -182,7 +182,11 @@ function LogsTable({
   const limit = 50;
   const logs = api.acmeLitellm.requestLogs.useQuery(
     { projectId, scope, page, limit },
-    { retry: false },
+    {
+      retry: false,
+      // FORBIDDEN on "unattributed" is rendered inline below; no error toast.
+      meta: scope === "unattributed" ? { silentHttpCodes: [403] } : undefined,
+    },
   );
 
   if (logs.isLoading) {
@@ -318,8 +322,8 @@ export function AcmeLitellmRequestLogs({ projectId }: { projectId: string }) {
             One row per call through the gateway: who, which key, which model,
             tokens, cost, result and source address. Never the prompt or the
             response. The end user and source address are what the caller
-            reported; they are not verified. The table is append-only by design
-            at database level.
+            reported; they are not verified. CAIRO only adds rows here; it never
+            edits or deletes them.
           </p>
         </CardHeader>
         <CardContent className="pt-0">

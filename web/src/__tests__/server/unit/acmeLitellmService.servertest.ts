@@ -13,6 +13,7 @@ import {
   getProjectSpend,
   hashLitellmKey,
   listProjectKeys,
+  listProjectTeams,
   listUnmanagedKeys,
   LitellmInvalidStateError,
   LitellmNotFoundError,
@@ -639,6 +640,47 @@ describe("listing, drift and degradation", () => {
         { token: "t", models: ["b", "a"], max_budget: 1 },
       ),
     ).toEqual([]);
+  });
+});
+
+describe("listProjectTeams: gateway-side admin", () => {
+  const teamRow = (id: string) => ({
+    id,
+    projectId: SCOPE.projectId,
+    teamAlias: id,
+    status: "ACTIVE",
+    models: [],
+    maxBudget: null,
+    budgetDuration: null,
+    rpmLimit: null,
+    tpmLimit: null,
+  });
+
+  it("ignores the master key's own membership, flags any other admin", async () => {
+    const t = setup();
+    await t.db.acmeLitellmTeam.create({ data: teamRow("team-own") });
+    await t.db.acmeLitellmTeam.create({ data: teamRow("team-other") });
+    (t.client as Record<string, unknown>).listAllTeams = vi.fn(async () => [
+      {
+        team_id: "team-own",
+        spend: 0,
+        // What LiteLLM 1.100.1 adds by itself on /team/new with the master key.
+        members_with_roles: [{ user_id: "default_user_id", role: "admin" }],
+      },
+      {
+        team_id: "team-other",
+        spend: 0,
+        members_with_roles: [
+          { user_id: "default_user_id", role: "admin" },
+          { user_id: "someone-else", role: "admin" },
+        ],
+      },
+    ]);
+    const out = await listProjectTeams(t.deps, SCOPE);
+    const flags = Object.fromEntries(
+      out.teams.map((x) => [x.id, x.hasLitellmAdmin]),
+    );
+    expect(flags).toEqual({ "team-own": false, "team-other": true });
   });
 });
 
