@@ -39,6 +39,52 @@ const EnvSchema = z.object({
   // regardless of this being configured.
   ACME_PROMPT_REVIEW_WEBHOOK_URL: z.string().optional(),
 
+  // ACME: nightly retention job for acme_guardrail_events
+  // (POSTGRES-COMPLIANCE-FRAMEWORK.md §1.3; worker/src/features/
+  // acmeGuardrailRetention). Fails closed: the job logs "disabled" and does
+  // nothing unless BOTH the purger database URL and the archive bucket are
+  // set. It never falls back to DATABASE_URL.
+  //
+  // Connection string for the rayin_retention_purger role (SELECT + DELETE
+  // on acme_guardrail_events only). A secret: reference it by name only.
+  RAYIN_RETENTION_PURGER_DATABASE_URL: z.string().optional(),
+  // Rows whose event_time is older than this many days are archived, then
+  // deleted. 30 is the decided policy (§1.3); per-customer overrides change
+  // this value, never code.
+  ACME_GUARDRAIL_RETENTION_DAYS: z.coerce.number().int().min(1).default(30),
+  // Rows per archive object (one gzipped JSONL blob per batch).
+  ACME_GUARDRAIL_RETENTION_BATCH_SIZE: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(10_000)
+    .default(1_000),
+  // Upper bound on batches per nightly run, so one run is bounded in time.
+  // Anything left over is picked up by the next night's run.
+  ACME_GUARDRAIL_RETENTION_MAX_BATCHES_PER_RUN: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .default(100),
+  // Safe default: report what would be archived/deleted, write and delete
+  // nothing. Set to "false" deliberately once a dry run has been reviewed.
+  ACME_GUARDRAIL_RETENTION_DRY_RUN: z.enum(["true", "false"]).default("true"),
+  // Archive destination. Uses the same StorageService as batch exports;
+  // Azure Blob vs S3 follows LANGFUSE_USE_AZURE_BLOB. On Azure, BUCKET is the
+  // container name. Access tier (Cool/Archive) is left to a storage
+  // lifecycle policy, not set here.
+  ACME_GUARDRAIL_ARCHIVE_BUCKET: z.string().optional(),
+  ACME_GUARDRAIL_ARCHIVE_PREFIX: z.string().default("guardrail-events/"),
+  ACME_GUARDRAIL_ARCHIVE_REGION: z.string().optional(),
+  ACME_GUARDRAIL_ARCHIVE_ENDPOINT: z.string().optional(),
+  ACME_GUARDRAIL_ARCHIVE_ACCESS_KEY_ID: z.string().optional(),
+  ACME_GUARDRAIL_ARCHIVE_SECRET_ACCESS_KEY: z.string().optional(),
+  ACME_GUARDRAIL_ARCHIVE_FORCE_PATH_STYLE: z
+    .enum(["true", "false"])
+    .default("false"),
+  ACME_GUARDRAIL_ARCHIVE_SSE: z.enum(["AES256", "aws:kms"]).optional(),
+  ACME_GUARDRAIL_ARCHIVE_SSE_KMS_KEY_ID: z.string().optional(),
+
   // ClickHouse Billing cutoff, shared with web via the provider resolver in
   // @langfuse/shared (getBillingProvider). The worker only consults it in the
   // defensive usage-metering guard; unset = CHB routing off. Date-only
@@ -279,6 +325,12 @@ const EnvSchema = z.object({
     .enum(["true", "false"])
     .default("true"),
   QUEUE_CONSUMER_ACME_PROMPT_REVIEW_QUEUE_IS_ENABLED: z
+    .enum(["true", "false"])
+    .default("true"),
+  // ACME: consumer for the nightly guardrail-event retention job. On by
+  // default because the job itself stays inert (logs "disabled") until the
+  // purger URL and archive bucket are configured.
+  QUEUE_CONSUMER_ACME_GUARDRAIL_RETENTION_QUEUE_IS_ENABLED: z
     .enum(["true", "false"])
     .default("true"),
   QUEUE_CONSUMER_CLOUD_SPEND_ALERT_QUEUE_IS_ENABLED: z

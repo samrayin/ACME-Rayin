@@ -22,6 +22,8 @@ import { cloudUsageMeteringQueueProcessor } from "./queues/cloudUsageMeteringQue
 import { cloudSpendAlertQueueProcessor } from "./queues/cloudSpendAlertQueue";
 import { cloudFreeTierUsageThresholdQueueProcessor } from "./queues/cloudFreeTierUsageThresholdQueue";
 import { acmePromptReviewQueueProcessor } from "./queues/acmePromptReviewQueue";
+// ACME: nightly acme_guardrail_events retention job.
+import { acmeGuardrailRetentionQueueProcessor } from "./queues/acmeGuardrailRetentionQueue";
 import { monitorQueueProcessor } from "./queues/monitorQueue";
 import { inAppAgentRunQueueProcessor } from "./queues/inAppAgentRunQueue";
 import { WorkerManager } from "./queues/workerManager";
@@ -43,6 +45,7 @@ import {
   CloudFreeTierUsageThresholdQueue,
   CloudUsageMeteringQueue,
   AcmePromptReviewQueue,
+  AcmeGuardrailRetentionQueue, // ACME: guardrail-event retention
   V4LegacyApiUsageQueue,
   EventPropagationQueue,
   EvalExecutionQueue,
@@ -428,6 +431,23 @@ if (env.QUEUE_CONSUMER_ACME_PROMPT_REVIEW_QUEUE_IS_ENABLED === "true") {
   WorkerManager.register(
     QueueName.AcmePromptReviewQueue,
     acmePromptReviewQueueProcessor,
+    { concurrency: 1 },
+  );
+}
+
+// ACME: nightly 30-day retention for acme_guardrail_events (archive to blob,
+// verify, then delete via rayin_retention_purger). The job itself logs
+// "disabled" and does nothing until its purger URL and archive bucket are
+// configured -- see worker/src/features/acmeGuardrailRetention.
+if (env.QUEUE_CONSUMER_ACME_GUARDRAIL_RETENTION_QUEUE_IS_ENABLED === "true") {
+  // Instantiate the queue to trigger the nightly scheduled run
+  AcmeGuardrailRetentionQueue.getInstance();
+
+  WorkerManager.register(
+    QueueName.AcmeGuardrailRetentionQueue,
+    acmeGuardrailRetentionQueueProcessor,
+    // One run at a time: batches are keyset-paginated within a run, and two
+    // concurrent runs would archive the same rows twice.
     { concurrency: 1 },
   );
 }

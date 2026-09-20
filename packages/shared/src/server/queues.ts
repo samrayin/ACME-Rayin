@@ -446,6 +446,9 @@ export enum QueueName {
   // ACME addition: nightly scan for prompts past their configured review
   // date (Prompt.config.reviewDate). See acmePromptReviewQueue.ts.
   AcmePromptReviewQueue = "acme-prompt-review-queue",
+  // ACME: nightly 30-day retention (archive, verify, then delete)
+  // for acme_guardrail_events. See acmeGuardrailRetentionQueue.ts.
+  AcmeGuardrailRetentionQueue = "acme-guardrail-retention-queue",
 }
 
 export enum QueueJobs {
@@ -486,6 +489,8 @@ export enum QueueJobs {
   InAppAgentRunJob = "in-app-agent-run-job",
   V4LegacyApiUsageJob = "v4-legacy-api-usage-job",
   AcmePromptReviewJob = "acme-prompt-review-job",
+  // ACME: see AcmeGuardrailRetentionQueue above.
+  AcmeGuardrailRetentionJob = "acme-guardrail-retention-job",
 }
 
 export type TQueueJobTypes = {

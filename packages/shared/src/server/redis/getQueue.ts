@@ -31,6 +31,8 @@ import { MonitorQueue } from "./monitorQueue";
 import { InAppAgentRunQueue } from "./inAppAgentRunQueue";
 import { V4LegacyApiUsageQueue } from "./v4LegacyApiUsageQueue";
 import { AcmePromptReviewQueue } from "./acmePromptReviewQueue";
+// ACME: nightly guardrail-event retention queue.
+import { AcmeGuardrailRetentionQueue } from "./acmeGuardrailRetentionQueue";
 
 // Sharded queues require a sharding key.
 // Use the queue class directly, for example IngestionQueue.getInstance({ shardingKey }).
@@ -111,6 +113,9 @@ export function getQueue(
       return V4LegacyApiUsageQueue.getInstance();
     case QueueName.AcmePromptReviewQueue:
       return AcmePromptReviewQueue.getInstance();
+    // ACME: nightly guardrail-event retention queue.
+    case QueueName.AcmeGuardrailRetentionQueue:
+      return AcmeGuardrailRetentionQueue.getInstance();
     default: {
       const _exhaustiveCheckDefault: never = queueName;
       throw new Error(`Queue ${queueName} not found`);
