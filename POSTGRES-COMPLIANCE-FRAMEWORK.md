@@ -45,6 +45,36 @@ must sit at the top tier and `allow` should not be over-classified into the same
 handling bucket, or the security team ends up treating high-volume, harmless
 telemetry with restricted-data handling for no benefit.
 
+**DECIDED (2026-09-18, owner-approved): content is now stored for every
+action, including `allow`.** This reverses the data-minimisation rule in the
+table above for allowed events. The table is kept as the original reasoning,
+not as the active policy.
+
+- **Why:** in a compromised account, the dangerous prompts are the ones that
+  got through (`allow`). Under the metadata-only rule those had no content,
+  so an investigation could see that something was allowed but not what.
+- **What is stored now, for allow, redact and block alike:**
+  - `masked_content_encrypted`: the text with every supported PII entity
+    replaced by an `<ENTITY_TYPE>` placeholder (Presidio in rayin-guardrails,
+    at decision time, independent of the live PII policy toggles) and card
+    numbers masked unconditionally. Encrypted with `GUARDRAILS_ENCRYPTION_KEY`.
+  - `raw_content_encrypted`: the original text with card numbers masked
+    (§1.2 still applies to every action), encrypted with
+    `GUARDRAILS_ENCRYPTION_KEY`. Previously `block` only.
+- **Classification:** `raw_content_encrypted` is **Restricted** for every
+  action. `masked_content_encrypted` is treated as **Confidential**: Presidio
+  masking is strong but not perfect, so it is encrypted at rest and every view
+  is audit-logged rather than treated as safe by construction.
+- **Access:** masked content is shown on demand to OWNER, ADMIN and SECURITY
+  (`projectGuardrails:read`) through `acmeGuardrails.maskedContent`, which
+  decrypts server-side and writes an audit-log entry (`guardrailEvent`,
+  `viewMaskedContent`) for every view. Raw content is never decrypted or
+  returned by the app in this change; a logged reveal is a separate change.
+- **Retention:** unchanged, §1.3's 30-day boundary applies to both columns.
+- **Not changed:** the in-memory buffer in rayin-guardrails (`/v1/events`,
+  the pull fallback) still carries no content. Rows written by the pull
+  backfill therefore have no content.
+
 ### 1.2 PCI-DSS scope reduction — do not let raw PAN reach Postgres at all
 
 `block` events are explicitly the tier most likely to contain "actual

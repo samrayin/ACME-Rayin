@@ -1646,6 +1646,65 @@ highest-risk item of the five. Held for a separate session.
 
 ---
 
+## 2026-09-18 — Guardrail masked content: "What was typed (PII masked)" (Security Analyst RBAC, PR 2 of 3)
+
+**What:** A Security Analyst, Owner or Admin can now see what was typed for
+any guardrail event, with PII replaced by `<ENTITY_TYPE>` placeholders. The
+raw text stays encrypted and is not shown (a logged reveal is PR 3).
+
+**Owner decision (2026-09-18):** content is now stored for **every** action,
+including `allow`. This reverses the metadata-only rule for allowed events in
+`POSTGRES-COMPLIANCE-FRAMEWORK.md` §1.1; the dated decision is recorded there.
+Reason: in a compromised account the dangerous prompts are the ones that got
+through, and those previously had no content.
+
+**Changes:**
+- Migration `20260918223000_add_acme_guardrail_events_masked_content`: adds
+  nullable `masked_content_encrypted TEXT`. Additive, no backfill, no grant
+  changes (table-level grants cover new columns).
+- `POST /api/public/guardrails-events`: new `masked_content` field, optional
+  and nullable, so a rayin-guardrails build that doesn't send it keeps working.
+- `buildEventRow`: encrypts `raw_content` for every action when present (was
+  block only) and `masked_content` into `masked_content_encrypted`, both with
+  `GUARDRAILS_ENCRYPTION_KEY`. Fails closed if either is present and the key
+  is missing. `redacted_text`/`pii_findings` unchanged (redact only).
+- New tRPC `acmeGuardrails.maskedContent({ projectId, id })`, gated on
+  `projectGuardrails:read` (OWNER, ADMIN, SECURITY). Decrypts only the masked
+  column server-side and writes an audit-log entry for every view
+  (`resourceType: "guardrailEvent"`, `action: "viewMaskedContent"`, the event
+  id only, never the content). Never selects or decrypts raw content.
+- `eventDetail` now also returns `hasMaskedContent`.
+- Security Analyst allow-list: `acmeGuardrails.maskedContent` added.
+- `auditLog.ts` (upstream file): `guardrailEvent` added to the auditable
+  resource types, with an `// ACME:` comment.
+- UI: the guardrail event detail panel has "What was typed (PII masked)" with
+  a Show button that loads on demand (no background refetch) and the note
+  "Viewing is logged". The "Blocked content" row is now "Original content"
+  and appears whenever raw content is stored; it is still never shown.
+
+**Deploy order: CAIRO first, then rayin-guardrails.** The migration must run
+and the new endpoint schema must be live before rayin-guardrails starts
+sending `masked_content`. zod strips unknown keys, so the reverse order would
+not reject pushes, but masked content sent before CAIRO is updated is
+silently dropped. Rows written before both are deployed have no masked
+content ("Not recorded").
+
+**Verified (locally, this branch):** see the commit message for the exact
+test runs. **Not verified:** no database run of the migration, no live push
+end-to-end, no browser check of the UI, and the Presidio masking itself is
+exercised only in rayin-guardrails' CI (see that repo's changelog).
+
+**Known limits:**
+- Presidio masking is strong but not perfect: missed PII stays in the masked
+  text. That is why it is encrypted at rest and every view is logged.
+- The push now carries the text twice (raw and masked). The endpoint body
+  limit is still 1 MB, so a single text over roughly 500 KB would now be
+  rejected where it previously passed for allow/redact. Not changed here.
+- Rows written by the pull backfill carry no content (the buffer never has
+  any).
+
+---
+
 ## Outstanding, not yet done
 
 - **Capabilities 4 & 5 of the 5-item GTM plan — prompt recommendation

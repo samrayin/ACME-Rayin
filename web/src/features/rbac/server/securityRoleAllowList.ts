@@ -24,6 +24,9 @@ const SECURITY_ROLE_ALLOWED_PROCEDURES: ReadonlySet<string> = new Set([
   // and it also requires project:update, which SECURITY does not hold).
   "acmeGuardrails.recentEvents",
   "acmeGuardrails.eventDetail",
+  // PII-masked content only, decrypted server-side, and every view is
+  // audit-logged. Raw content is never returned by this procedure.
+  "acmeGuardrails.maskedContent",
   "acmeGuardrails.getConfig",
   "acmeAssuranceDemo.demoAssets",
   "acmeAssuranceDemo.liveAssurance",

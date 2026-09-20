@@ -29,6 +29,7 @@ const CONTENT_PROCEDURES = [
 const ALLOWED_PROCEDURES = [
   "acmeGuardrails.recentEvents",
   "acmeGuardrails.eventDetail",
+  "acmeGuardrails.maskedContent",
   "acmeGuardrails.getConfig",
   "acmeAuditLogs.all",
   "acmeTheme.get",
@@ -61,6 +62,17 @@ describe("Security Analyst allow-list", () => {
         procedurePath: "acmeGuardrails.updateConfig",
       }),
     ).toThrow();
+  });
+
+  // Masked content is allowed; nothing that could return raw (unmasked)
+  // content is. The raw reveal is a separate, later procedure and must be
+  // allow-listed deliberately, not by a prefix match.
+  it.each([
+    "acmeGuardrails.rawContent",
+    "acmeGuardrails.revealRawContent",
+    "acmeGuardrails.maskedContentRaw",
+  ])("does not allow raw-content procedure %s", (path) => {
+    expect(isAllowedForSecurityRole(path)).toBe(false);
   });
 
   it("blocks an unknown, future procedure by default", () => {

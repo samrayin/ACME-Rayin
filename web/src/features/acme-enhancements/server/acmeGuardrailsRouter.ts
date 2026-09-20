@@ -4,9 +4,10 @@
  * (https://github.com/samrayin/rayin-guardrails), a separate service, not
  * code in this repo.
  *
- * recentEvents/eventDetail/getConfig: "projectGuardrails:read" — granted to
- * OWNER and ADMIN only (projectAccessRights.ts), same sensitivity as Audit
- * Logs (reveals what content was flagged). rayin-guardrails' GET /v1/events is an in-memory ring buffer
+ * recentEvents/eventDetail/maskedContent/getConfig: "projectGuardrails:read"
+ * — granted to OWNER, ADMIN and SECURITY (projectAccessRights.ts), same
+ * sensitivity as Audit Logs (reveals what content was flagged).
+ * maskedContent also writes an audit-log entry for every view. rayin-guardrails' GET /v1/events is an in-memory ring buffer
  * (resets on that service's own pod restart, see its README "Known gaps").
  * Every successful fetch here is now also persisted into this repo's own
  * Postgres (`AcmeGuardrailEvent`) before being read back, so the dashboard's
@@ -42,6 +43,8 @@ import {
 import { logger } from "@langfuse/shared/src/server";
 import { TRPCError } from "@trpc/server";
 import { selectPullBackfillRows } from "@/src/features/acme-enhancements/server/acmeGuardrailsPullBackfill";
+import { auditLog } from "@/src/features/audit-logs/auditLog";
+import { decrypt } from "@langfuse/shared/encryption";
 
 const DIRECTION_FROM_DB: Record<AcmeGuardrailEventDirection, "input" | "output"> = {
   [AcmeGuardrailEventDirection.INPUT]: "input",
@@ -241,7 +244,73 @@ export const acmeGuardrailsRouter = createTRPCRouter({
         redactedText: event.redactedText,
         piiFindings: event.piiFindings,
         hasEncryptedContent: event.rawContentEncrypted !== null,
+        // Only whether it exists; the text itself loads on demand through
+        // maskedContent below, which audit-logs every view.
+        hasMaskedContent: event.maskedContentEncrypted !== null,
       };
+    }),
+
+  // "What was typed (PII masked)" for one persisted event -- Security
+  // Analyst RBAC design, PR 2 of 3. Same gate as eventDetail
+  // (projectGuardrails:read: OWNER, ADMIN, SECURITY). Decrypts ONLY the
+  // masked column, server-side; raw_content_encrypted is never selected,
+  // decrypted or returned here (a logged reveal of raw content is PR 3).
+  // Every successful view writes an audit-log entry before the text is
+  // returned, so a view that isn't logged is never served.
+  maskedContent: protectedProjectProcedure
+    .input(z.object({ projectId: z.string(), id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      throwIfNoProjectAccess({
+        session: ctx.session,
+        projectId: input.projectId,
+        scope: "projectGuardrails:read",
+      });
+
+      const event = await prisma.acmeGuardrailEvent.findFirst({
+        where: { id: input.id, projectId: input.projectId },
+        select: { id: true, eventId: true, maskedContentEncrypted: true },
+      });
+      if (!event) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Guardrail event not found." });
+      }
+      if (event.maskedContentEncrypted === null) {
+        // Nothing to show (recorded before masked content existed, or by the
+        // metadata-only pull backfill). Nothing is decrypted, so no view to log.
+        return { id: event.id, maskedContent: null as string | null };
+      }
+      if (!env.GUARDRAILS_ENCRYPTION_KEY) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "GUARDRAILS_ENCRYPTION_KEY is not configured; masked content cannot be shown.",
+        });
+      }
+
+      let maskedContent: string;
+      try {
+        maskedContent = decrypt(event.maskedContentEncrypted, env.GUARDRAILS_ENCRYPTION_KEY);
+      } catch (error) {
+        // Never log the ciphertext or any part of the content.
+        logger.error("Failed to decrypt guardrail masked content", {
+          projectId: input.projectId,
+          id: event.id,
+          error: error instanceof Error ? error.message : "unknown",
+        });
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Masked content could not be decrypted.",
+        });
+      }
+
+      await auditLog({
+        session: ctx.session,
+        resourceType: "guardrailEvent",
+        resourceId: event.id,
+        action: "viewMaskedContent",
+        // Identifiers only -- never the content that was viewed.
+        after: { eventId: event.eventId },
+      });
+
+      return { id: event.id, maskedContent: maskedContent as string | null };
     }),
 
   getConfig: protectedProjectProcedure

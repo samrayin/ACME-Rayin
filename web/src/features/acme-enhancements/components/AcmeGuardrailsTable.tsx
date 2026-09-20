@@ -78,10 +78,61 @@ function DetailRow({
   );
 }
 
+// "What was typed (PII masked)" -- loads only when the viewer asks, because
+// every load is audit-logged server-side (acmeGuardrails.maskedContent).
+// Never refetched in the background, so the log reflects deliberate views.
+// Keyed by event id in the parent, so switching events resets it.
+function AcmeGuardrailMaskedContent({
+  projectId,
+  eventRowId,
+}: {
+  projectId: string;
+  eventRowId: string;
+}) {
+  const [requested, setRequested] = useState(false);
+  const masked = api.acmeGuardrails.maskedContent.useQuery(
+    { projectId, id: eventRowId },
+    {
+      enabled: requested,
+      retry: false,
+      staleTime: Infinity,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      refetchOnMount: false,
+    },
+  );
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {!requested ? (
+        <div>
+          <Button size="sm" variant="outline" onClick={() => setRequested(true)}>
+            Show
+          </Button>
+        </div>
+      ) : masked.isPending ? (
+        <span className="text-muted-foreground">Loading…</span>
+      ) : masked.isError ? (
+        <span className="text-muted-foreground">
+          Could not load: {masked.error.message}
+        </span>
+      ) : masked.data.maskedContent === null ? (
+        <span className="text-muted-foreground">Not recorded</span>
+      ) : (
+        <span className="font-mono text-xs whitespace-pre-wrap">
+          {masked.data.maskedContent}
+        </span>
+      )}
+      <span className="text-muted-foreground text-xs">Viewing is logged.</span>
+    </div>
+  );
+}
+
 // Detail panel for one guardrail decision -- CAIRO roadmap Phase 1,
 // "clickable jailbreak detail view". Who (user), from where (machine), when,
-// what was decided, plus a link through to the trace. Blocked content stays
-// encrypted: this panel only says whether it exists (reveal is Phase 2).
+// what was decided, plus a link through to the trace. The PII-masked text is
+// shown on demand (every view logged); raw content stays encrypted and this
+// panel only says whether it exists (reveal is a later change).
 function AcmeGuardrailEventDetail({
   projectId,
   eventRowId,
@@ -152,6 +203,17 @@ function AcmeGuardrailEventDetail({
               <DetailRow label="Action">
                 <ActionBadge action={detail.data.action} />
               </DetailRow>
+              <DetailRow label="What was typed (PII masked)">
+                {detail.data.hasMaskedContent && eventRowId ? (
+                  <AcmeGuardrailMaskedContent
+                    key={eventRowId}
+                    projectId={projectId}
+                    eventRowId={eventRowId}
+                  />
+                ) : (
+                  notRecorded
+                )}
+              </DetailRow>
               {detail.data.action === "redact" && detail.data.redactedText && (
                 <DetailRow label="Redacted text">
                   <span className="font-mono text-xs whitespace-pre-wrap">
@@ -159,8 +221,11 @@ function AcmeGuardrailEventDetail({
                   </span>
                 </DetailRow>
               )}
-              {detail.data.action === "block" && (
-                <DetailRow label="Blocked content">
+              {/* Raw content is stored for every action since 2026-09-18,
+                  not only block; it is never shown in this panel. */}
+              {(detail.data.action === "block" ||
+                detail.data.hasEncryptedContent) && (
+                <DetailRow label="Original content">
                   {detail.data.hasEncryptedContent ? (
                     <span className="text-muted-foreground">
                       Stored encrypted. Not shown here.

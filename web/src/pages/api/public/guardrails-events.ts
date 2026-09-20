@@ -49,7 +49,15 @@ const GuardrailsEventPushBody = z.object({
   // Prisma write -- see acmeGuardrailsEventsIngestService.ts. This endpoint
   // must only ever be reachable via in-cluster service DNS, never the
   // public ingress, given this field's contents.
+  // Sent for every action since the 2026-09-18 owner decision (framework
+  // doc §1.1), not only block. Card numbers are already masked by
+  // rayin-guardrails.
   raw_content: z.string().nullable(),
+  // What was typed with PII replaced by <ENTITY_TYPE> placeholders (Presidio
+  // in rayin-guardrails). Encrypted server-side before the write, like
+  // raw_content. Optional, not just nullable, so a rayin-guardrails build
+  // that predates this field keeps working: deploy CAIRO first.
+  masked_content: z.string().nullable().optional(),
 });
 
 const GuardrailsEventPushResponse = z.object({
@@ -81,6 +89,7 @@ export default withMiddlewares({
         redactedText: body.redacted_text,
         piiFindings: body.pii_findings,
         rawContent: body.raw_content,
+        maskedContent: body.masked_content ?? null,
       }),
   }),
 });
@@ -88,7 +97,8 @@ export default withMiddlewares({
 export const config = {
   api: {
     bodyParser: {
-      // Block-tier raw content can be arbitrarily long user/model text --
+      // Raw and masked content (every action since 2026-09-18) can be
+      // arbitrarily long user/model text --
       // generous but bounded, matching this repo's other content-bearing
       // public API routes rather than the tighter feedback.ts-style limits
       // meant for short structured payloads.

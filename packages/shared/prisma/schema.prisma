@@ -985,10 +985,20 @@ model AcmeGuardrailEvent {
   //   block  -> rawContentEncrypted (the one Restricted-tier column in this
   //             schema -- see §1.2/§3.4; encrypted with a dedicated key,
   //             not the shared global ENCRYPTION_KEY)
+  // Superseded 2026-09-18 (owner decision, framework doc §1.1): every action
+  // now also carries maskedContentEncrypted, and rawContentEncrypted (PAN-
+  // masked) whenever rayin-guardrails sends it -- allow and redact included.
   eventId              String?   @unique(map: "acme_guardrail_events_event_id_key") @map("event_id")
   redactedText         String?   @map("redacted_text")
   piiFindings          Json?     @map("pii_findings")
   rawContentEncrypted  String?   @map("raw_content_encrypted")
+
+  // What was typed, PII replaced by <ENTITY_TYPE> placeholders (Presidio in
+  // rayin-guardrails) and card numbers masked. Pushed for every action since
+  // the 2026-09-18 owner decision (framework doc §1.1), encrypted with
+  // GUARDRAILS_ENCRYPTION_KEY. Read only via acmeGuardrails.maskedContent,
+  // which audit-logs every view. Null for rows recorded before this column.
+  maskedContentEncrypted String? @map("masked_content_encrypted")
 
   // Human end-user identity, forwarded from rayin-guardrails' caller.
   // Deliberately separate from agentId (identifies the AI agent, not the

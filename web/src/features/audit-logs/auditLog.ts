@@ -50,6 +50,8 @@ type AuditableResource =
   | "ssoConfig"
   | "gatewayConfig"
   | "gatewayAiConnection"
+  // ACME: views of guardrail event content (acmeGuardrailsRouter.maskedContent).
+  | "guardrailEvent"
   // legacy resources
   | "membership";
 

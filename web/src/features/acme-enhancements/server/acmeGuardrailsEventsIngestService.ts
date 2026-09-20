@@ -64,16 +64,23 @@ export type GuardrailsEventPushInput = {
     end: number;
     score: number;
   }> | null;
+  // Sent for every action since the 2026-09-18 owner decision (framework
+  // doc §1.1). Card numbers already masked by rayin-guardrails.
   rawContent: string | null;
+  // PII replaced by <ENTITY_TYPE> placeholders by rayin-guardrails. Null when
+  // an older rayin-guardrails build didn't send it.
+  maskedContent: string | null;
 };
 
 /**
- * Pure transformation: tiered content by action (framework doc §1.1),
- * encrypting raw content for `block` events. Exported separately from the
- * DB-write wrapper below so this -- the actual new logic this endpoint
- * exists for -- is unit-testable without a live database connection. Takes
- * `encryptFn` as a parameter (defaults to the real `encrypt`) purely so
- * tests can substitute a spy without touching the module-level import.
+ * Pure transformation: tiered content by action (framework doc §1.1).
+ * Since the 2026-09-18 owner decision, raw content (PAN-masked) and masked
+ * content are stored for EVERY action when rayin-guardrails sends them, both
+ * encrypted with GUARDRAILS_ENCRYPTION_KEY. redactedText/piiFindings stay
+ * redact-only. Exported separately from the DB-write wrapper below so this
+ * is unit-testable without a live database connection. Takes `encryptFn` as
+ * a parameter (defaults to the real `encrypt`) purely so tests can
+ * substitute a spy without touching the module-level import.
  */
 export function buildEventRow(
   projectId: string,
@@ -81,20 +88,26 @@ export function buildEventRow(
   encryptionKey: string | undefined,
   encryptFn: (plainText: string, key: string) => string = encrypt,
 ): Prisma.AcmeGuardrailEventCreateManyInput {
-  let rawContentEncrypted: string | null = null;
-  if (input.action === "block" && input.rawContent !== null) {
-    if (!encryptionKey) {
-      // Fail closed, not silently-unencrypted: a Restricted-tier column
-      // (framework doc §1.1) must never be written in plaintext because a
-      // key happened to be missing at deploy time.
-      throw new Error(
-        "GUARDRAILS_ENCRYPTION_KEY is not configured -- refusing to " +
-          "persist unencrypted raw guardrail content. See " +
-          "POSTGRES-COMPLIANCE-FRAMEWORK.md.",
-      );
-    }
-    rawContentEncrypted = encryptFn(input.rawContent, encryptionKey);
+  const hasContent = input.rawContent !== null || input.maskedContent !== null;
+  if (hasContent && !encryptionKey) {
+    // Fail closed, not silently-unencrypted: content columns (framework doc
+    // §1.1) must never be written in plaintext because a key happened to be
+    // missing at deploy time. Checked before any encryption so a missing key
+    // never produces a half-encrypted row.
+    throw new Error(
+      "GUARDRAILS_ENCRYPTION_KEY is not configured -- refusing to " +
+        "persist unencrypted guardrail content. See " +
+        "POSTGRES-COMPLIANCE-FRAMEWORK.md.",
+    );
   }
+  const rawContentEncrypted =
+    input.rawContent !== null && encryptionKey
+      ? encryptFn(input.rawContent, encryptionKey)
+      : null;
+  const maskedContentEncrypted =
+    input.maskedContent !== null && encryptionKey
+      ? encryptFn(input.maskedContent, encryptionKey)
+      : null;
 
   return {
     projectId,
@@ -119,6 +132,7 @@ export function buildEventRow(
         ? (input.piiFindings as unknown as Prisma.InputJsonValue)
         : undefined,
     rawContentEncrypted,
+    maskedContentEncrypted,
   };
 }
 
