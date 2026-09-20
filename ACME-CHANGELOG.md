@@ -2271,7 +2271,7 @@ built or deployed. Rollback: revert the commit.
 | **Change ID** | CHG-2026-005 · owner: Anees Ur Rahman |
 | **ADR** | [ADR-0003](acme-governance/adr/ADR-0003-cairo-litellm-control-plane.md) |
 | **Approval** | Pending. Design accepted for build by Anees Ur Rahman, 2026-09-19. The owner reviews and merges; the implementer does not approve its own change. Not a production approval. |
-| **Dates** | Dev: not deployed · Staging: not available; isolated migration and rollback rehearsal performed. (2026-09-19) · Prod: not yet |
+| **Dates** | Dev: deployed 2026-09-19, web `acme-v4.38.0.4` and worker `worker-acme-v4.38.0.2`, flag turned on the same day · Staging: not available; isolated migration and rollback rehearsal performed. (2026-09-19) · Prod: not yet |
 | **Impact** | None while the flag is off: no navigation entry, no calls to LiteLLM, four unused tables. With it on: project owners and admins manage gateway keys, teams, budgets and spend inside CAIRO. No downtime. Client-visible once enabled. |
 | **Schema change** | Migration `20260919120000_add_acme_litellm_management` (additive; no backfill). Creates roles `rayin_litellm_writer` and `rayin_litellm_retention_purger` without passwords. |
 | **Rollback** | [plan](acme-governance/rollback/20260919120000_add_acme_litellm_management/ROLLBACK.md): flag off; then previous image; `down.sql` only for full removal. Tested 2026-09-19 (up → down → up on a throwaway database). Data lost by `down.sql`: the change record and CAIRO's key mapping; the keys keep working in LiteLLM. |
@@ -2336,7 +2336,7 @@ said "source-only" when merged.)
 | **Change ID** | CHG-2026-008 · Tier 1 · owner: Anees Ur Rahman |
 | **ADR** | [ADR-0003](acme-governance/adr/ADR-0003-cairo-litellm-control-plane.md) §4, §5 |
 | **Approval** | Pending. The owner reviews and merges; the implementer does not approve its own change. Not a production approval. |
-| **Dates** | Dev: not deployed · Staging: not available; isolated migration and rollback rehearsal performed. (2026-09-19) · Prod: not yet |
+| **Dates** | Dev: deployed 2026-09-19, web `acme-v4.38.0.4` and worker `worker-acme-v4.38.0.2`, flag turned on the same day · Staging: not available; isolated migration and rollback rehearsal performed. (2026-09-19) · Prod: not yet |
 | **Impact** | None while the flag is off: the receiver answers 404, the worker schedules nothing, two unused tables. With it on: CAIRO keeps its own record of every request through the LLM gateway (metadata only). No downtime. Client-visible once enabled. Depends on CHG-2026-005. |
 | **Schema change** | Migration `20260919180000_add_acme_litellm_request_logs` (additive; no backfill): `acme_litellm_request_logs`, `acme_litellm_reconcile_runs`, grants for the roles created by CHG-2026-005. |
 | **Rollback** | [plan](acme-governance/rollback/20260919180000_add_acme_litellm_request_logs/ROLLBACK.md): flag off; then previous image; `down.sql` only for full removal. Tested 2026-09-19 (up → down → up, 7 of 7 PASS, one command). Data lost by `down.sql`: the mirror and the reconcile history; LiteLLM's own spend logs are untouched. |
