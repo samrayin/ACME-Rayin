@@ -157,6 +157,21 @@ This was the design's largest unknown. It is closed, and the answer is favourabl
 
 **Therefore §3a is implementable with no Enterprise licence — provided the modern `guardrails:` block is used and the legacy `litellm_settings.guardrails` form is avoided.** That distinction is load-bearing: the legacy path is the premium-gated one. This was established by reading the installed package in the running pod, the same way this workstream established `generic_api`'s retry behaviour and the `tags`, `regenerate` and team-admin gates. LiteLLM's documentation was not relied on.
 
+## 6a. Judge-model candidates — staged 2026-09-20 (CHG-2026-015)
+
+`groq-judge` (`groq/openai/gpt-oss-20b`) and `gemini-judge` (`gemini/gemini-2.5-flash-lite`) are in the model list as **additional** options beside `nvidia-nemotron`. **Staged and untested.** Their slugs were verified against each provider's live model list, queried with the accounts' own keys — what the accounts can actually call, not what the documentation advertises — but **no call has been made through either**, and none can be until the ConfigMap is updated and the gateway restarts, which remains the owner's gate. Treat "verified" here as *the slug exists for this account*, nothing more.
+
+Gemini is pinned rather than `gemini-flash-latest`: floating aliases drift exactly as a mutable image tag does, which is what CHG-2026-006 pinned the gateway image by digest to avoid.
+
+### The stronger candidate, and why it is not in the config
+Verifying those slugs turned up something better. The Groq account can call **dedicated safety classifiers**: `meta-llama/llama-prompt-guard-2-86m` and `-22m` (Llama Prompt Guard 2, purpose-built jailbreak and prompt-injection detection) and `openai/gpt-oss-safeguard-20b`.
+
+These matter because **they attack N-56's root cause rather than its symptom.** N-56 is not that the judge model is slow or inaccurate — it is that no `output_parser` is registered, so the judge's **free text** does not parse, and unparseable defaults to unsafe. A classifier returns a **label**. There is no free text to parse and nothing to string-match against a hardcoded refusal message, which is also what F8 identifies as the second brittle layer. A chat-model swap leaves both defects standing; a classifier removes the class of defect.
+
+This is therefore the leading week-2 candidate for the v5 P0 ("swap the guardrails judge model to a dedicated safety classifier") — a P0 that has been open and unstarted since v5, and which now has a concrete, already-credentialed option.
+
+**It is deliberately not added to the config tonight, and adding it is not a small step.** These are classifiers, not chat models. Whether they integrate with NeMo's `self_check_input` action at all — which expects a chat completion it can parse — is **unverified and must be tested, not assumed.** They may need a different rail implementation rather than a model swap. That discipline is the point: assuming an integration worked, instead of testing it, is precisely how the unregistered output parser survived long enough to become N-56.
+
 ## 7. Open for the owner
 1. **Multi-node pool** — accept F1 and fund it, or accept pod-level redundancy only and record the node as a single point of failure under `enforce`.
 2. **Judge-model credit** (F3) — not an engineering fix.
