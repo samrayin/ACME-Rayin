@@ -6,7 +6,7 @@
 | **Status** | **Proposed — design only.** ID claimed in ACME-Rayin #56. Nothing built. |
 | **Closes when effective** | Readiness Ledger H-01 / N-38 — the first clause of the product's one-line description |
 | **Blocked by** | Ledger **N-56** (rail blocks benign prompts, latency unbounded) and **N-58** (unpinned third-party model fetched at boot) — both hard gates on `enforce`, ahead of the infrastructure prerequisites |
-| **Related** | CHG-2026-009 (#46, gateway restart gate) · P0-10 (fail-open audit trail) · P0-5 / CHG-2026-010 · N-22 (guardrails untraced) · N-23 · PD-0003 §4 |
+| **Related** | CHG-2026-009 (#46, gateway restart gate) · P0-10 (fail-open audit trail) · P0-5 / CHG-2026-010 · N-22 (guardrails untraced) · N-23 |
 
 ## 1. The problem, verified not assumed
 
@@ -47,6 +47,8 @@ and the repo's own comment at `guardrails_engine.py:76-81` states that NeMo's de
 **Two independent eval runs agree**, with no shared prompts:
 - the promptfoo suite (`promptfoo-benign-2026-09-20`, 32 calls, 18:27–18:29 UTC): 26/26 benign blocked, including `"hello"` and `"Thanks, that helps."`;
 - an independently written finance-vocabulary corpus (`cairo-benign-eval-2026-09-20`, 14 calls, 18:31–18:32 UTC): **10/10 benign blocked, 3/3 attacks blocked**, and a synthetic-IBAN control returning `redact`, which confirms Presidio short-circuits ahead of the rail so no PII-bearing prompt can test it.
+
+**GOVERNING CONSTRAINT — not a recommendation.** The hook is not built to a calendar. It is built once N-56 genuinely closes, whenever that lands, and no schedule overrides that gate. Wiring today's rail into the request path would block essentially all legitimate traffic.
 
 **Closing N-56 therefore requires registering a real `output_parser` in `prompts.yml` for `self_check_input` and `self_check_output`. A judge-model swap alone is not sufficient, and on its own would be worse than the current state**: a different model would produce parseable output, the rail would return a believable mixture of allow and block, and the actual defect — unparseable means block, with no registered parser — would remain in place, now hidden behind a plausible false-positive rate. Today's failure is at least unmistakable.
 
@@ -104,18 +106,18 @@ Readiness must reflect **this pod's own ability to serve a decision**, not wheth
 
 **Under `enforce`, `rayin-guardrails` becomes a hard dependency of all model traffic.** That is the point, and it is the cost. It is defensible only once F1–F4 are closed: multi-node, real replicas, a PDB, timeouts on both sides, a healthy and monitored judge model, and a traceable image.
 
-**Record-only is the only defensible outcome for week 1.** Not a cautious first step, not a staging convenience — the only one. `enforce` cannot be switched on against a rail that blocks 5 of 5 benign finance questions, and there is no version of the schedule that changes that. What record mode produces is the evidence that makes the rail fixable: a real false-positive rate against real business language, and a latency distribution rather than a guess.
+**Record-only is the only defensible first step.** Not a cautious first step, not a staging convenience — the only one. `enforce` cannot be switched on against a rail that blocks 5 of 5 benign finance questions, and there is no version of the schedule that changes that. What record mode produces is the evidence that makes the rail fixable: a real false-positive rate against real business language, and a latency distribution rather than a guess.
 
 ## 5. Scheduling — the honest answer
 
-**This cannot land fail-closed in week 1, and the reason is no longer scheduling.** The prerequisites the owner set — replicas, a PDB, an explicit timeout — are deployments rather than design, which alone would have pushed the flip out. But N-56 has since overtaken that argument: the rail blocks legitimate business language at a 100% rate and its latency is unbounded, so `enforce` is not a thing that can be scheduled at all until the rail is fixed. The revised table below reflects that, and deliberately does not give the flip a date.
+**This cannot land fail-closed as a scheduled step, and the reason is no longer scheduling at all.** The prerequisites the owner set — replicas, a PDB, an explicit timeout — are deployments rather than design, which alone would have pushed the flip out. But N-56 has since overtaken that argument: the rail blocks legitimate business language at a 100% rate and its latency is unbounded, so `enforce` is not a thing that can be scheduled at all until the rail is fixed. The revised table below reflects that, and deliberately does not give the flip a date.
 
 | | Work | Gate |
 |---|---|---|
-| **Week 1** | Build the hook; ship it in **`record`**. Add the guardrails-side timeout and explicit rail-failure handling (F2). Release guardrails through `release.sh` for a real tag (F4). Measure p50/p95 added latency and the would-block count. | One gateway restart — **paired with CHG-2026-009**, as PD-0003 intends. |
-| **Week 2** | P0-10 durability; the readiness/metrics split; judge-model credit and health alerting (F3); the multi-node decision (F1). | No gateway restart. |
-| **Week 3** | **Not a flip to `enforce`.** On current evidence week 3 is where the rail itself is fixed (F5/N-56) — intent detection rather than string matching, and a judge path with a bounded, usable latency distribution. | No gateway restart. |
-| **Later, ungated by date** | Flip to `enforce` only when every one of these holds, in this order: **(1) N-56 closed** — meaning a real `output_parser` registered in `prompts.yml` for both self-check tasks (a model swap alone does not count), then a false-positive rate measured at or near zero on finance vocabulary **and** a true-positive rate proving the rail still detects attacks. Both numbers are required: a rail that blocks everything scores a perfect true-positive rate, so that figure is meaningless alone; **(2) a p95 latency budget that is definable and met**; **(3) N-58 closed** — the embeddings model pinned and fetched from a controlled source; then (4) ≥2 replicas on ≥2 nodes, (5) PDB in place, (6) judge model healthy and monitored, (7) guardrails on a release tag. Gates 1–3 are about whether the control works at all; 4–7 are about whether it can be depended on. **The first three come first.** | One gateway restart, owner present. |
+| **Step 1** | Build the hook; ship it in **`record`**. Add the guardrails-side timeout and explicit rail-failure handling (F2). Release guardrails through `release.sh` for a real tag (F4). Measure p50/p95 added latency and the would-block count. | One gateway restart — **paired with CHG-2026-009**, so the gateway restarts once rather than twice. |
+| **Step 2** | P0-10 durability; the readiness/metrics split; judge-model credit and health alerting (F3); the multi-node decision (F1). | No gateway restart. |
+| **Step 3** | **Not a flip to `enforce`.** This is where the rail itself is fixed (F5/N-56) — intent detection rather than string matching, and a judge path with a bounded, usable latency distribution. | No gateway restart. |
+| **Step 4, ungated by date** | Flip to `enforce` only when every one of these holds, in this order: **(1) N-56 closed** — meaning a real `output_parser` registered in `prompts.yml` for both self-check tasks (a model swap alone does not count), then a false-positive rate measured at or near zero on finance vocabulary **and** a true-positive rate proving the rail still detects attacks. Both numbers are required: a rail that blocks everything scores a perfect true-positive rate, so that figure is meaningless alone; **(2) a p95 latency budget that is definable and met**; **(3) N-58 closed** — the embeddings model pinned and fetched from a controlled source; then (4) ≥2 replicas on ≥2 nodes, (5) PDB in place, (6) judge model healthy and monitored, (7) guardrails on a release tag. Gates 1–3 are about whether the control works at all; 4–7 are about whether it can be depended on. **The first three come first.** | One gateway restart, owner present. |
 
 One week later than planned for the claim to become true, and it removes the scenario where `enforce` is switched on against a single-replica service with an unbounded rail call and a dead judge model — which on today's evidence would stop all model traffic in dev the moment it was flipped.
 
@@ -136,6 +138,6 @@ This was the design's largest unknown. It is closed, and the answer is favourabl
 3. **Does `redact` in `enforce` mode rewrite the caller's prompt?** It silently changes what the user asked for. Recommended yes, with the event recorded — but that is a product decision.
 
 ## 8. Not verified
-- The p50/p95 latency of a `/v1/guard` call under real traffic. That is week 1's measurement and the reason record mode exists.
+- The p50/p95 latency of a `/v1/guard` call under real traffic. That is step 1's measurement and the reason record mode exists.
 - Whether `run_in_parallel` on `post_call` changes response-ordering semantics for streaming responses. To be established during the build, before the budget is set.
 - F5's blast radius: how often the refusal string and the `.co` wording have drifted historically.
