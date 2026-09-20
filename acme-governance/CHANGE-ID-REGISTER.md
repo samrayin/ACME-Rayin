@@ -36,6 +36,7 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | CHG-2026-010 | 1 | Least-privilege database cutover: web and worker connect as `rayin_app_runtime`, not the admin login (Readiness Ledger P0-5, P0-6; ops gap list B9) | Anees Ur Rahman | `docs/adr-0004-least-privilege-cutover` · #44 (draft) | Claimed — design only, build not approved |
 | CHG-2026-011 | 1 | LLM Gateway console fixes found in the first dev browser pass: error toast for non-owners, false gateway-side-admin badge, wording that overstated the append-only control, NUL byte in a source file (covered by ADR-0003; no new ADR) | Anees Ur Rahman | `fix/litellm-gateway-ui-pass` · #48 | Merged |
 | CHG-2026-012 | 2 | Records catch-up, documentation only: this register's rows for CHG-2026-005, -008, -009, -010, -011 and ADR-0003 brought in line with what is merged; changelog line for release `acme-v4.38.0.3` | Anees Ur Rahman | `docs/records-catchup-chg-2026-012` · #53 | Claimed |
+| CHG-2026-013 | 2 | Changelog "Outstanding" section: two statements that were no longer true (worker traceability; worker / LiteLLM / rayin-proxy listed as untagged). Found during CHG-2026-012 and split out of it because they were outside its registered scope | Anees Ur Rahman | `docs/changelog-outstanding-corrections` · #55 | Claimed |
 
 ## ADR numbers
 
