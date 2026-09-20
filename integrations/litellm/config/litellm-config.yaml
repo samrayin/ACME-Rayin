@@ -34,6 +34,36 @@ model_list:
       model: openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
       api_key: os.environ/OPENROUTER_API_KEY
 
+  # Groq and Gemini — added 2026-09-20 (CHG-2026-015) as ADDITIONAL judge-model
+  # options, not replacements. nvidia-nemotron stays the default. Which model
+  # becomes the permanent judge is week 2's decision and is gated on the
+  # free-tier data-use check in ADR-0005 F3: the judge model receives the full
+  # prompt text of every request the guardrail inspects, so a provider whose
+  # free tier may train on submitted data is disqualified regardless of latency
+  # or cost. Establish the terms before the model.
+  #
+  # Why these were added: on 2026-09-20 both existing judge paths were out of
+  # quota at the same moment — claude-sonnet on Anthropic credit, and
+  # nvidia-nemotron on OpenRouter's free tier (HTTP 429, 50 requests/day,
+  # 0 remaining). One day of eval testing consumed it, because every
+  # /v1/guard call costs one judge call.
+  #
+  # CONFIRM THE MODEL SLUG BEFORE APPLYING. A Groq entry was added and removed
+  # on 2026-09-12 because the slug this account had access to no longer existed
+  # on Groq's lineup. Slugs below are placeholders: check each against the
+  # provider's current model list, and against what this account can actually
+  # call, before the ConfigMap is updated. Applying an entry with a dead slug
+  # gives a model that reports healthy and fails at call time.
+  - model_name: groq-judge
+    litellm_params:
+      model: groq/<confirm-current-slug>
+      api_key: os.environ/GROQ_API_KEY
+
+  - model_name: gemini-judge
+    litellm_params:
+      model: gemini/<confirm-current-slug>
+      api_key: os.environ/GEMINI_API_KEY
+
   # OpenAI — configured-but-dormant. Uncomment once this provider is confirmed live.
   # - model_name: gpt-4o
   #   litellm_params:
