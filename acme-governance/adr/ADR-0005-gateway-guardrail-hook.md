@@ -178,6 +178,24 @@ This is therefore the leading week-2 candidate for the v5 P0 ("swap the guardrai
 
 Still untested: no call has been made through it. Whether it conforms in practice is the question CHG-2026-016's test must answer, and assuming it does is the error that let the parser defect survive this long.
 
+### Tested 2026-09-21 — `gpt-oss-safeguard-20b` conforms, and the first draft of the fix would have broken it
+
+The model was tested in isolation before the rail was repointed, and the result changed the fix rather than confirming it.
+
+**It is a reasoning model.** It emits tokens into a separate `reasoning` channel before producing any `content`. Measured through the gateway: at `max_tokens` 4, 16, 32 and 64 the budget is consumed by reasoning and **`content` comes back empty with `finish_reason=length`**. `is_content_safe` reads empty content as no keyword in the first two words, falls through, and blocks. **That is N-56's exact symptom with a different cause — and CHG-2026-016's first draft set `max_tokens: 4`, so it would have reproduced the finding it was written to close.**
+
+**Reasoning length is not deterministic and scales with input:** 14 to 194 tokens observed at temperature 0, with a realistic finance question costing more than a short one. So `max_tokens` is set at 512 — not the measured floor — giving roughly 2.6x headroom. The asymmetry justifies it: too low fails silently and blocks every request, while too high costs nothing, because `finish_reason` is `stop` and `max_tokens` is only a cap.
+
+**`stop: ["
+"]` is proven harmful and removed.** With it set, an attack prompt returned empty content. It also bought nothing: the verdict is a bare word containing no newline.
+
+**Verified through NeMo's own path, not inferred from an isolated HTTP call.** Using `get_llm_provider` → langchain `OpenAI` → `llm_call` with `llm_params(temperature=1e-20, max_tokens=512)` — the same call `self_check_input` makes — a benign prompt returned `'safe'` (parser: SAFE) and an attack returned `'unsafe'` (parser: BLOCK). Content survives and reasoning does not leak into it. That was the open question between "conforms in isolation" and "will work when wired in", and it is now closed.
+
+**Correction to an earlier claim in this ADR.** It argued a safety model would be faster than a chat model "because it emits one token". That reasoning was wrong: this model spends up to ~194 reasoning tokens before its one-word answer. It *is* fast — measured `completion_time` around 0.1 s — but because the model is small and the tokens are cheap, not because it emits few of them. The conclusion held; the stated reason did not, and the record should not preserve a right answer supported by a wrong argument.
+
+**Still not done:** the rail has not been repointed. `GUARDRAILS_LLM_MODEL` remains `nvidia-nemotron`, N-56 remains open, and no guard behaviour has changed. Repointing is a separate decision.
+
+
 ### Deferred, tracked, not part of CHG-2026-016 — the `content_safety` rail type
 NeMo 0.11.0 ships a `content_safety` rail (`library/content_safety/`) whose `content_safety_check_input` action takes a structured policy-category prompt, pins `temperature=1e-20` and `_MAX_TOKENS = 3`, and returns `{"allowed", "policy_violations"}` — so it yields *which policy* was violated, not just a boolean. It is a genuine improvement over `self_check_input`.
 
