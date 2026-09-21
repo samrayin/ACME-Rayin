@@ -2783,3 +2783,51 @@ discrepancy in the ledger's N-56 entry rather than reconciled by inference.
 
 **Risk:** none. Documentation and test scaffolding. No product code, no cluster
 change, no release.
+
+---
+
+## 2026-09-21 — ADR-0005 Step 0 decided: the judge stays on the gateway (CHG-2026-022, no release)
+
+**What:** Records the owner's decision on ADR-0005 Step 0. The guardrail judge model
+**stays on the LiteLLM gateway** and is excluded from the guardrail hook by
+admin-configured key metadata — option (b). This reverses the ADR's previous preference
+for moving the judge off the gateway, which was written before the gateway's governance
+controls were measured.
+
+**Why the earlier preference did not survive measurement:**
+
+- The **guardrail audit trail is unaffected either way.** `acme_guardrail_events` is fed
+  by a separate push path from `rayin-guardrails` and never touches the gateway. That
+  removes the only argument that would have justified bypassing it.
+- The **F3-coupling argument was weaker than stated.** If the gateway is down there is
+  no traffic to judge, so the coupling is largely notional.
+- **Bypassing costs exactly the governance capabilities the product is sold on:**
+  per-key spend attribution, the per-key model allowlist, and console-based rotation
+  with its `delete apiKey` audit entry. Measured live: the judge key shows
+  `spend=0.0015` attributed correctly, and the older guardrails keys are genuinely
+  restricted by allowlist. For BFSI, a raw provider key with no allowlist and no
+  attribution is harder to defend than a single audited exclusion flag.
+
+**What it costs, recorded rather than glossed:** recursion prevention becomes
+configuration that must remain correct, not structural impossibility. A misconfiguration
+does not degrade the control — it produces an unbounded loop.
+
+**A constraint found while recording it.** Read from the running gateway,
+`should_run_guardrail` consults the opt-out **only when `default_on is True`**. With
+`default_on: false` — the zero-blast-radius configuration — the opt-out is never
+consulted. So the exclusion mechanism cannot be exercised safely in advance; it takes
+effect only where failing it recurses without bound. The exclusion must therefore also
+be implemented **inside the hook**, by target model, where it is deterministic and
+unit-testable before any flip. The LiteLLM opt-out becomes defence in depth rather than
+the primary control. This is a design constraint on Step 1, not optional hardening.
+
+**Step 0's gate is a test, and it recurs.** Because prevention is configuration rather
+than structure, proving it once is insufficient. The test joins recurring release
+verification and re-proves on every release; a release that cannot run it does not ship.
+
+**New monitored invariant under F11:** the judge key must be the only virtual key
+carrying a guardrail opt-out. Any second key carrying one is a finding, not a
+configuration choice — it both weakens the control and silently exempts that key's
+traffic from inspection.
+
+**Risk:** none. Design only. No hook exists, no cluster change, no release.

@@ -7,7 +7,7 @@
 | **Closes when effective** | Readiness Ledger H-01 / N-38 — the first clause of the product's one-line description |
 | **Blocked by** | Ledger **N-56** (rail blocks benign prompts, latency unbounded) and **N-58** (unpinned third-party model fetched at boot) — both hard gates on `enforce`, ahead of the infrastructure prerequisites |
 | **Related** | CHG-2026-009 (#46, gateway restart gate) · P0-10 (fail-open audit trail) · P0-5 / CHG-2026-010 · N-22 (guardrails untraced) · N-23 |
-| **Revised** | 2026-09-21 (CHG-2026-018): F7's preferred fix replaced with two independent gateway guardrails; **F10** added — the hook makes the gateway call itself, a day-one blocker in every mode, with a new Step 0; **F11** added, recording that the guardrail opt-out is admin-only and withdrawing the concern that it was not; §2 and §5 cross-reference the `gateway-eval.yaml` meaning change (CHG-2026-017). No status change — still **Proposed, design only**. |
+| **Revised** | 2026-09-21 (CHG-2026-018): F7's preferred fix replaced with two independent gateway guardrails; **F10** added — the hook makes the gateway call itself, a day-one blocker in every mode, with a new Step 0; **F11** added, recording that the guardrail opt-out is admin-only and withdrawing the concern that it was not; §2 and §5 cross-reference the `gateway-eval.yaml` meaning change (CHG-2026-017). No status change — still **Proposed, design only**.  · **2026-09-21 (CHG-2026-022): Step 0 decided — option (b), judge stays on the gateway, excluded by admin key metadata plus an in-hook model check; reverses the earlier preference for (a), which predated the measurement. F11 gains a monitored invariant. No status change — still Proposed, design only.** |
 
 ## 1. The problem, verified not assumed
 
@@ -108,6 +108,25 @@ The rail's judge model is served **by the gateway the hook attaches to** (`GUARD
 
 Mitigation, in preference order:
 
+**DECIDED 2026-09-21 (CHG-2026-022): option (b) — the judge stays on the gateway and is excluded by admin-configured key metadata.** This **reverses** the preference for (a) recorded above, which was written before the gateway’s governance controls were measured.
+
+**Why (a) no longer wins.** (i) The **guardrail audit trail is unaffected either way**: `acme_guardrail_events` is fed by a separate push path from `rayin-guardrails` and never touches the gateway, which removes the only argument that would have justified (a). (ii) The **F3-coupling argument for (a) was assessed and found weaker than stated**: if the gateway is down there is no traffic to judge, so the coupling is largely notional. (iii) **(a)’s costs fall precisely on the governance capabilities the product is sold on** — per-key spend attribution, the per-key model allowlist, and console-based rotation with its `delete apiKey` audit entry. Measured live 2026-09-21: the judge key shows `spend=0.0015` attributed correctly, and the older guardrails keys are genuinely restricted by allowlist (`models=['claude-sonnet','nvidia-nemotron']`). For a BFSI product, a raw provider key with no allowlist and no attribution is harder to defend than a single audited exclusion flag.
+
+**What (b) costs, stated plainly.** Recursion prevention becomes **configuration that must remain correct**, not structural impossibility. A misconfiguration does not degrade the control — it produces an unbounded loop.
+
+**And it is worse than “configuration” implies — read from the running gateway, 2026-09-21.** `should_run_guardrail` consults the opt-out **only when `default_on is True`**:
+
+```python
+if self.default_on is True and self.guardrail_name in opted_out_global_guardrails:
+    return False
+```
+
+With `default_on: false` — the zero-blast-radius configuration — those branches are skipped and the guardrail runs whenever a request names it explicitly. **So the exclusion mechanism cannot be exercised in the safe configuration.** It takes effect only in the configuration where failing it recurses without bound. The exclusion must therefore **also** be implemented inside the hook itself (by target model, and/or by key alias), where it is deterministic and unit-testable before any flip; the LiteLLM opt-out is defence in depth, not the primary control. This is a design constraint on Step 1, not an optional hardening.
+
+**Step 0’s gate is a test, not a config review — and it recurs.** Because prevention is configuration rather than structure, proving it once is not sufficient. The test must be part of **recurring release verification** so it re-proves on every release, and a release that cannot run it does not ship.
+
+Mitigations, for the record:
+
 1. **Move the judge off the guarded gateway** — a separate route or a direct provider call — so the control does not depend on the thing it controls. This also removes the F3 coupling where one gateway problem takes out both the traffic and the ability to judge it.
 2. **Exclude the judge path by admin-configured key or team metadata.** `should_run_guardrail` honours `disable_global_guardrails` and `opted_out_global_guardrails`, read from **admin** metadata (see F11). Issuing the guardrails service its own virtual key carrying that opt-out is sufficient and is a privileged surface, not a caller-chosen one.
 
@@ -115,6 +134,8 @@ Mitigation, in preference order:
 
 ### F11 — The guardrail opt-out is admin-only. Recorded so it is not re-raised as a defect.
 A concern was raised on 2026-09-21 that the per-request opt-out might be caller-controlled, which would have made "every prompt is checked" false by construction. **It was checked and it is not true.** `get_disable_global_guardrail` and `get_opted_out_global_guardrails_from_metadata` read from admin-configured key/team metadata only, and LiteLLM's own docstring states the reason: *"not from the request body, to prevent callers from disabling guardrails."* The concern is **withdrawn**; it is not a finding.
+
+**MONITORED INVARIANT (CHG-2026-022): the judge key must be the only virtual key carrying a guardrail opt-out. Any second key carrying one is a finding, not a configuration choice.** Under the Step 0 decision (b) this flag is what prevents recursion, so a stray opt-out both weakens the control it was granted for and silently exempts that key’s traffic from inspection. This is a standing monitored item, not a convention.
 
 What remains is an operational control rather than a defect: an administrator **can** set an opt-out on a key or team, so the claim "every prompt through the gateway is checked" holds only while no key carries one. That belongs in monitoring and in the periodic key review, alongside the exclusion F10 requires — which uses this same mechanism, and must therefore be the **only** key that carries it.
 
@@ -178,7 +199,7 @@ Readiness must reflect **this pod's own ability to serve a decision**, not wheth
 
 | | Work | Gate |
 |---|---|---|
-| **Step 0, new 2026-09-21** | **Exclude the judge path from the hook, and prove it (F10).** Nothing else in this table can start until this holds, because the loop bites in `record` as much as in `enforce`. | No gateway restart — design and key configuration only. |
+| **Step 0** (new 2026-09-21; decided CHG-2026-022) | **Exclude the judge path from the hook, and prove it by test (F10).** Decision: the judge **stays on the gateway**, excluded by admin key metadata, with the exclusion **also implemented inside the hook** by target model, because LiteLLM’s opt-out is only consulted when `default_on is True` and so cannot be exercised safely beforehand. Nothing else in this table starts until this holds, because the loop bites in `record` as much as in `enforce`. **The test joins recurring release verification** — it re-proves on every release, and a release that cannot run it does not ship. | No gateway restart — design, hook code and key configuration only. |
 | **Step 1** | Build the hook; ship it in **`record`**. Add the guardrails-side timeout and explicit rail-failure handling (F2). Release guardrails through `release.sh` for a real tag (F4). Measure p50/p95 added latency and the would-block count — with `integrations/promptfoo/config/gateway-eval.yaml`, whose results **stop being comparable to any earlier run at this moment** (§2; `integrations/promptfoo/README.md`, CHG-2026-017). Capture the pre-hook baseline before this step, not after. | One gateway restart — **paired with CHG-2026-009**, so the gateway restarts once rather than twice. |
 | **Step 2** | P0-10 durability; the readiness/metrics split; judge-model credit and health alerting (F3); the multi-node decision (F1). | No gateway restart. |
 | **Step 3** | **Not a flip to `enforce`.** This is where the rail itself is fixed (F5/N-56) — intent detection rather than string matching, and a judge path with a bounded, usable latency distribution. | No gateway restart. |
