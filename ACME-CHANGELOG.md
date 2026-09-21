@@ -2910,3 +2910,42 @@ exposed it. The ordering now carries a comment saying why it must not be reorder
 
 **Risk:** none. The module is not loaded by any running service and changes no behaviour.
 No cluster change, no release.
+
+---
+
+## 2026-09-21 — Removed the inert Langfuse callback from the gateway config (CHG-2026-024, no release)
+
+**What:** Deleted `litellm_settings.success_callback` and `failure_callback` from
+`integrations/litellm/config/litellm-config.yaml`. Five lines out, a comment block in
+recording why.
+
+**Why removal and not enablement.** The registration had been present since the gateway
+was configured, while the pod carries **zero** `LANGFUSE_*` environment variables. It
+delivered nothing, for its entire life, and failed silently — the config advertised a
+"native Langfuse logging integration" that had never once worked. Readiness Ledger
+**N-20**, readiness audit **H-26**.
+
+Removal is the ledger's own recommended fix, and enabling was assessed and rejected.
+Without CHG-2026-009's `turn_off_message_logging`, switching it on would write **full
+prompt and completion text** into ClickHouse — and raw payload bodies land in blob
+storage *before* ClickHouse, so masking afterwards would not help the copy already
+written. With retention requiring an entitlement this OSS instance does not have, that
+data could never be deleted (**P0-11**, re-verified 2026-09-21: no
+`LANGFUSE_EE_LICENSE_KEY`). Turning on content-bearing tracing into a store with no
+delete path, while "can you delete customer data on request" still answers *no*, is the
+wrong trade.
+
+**What N-20 actually asked for.** Its recorded concern is that enabling was three
+environment variables away with no approval gate — the control depended on a credential
+being absent rather than on a decision. Removing the registration closes that; re-adding
+becomes a deliberate act.
+
+**Re-adding, when it is wanted:** a named credential owner, an approval gate, and
+`turn_off_message_logging` in the same change. The comment left in the file says so.
+
+**Verified before commit:** the file parses, all five models survive, and
+`litellm_settings` is gone rather than left as an empty key — an empty mapping would have
+been its own hazard.
+
+**Risk:** removes a code path that has never executed. No behaviour changes. Applying it
+needs one ConfigMap update and one gateway restart, owner-gated and tracked separately.

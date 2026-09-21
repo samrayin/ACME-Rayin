@@ -113,11 +113,17 @@ general_settings:
   database_url: os.environ/DATABASE_URL
   master_key: os.environ/LITELLM_MASTER_KEY
 
-# Native Langfuse logging integration — routes LiteLLM's own usage data into
-# RAYIN's existing Observability section instead of a second dashboard.
-litellm_settings:
-  success_callback: ["langfuse"]
-  failure_callback: ["langfuse"]
+# Langfuse callback registration REMOVED 2026-09-21 (CHG-2026-024).
+#
+# It registered success_callback/failure_callback = ["langfuse"] while this pod
+# carries no LANGFUSE_* variables, so it delivered nothing and failed silently
+# for its entire life. Readiness Ledger N-20, readiness audit H-26.
+#
+# Removed rather than enabled, deliberately. Enabling is three environment
+# variables away and would write full prompt and completion text into a store
+# with no reachable purge path -- retention requires an entitlement this OSS
+# instance does not have (P0-11). Re-add ONLY with a named credential owner, an
+# approval gate, and CHG-2026-009 turn_off_message_logging in the same change.
 
 # Starter virtual keys — one per team/use case, per README.md "Open
 # decisions" #3 (2026-09-12: $50/key, confirmed -- per-key, not a shared
