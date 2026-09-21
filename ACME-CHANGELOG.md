@@ -2655,3 +2655,54 @@ re-checked as part of this change.
   never actually been run end-to-end, since no real customer deployment
   exists yet. First real customer onboarding should treat this as the first
   live test of that sequence, not an already-proven path.
+
+---
+
+## 2026-09-21 — ADR-0005 amended: independent guardrails, and a recursion blocker (CHG-2026-018, no release)
+
+**What:** Three amendments to `acme-governance/adr/ADR-0005-gateway-guardrail-hook.md`.
+Documentation only. The hook is still **Proposed — design only**; nothing is built
+and nothing is deployed.
+
+**F7 — preferred fix replaced.** The PII short-circuit that lets any prompt carrying
+a name, email, card number, IBAN or IP skip jailbreak detection was to be fixed by
+running the rails on the original text and combining verdicts. That is now the
+*fallback*. The preferred fix is to make PII and jailbreak **two independent gateway
+guardrails**: LiteLLM evaluates each against the same request rather than piping one
+into the next, so two guardrails cannot short-circuit each other. The bypass stops
+being possible rather than being patched.
+
+Verified in the running gateway before being written down: `presidio` is a built-in
+integration (there is no built-in NeMo one — the jailbreak side stays custom);
+`pii_entities_config` maps each entity to its own `BLOCK` or `MASK` action; all six
+entities live in dev are present in `PiiEntityType`; and `logging_only` gives the PII
+half a record mode for free.
+
+**F10 — new, and it changes the schedule.** The rail's judge model is served *by the
+gateway the hook attaches to*. With a guardrail attached, a gateway request calls
+guardrails, whose rail calls its judge through the gateway, which calls guardrails
+again. This bites in `record` mode as much as `enforce`, because record mode still
+calls guardrails on every request — so it is a day-one blocker, not an
+enforcement-time concern, and it would surface on the first request in either mode.
+
+A new **Step 0** is added to §5 ahead of everything else, with a hard gate: *the judge
+path must be provably excluded before the hook is enabled in any mode* — demonstrated
+by a test, not a config review. Preferred mitigation is moving the judge off the
+guarded gateway entirely, so the control does not depend on what it controls.
+
+**F11 — new, and it records a withdrawal.** A concern was raised that the per-request
+guardrail opt-out might be caller-controlled, which would have made "every prompt is
+checked" false by construction. It was checked against the running gateway and is not
+true: the opt-out reads from admin-configured key/team metadata only, with LiteLLM's
+own docstring giving the reason. The concern is withdrawn and recorded as withdrawn so
+it is not re-raised later. What remains is a monitoring item — an administrator can set
+an opt-out on a key, so the claim holds only while no key carries one, and F10's
+exclusion must be the only key that does.
+
+**Cross-reference (CHG-2026-017):** §2 and §5 now record that
+`integrations/promptfoo/config/gateway-eval.yaml` changes meaning when the hook ships —
+measuring an uninspected path today and an inspected one in `record` mode, with no
+change to the file. Runs from either side of that line are not comparable, and the
+pre-hook baseline must be captured before Step 1, not after.
+
+**Risk:** none. No product code, no cluster change, no deployment, no release.
