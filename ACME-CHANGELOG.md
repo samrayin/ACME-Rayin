@@ -2658,7 +2658,44 @@ re-checked as part of this change.
 
 ---
 
-<<<<<<< HEAD
+## 2026-09-21 — promptfoo benign-prompt corpus committed (CHG-2026-017, no release)
+
+**What:** Brought the N-56 measurement harness under version control. These three
+files existed only as untracked files in one working copy, on one machine, with no
+backup — while being the instrument that produces the evidence ADR-0005's
+enforcement gates are written against.
+
+**Files:**
+- `integrations/promptfoo/config/guardrails-benign.yaml` — 32 prompts against
+  `/v1/guard`: 26 benign across five sections (core banking, regulatory, platform
+  ops, adversarial-*sounding* but benign, short/low-signal) and 6 genuine attacks as
+  controls. Grading is deterministic — the oracle is the returned `action`, never a
+  judge model's opinion, because grading a false-positive measurement with the same
+  class of model that produces the false positives would defeat the point.
+- `integrations/promptfoo/config/summarize-benign.js` — reads a run's JSON and
+  reports per-section false-positive and detection rates, plus a latency spread.
+- `integrations/promptfoo/RUNNING-BENIGN-EVAL.md` — the in-pod run procedure.
+
+**Why the controls matter:** without section F, a rail that blocks everything scores
+a perfect detection rate. The summariser reads the two numbers together and says
+which of three states the rail is in — discriminating, a constant, or inert.
+
+**Why in-pod:** the run reads the guardrails shared secret through `envFrom` inside
+the cluster rather than via `port-forward` plus an exported variable in a workstation
+shell. The credential never leaves the cluster.
+
+**Also in this change:** a note in `integrations/promptfoo/README.md` recording that
+`config/gateway-eval.yaml` changes *meaning* when the ADR-0005 gateway guardrail hook
+ships. Today it measures an uninspected path — routing, quality, latency. After the
+hook lands in `record` mode the same file against the same endpoint measures an
+inspected one, and becomes the record-mode corpus. Its behaviour does not change,
+which is the hazard; results from either side of that line are not comparable.
+
+**Risk:** none. Test scaffolding and documentation. No product code, no cluster
+dependency, nothing deployed, no release.
+
+**Deployment status:** not deployed and not deployable — these files are never built
+into an image.
 ## 2026-09-21 — ADR-0005 amended: independent guardrails, and a recursion blocker (CHG-2026-018, no release)
 
 **What:** Three amendments to `acme-governance/adr/ADR-0005-gateway-guardrail-hook.md`.
@@ -2707,43 +2744,3 @@ change to the file. Runs from either side of that line are not comparable, and t
 pre-hook baseline must be captured before Step 1, not after.
 
 **Risk:** none. No product code, no cluster change, no deployment, no release.
-=======
-## 2026-09-21 — promptfoo benign-prompt corpus committed (CHG-2026-017, no release)
-
-**What:** Brought the N-56 measurement harness under version control. These three
-files existed only as untracked files in one working copy, on one machine, with no
-backup — while being the instrument that produces the evidence ADR-0005's
-enforcement gates are written against.
-
-**Files:**
-- `integrations/promptfoo/config/guardrails-benign.yaml` — 32 prompts against
-  `/v1/guard`: 26 benign across five sections (core banking, regulatory, platform
-  ops, adversarial-*sounding* but benign, short/low-signal) and 6 genuine attacks as
-  controls. Grading is deterministic — the oracle is the returned `action`, never a
-  judge model's opinion, because grading a false-positive measurement with the same
-  class of model that produces the false positives would defeat the point.
-- `integrations/promptfoo/config/summarize-benign.js` — reads a run's JSON and
-  reports per-section false-positive and detection rates, plus a latency spread.
-- `integrations/promptfoo/RUNNING-BENIGN-EVAL.md` — the in-pod run procedure.
-
-**Why the controls matter:** without section F, a rail that blocks everything scores
-a perfect detection rate. The summariser reads the two numbers together and says
-which of three states the rail is in — discriminating, a constant, or inert.
-
-**Why in-pod:** the run reads the guardrails shared secret through `envFrom` inside
-the cluster rather than via `port-forward` plus an exported variable in a workstation
-shell. The credential never leaves the cluster.
-
-**Also in this change:** a note in `integrations/promptfoo/README.md` recording that
-`config/gateway-eval.yaml` changes *meaning* when the ADR-0005 gateway guardrail hook
-ships. Today it measures an uninspected path — routing, quality, latency. After the
-hook lands in `record` mode the same file against the same endpoint measures an
-inspected one, and becomes the record-mode corpus. Its behaviour does not change,
-which is the hazard; results from either side of that line are not comparable.
-
-**Risk:** none. Test scaffolding and documentation. No product code, no cluster
-dependency, nothing deployed, no release.
-
-**Deployment status:** not deployed and not deployable — these files are never built
-into an image.
->>>>>>> origin/main
