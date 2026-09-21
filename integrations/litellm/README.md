@@ -197,6 +197,22 @@ LiteLLM's in-cluster service address, using its dedicated virtual key. Confirm
 cost tracking shows a real entry before adding `rayin-guardrails` as the
 second consumer per [Sequencing](#sequencing) step 5.
 
+## Guardrail hook (CHG-2026-014, ADR-0005) — present, NOT enabled
+
+`config/cairo_guardrail_hook.py` ships the **ADR-0005 Step 0 exclusion** and its unit
+tests. It is inert: nothing references it from a `guardrails:` block, and its verdict
+path deliberately raises `NotImplementedError` so it cannot appear to work.
+
+Run the tests from the repository root — stdlib only, no cluster, no `litellm`:
+
+```bash
+python -m unittest discover -s integrations/litellm/tests -v
+```
+
+Enabling the hook in **any** mode, including `record`, is gated on ADR-0005-A: the judge
+key must carry its opt-out, allowlist and rate cap, and layers 2 and 3 must pass. The
+loop F10 describes bites in `record` exactly as it does in `enforce`.
+
 ## Status log
 
 **2026-09-11 — deployed, live, healthy.** Steps 1–4 above all done against
