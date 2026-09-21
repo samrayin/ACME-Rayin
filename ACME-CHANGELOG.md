@@ -2660,7 +2660,7 @@ re-checked as part of this change.
 
 ## 2026-09-21 — promptfoo benign-prompt corpus committed (CHG-2026-017, no release)
 
-**What:** Brought the N-56 measurement harness under version control. These three
+**What:** Brought the N-56 measurement harness under version control. **Corrected 2026-09-21 (CHG-2026-021): as committed this runbook could not execute, and the relationship between these files and the 2026-09-20 measurement cited in the ledger is unestablished — see that entry.** These three
 files existed only as untracked files in one working copy, on one machine, with no
 backup — while being the instrument that produces the evidence ADR-0005's
 enforcement gates are written against.
@@ -2744,3 +2744,42 @@ change to the file. Runs from either side of that line are not comparable, and t
 pre-hook baseline must be captured before Step 1, not after.
 
 **Risk:** none. No product code, no cluster change, no deployment, no release.
+
+---
+
+## 2026-09-21 — promptfoo runbook corrections, found by running it (CHG-2026-021, no release)
+
+**What:** Three defects in CHG-2026-017's own content, all found by executing the
+procedure it documents rather than by review.
+
+**1. The runbook could not execute.** `RUNNING-BENIGN-EVAL.md` pinned
+`--image=node:20-alpine` while pinning `promptfoo@0.123.0`, which requires Node
+`>=22.22.0`. `npm i` succeeds — 735 packages — and the binary then refuses to start.
+Reproduced twice on 2026-09-21. Fixed to `node:22-alpine`.
+
+**2. The runbook guaranteed a silent failure.** Its command was
+`npm i -g promptfoo@0.123.0 >/dev/null 2>&1 && …`, so defect 1 produced no output, no
+results file and nothing explaining why. The suppression is the worse defect of the
+two: a wrong version pin fails once, a suppressed diagnostic hides every future
+failure. The command now prints the node version, the install tail, the promptfoo
+version, the full eval output and an explicit check for the results file.
+
+**3. Evidence integrity: the corpus hardcoded a dated `agent_id`.**
+`guardrails-benign.yaml` carried `agent_id: promptfoo-benign-2026-09-20`, so the
+2026-09-21 run wrote its rows into `acme_guardrail_events` under the 2026-09-20 tag.
+Two distinct runs became indistinguishable by tag and separable only by timestamp —
+in the append-only table that exists to be the evidence. The id now comes from
+`EVAL_RUN_ID`, set per run by the runbook.
+
+**Also corrected:** the CHG-2026-017 changelog entry described this runbook as the
+procedure that produced the 2026-09-20 measurement. It cannot have been. The entry now
+records that relationship as unestablished.
+
+**Not corrected, because it is not knowable from here:** what did produce the
+2026-09-20 run. The guardrails writer role is insert-only and returns
+`permission denied` on `SELECT` against `acme_guardrail_events`, and no read path was
+available that did not require an admin database credential. Recorded as an open
+discrepancy in the ledger's N-56 entry rather than reconciled by inference.
+
+**Risk:** none. Documentation and test scaffolding. No product code, no cluster
+change, no release.
