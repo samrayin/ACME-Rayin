@@ -2875,3 +2875,38 @@ keys can reach the judge model today. Not a bypass under the adopted discriminat
 remediation rides with the deferred key clean-up.
 
 **Risk:** none. Documentation only.
+
+---
+
+## 2026-09-21 — Guardrail hook: the Step 0 exclusion and its unit tests (CHG-2026-014, no release)
+
+**What:** `integrations/litellm/config/cairo_guardrail_hook.py` and
+`integrations/litellm/tests/test_cairo_guardrail_hook.py` — ADR-0005 Step 1 build work,
+limited to the Step 0 exclusion designed in ADR-0005-A.
+
+**Inert by construction.** No `guardrails:` block references the module, and its verdict
+path raises `NotImplementedError` rather than returning something plausible. A hook that
+silently appears to work is worse than one that is obviously unfinished.
+
+**`should_skip()` is a pure function.** It reads the key-level opt-out from authenticated
+metadata only. Team-level opt-outs are ignored, because one would exempt every key on the
+team. Model identity never exempts. If the two metadata containers disagree — the shape a
+forgery attempt produces — neither is trusted and the request is inspected. Every
+ambiguity resolves to *inspect*: a false skip is a silent hole, a false inspect is a loud
+loop that the judge key's rate cap bounds.
+
+**25 tests, stdlib `unittest`, no new dependency.** This repository had no Python tests
+at all; adding a test framework is a decision of its own and was not taken here. The tests
+pass both with `litellm` installed and with it genuinely unavailable, so layer 1 can run
+in a light CI job despite the fork having no runner for heavy jobs (N-51).
+
+**A real defect was caught by writing them, not by review.** The first draft assigned
+`self.guardrail_name` *before* calling `super().__init__()`. `CustomGuardrail.__init__`
+then reset it to `None`, so `should_skip(data, None)` returned False for every request and
+the exclusion became a **silent no-op** — the judge path back in the F10 recursion with
+nothing to show for it. Every pure-function test passed; only constructing the class
+exposed it. The ordering now carries a comment saying why it must not be reordered, and
+`test_guardrail_name_survives_construction` pins it.
+
+**Risk:** none. The module is not loaded by any running service and changes no behaviour.
+No cluster change, no release.
