@@ -125,6 +125,8 @@ With `default_on: false` — the zero-blast-radius configuration — those branc
 
 **Step 0’s gate is a test, not a config review — and it recurs.** Because prevention is configuration rather than structure, proving it once is not sufficient. The test must be part of **recurring release verification** so it re-proves on every release, and a release that cannot run it does not ship.
 
+**Design of that exclusion and its test: [ADR-0005-A](ADR-0005-A-step0-exclusion-design.md) (CHG-2026-023).** It fixes the discriminator as **authenticated key-level metadata** — target model name was assessed and rejected as a bypass that is open today, and a caller-set marker as forgeable — caps the judge key at `rpm_limit` 10 for the flip window, and specifies the three-layer test whose assertions are equalities.
+
 Mitigations, for the record:
 
 1. **Move the judge off the guarded gateway** — a separate route or a direct provider call — so the control does not depend on the thing it controls. This also removes the F3 coupling where one gateway problem takes out both the traffic and the ability to judge it.

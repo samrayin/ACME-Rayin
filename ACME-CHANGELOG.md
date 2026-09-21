@@ -2831,3 +2831,47 @@ configuration choice — it both weakens the control and silently exempts that k
 traffic from inspection.
 
 **Risk:** none. Design only. No hook exists, no cluster change, no release.
+
+---
+
+## 2026-09-21 — ADR-0005-A: how the judge path is excluded from the hook, and how that is proven (CHG-2026-023, no release)
+
+**What:** A companion design to ADR-0005, `acme-governance/adr/ADR-0005-A-step0-exclusion-design.md`,
+for Step 0 — the gate that must hold before the gateway guardrail hook is enabled in
+any mode. Design only: no hook exists, no key was edited, nothing ran against a cluster.
+
+**The discriminator is authenticated key-level metadata.** Three candidates were
+assessed against the running gateway. *Target model name* was rejected as a bypass that
+is open today: application-side keys issued with an unrestricted model grant can already
+reach the judge model, so a model-name check would let them skip inspection by asking
+for it. *A request-metadata marker* was rejected as forgeable — it is caller-supplied,
+the class LiteLLM refuses for its own opt-out. *Authenticated key metadata* is injected
+by the proxy after authentication and is what LiteLLM's own opt-out trusts. The hook
+honours the key-level opt-out itself, regardless of `default_on`; team-level opt-outs
+are ignored; model name never exempts; every ambiguity resolves to *inspect*, because a
+false skip is a silent hole and a false inspect is a loud, bounded loop.
+
+**The judge key becomes an inspection-exempt credential, so its allowlist is on the
+critical path.** One gated prerequisite change (not run, ID claimed when scheduled)
+carries the opt-out metadata, a model allowlist of `groq-safeguard` and
+`nvidia-nemotron`, and a rate cap. The allowlist bounds what a leaked judge key buys:
+uninspected access to a safety classifier and nothing else.
+
+**The cap is `rpm_limit` 10 for the flip window.** A runaway is a chain, not a fan-out;
+at 10 it terminates in seconds rather than never. The test's assertions are equalities
+so the cap cannot pass it: a clean pass is exactly one event, a capped runaway is about
+ten and **fails**, zero is a vacuous pass and **fails**.
+
+**The test has three layers and recurs.** Unit tests on a pure function; integration
+with `default_on: false`, where nothing can loop — including a forged-metadata test
+that stops the design if it fails; and post-flip equality assertions read after a
+settle window, twice, from two independent counters. It attaches to every gateway
+window, every `rayin-guardrails` release and every judge-key edit. A rotation mints a
+key with no opt-out, no allowlist and no cap, so the rotation runbook must carry all
+three and the test runs on the new key before the old one is retired.
+
+**Recorded as a current violation** of the judge-model hygiene invariant: application-side
+keys can reach the judge model today. Not a bypass under the adopted discriminator;
+remediation rides with the deferred key clean-up.
+
+**Risk:** none. Documentation only.
