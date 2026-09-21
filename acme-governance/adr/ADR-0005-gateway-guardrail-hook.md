@@ -7,6 +7,7 @@
 | **Closes when effective** | Readiness Ledger H-01 / N-38 — the first clause of the product's one-line description |
 | **Blocked by** | Ledger **N-56** (rail blocks benign prompts, latency unbounded) and **N-58** (unpinned third-party model fetched at boot) — both hard gates on `enforce`, ahead of the infrastructure prerequisites |
 | **Related** | CHG-2026-009 (#46, gateway restart gate) · P0-10 (fail-open audit trail) · P0-5 / CHG-2026-010 · N-22 (guardrails untraced) · N-23 |
+| **Revised** | 2026-09-21 (CHG-2026-018): F7's preferred fix replaced with two independent gateway guardrails; **F10** added — the hook makes the gateway call itself, a day-one blocker in every mode, with a new Step 0; **F11** added, recording that the guardrail opt-out is admin-only and withdrawing the concern that it was not; §2 and §5 cross-reference the `gateway-eval.yaml` meaning change (CHG-2026-017). No status change — still **Proposed, design only**. |
 
 ## 1. The problem, verified not assumed
 
@@ -19,6 +20,10 @@ No prompt passing through the gateway is inspected by anything.
 **Fail closed**, conditional on two prerequisites landing in the same design: (a) guardrails at **≥2 replicas with a PodDisruptionBudget**; (b) an **explicit short timeout**, treated as a fail-closed condition and surfaced in readiness and monitoring.
 
 Both are right. Neither is sufficient, and one cannot currently be satisfied.
+
+**Amended 2026-09-21 (CHG-2026-018): a third prerequisite joins them, and it binds in every mode rather than only at the flip.** The judge path must be provably excluded from the hook before it is enabled at all, because the rail's judge model is served by the gateway the hook attaches to — see **F10**. Unlike (a) and (b), which are about whether fail-closed is safe, this one is about whether the hook functions at all.
+
+Step 1's measurement in §5 is taken with promptfoo. The config it uses, `integrations/promptfoo/config/gateway-eval.yaml`, **changes meaning at exactly this point** — today it measures an uninspected path, and once the hook ships in `record` it measures an inspected one, with no change to the file itself. That transition is recorded in `integrations/promptfoo/README.md` (CHG-2026-017), and the consequence is stated here because it governs this ADR's evidence: **runs from either side of that line are not comparable**, and the baselines taken before the hook are the only "gateway without a guardrail" latency figures that will ever exist.
 
 ### F1 — One node. Two replicas is not redundancy.
 `kubectl get nodes` → **1**. Two pods land on the same node; a node failure, drain or AKS upgrade takes out both, and under fail-closed that stops all model traffic. Worse, **a PodDisruptionBudget on a single-node cluster blocks node drains**, making routine maintenance impossible while buying no real availability. Prerequisite (a) needs a multi-node pool first (H-23, gap list TF-75).
@@ -81,7 +86,37 @@ if redacted_text is not None:
 
 It is invisible today only because the rail blocks everything anyway (F5). **Closing N-56 without fixing this ordering turns a dormant bypass into a live one**, in the very change this ADR governs. Empirically corroborated: the synthetic-IBAN control in the 2026-09-20 eval returned `redact`, never reaching the rail.
 
-Proposed fix, to be confirmed against product intent: run the rails on the **original** text regardless of the PII outcome and combine the verdicts, with **block winning over redact**, rather than returning early. There may be a deliberate reason redaction short-circuits that is not visible in the code; that must be established before changing it.
+**Preferred fix, amended 2026-09-21 (CHG-2026-018): make PII and jailbreak two independent gateway guardrails, so the short-circuit is not patched but rendered impossible.**
+
+The short-circuit exists only because both concerns are chained inside one service behind one early `return`. LiteLLM evaluates each configured guardrail against the same request rather than piping one's output into the next, so two independent guardrails **cannot** short-circuit each other. This removes the failure mode structurally instead of relying on combination logic being written correctly and staying correct.
+
+Verified in the running gateway, 2026-09-21 — this rests on checked capability, not on the integration merely existing:
+
+- `presidio` is one of the built-in guardrail integrations (there is **no** built-in NeMo integration; the jailbreak side stays a custom guardrail calling `rayin-guardrails`).
+- Its configuration surface is per-entity, with a per-entity **action**: `pii_entities_config: dict[PiiEntityType | str, PiiAction]` where `PiiAction` is `BLOCK` or `MASK`, plus `presidio_score_thresholds` per entity, `presidio_entities_deny_list`, and `apply_to_output`.
+- **All six entities live in dev** — `EMAIL_ADDRESS`, `PHONE_NUMBER`, `CREDIT_CARD`, `PERSON`, `IBAN_CODE`, `IP_ADDRESS` — are present in `PiiEntityType`.
+- `logging_only: bool` gives the PII half its own record mode, matching §3b's staging without extra work.
+
+**Fallback, if the two-guardrail shape is rejected on product grounds:** the original proposal — run the rails on the **original** text regardless of the PII outcome and combine the verdicts, with **block winning over redact**, rather than returning early. This keeps both concerns inside `rayin-guardrails` and therefore keeps the ordering correct only for as long as the combination logic is right.
+
+Either way, the open question stands: there may be a deliberate reason redaction short-circuits that is not visible in the code, and that must be established against product intent before the ordering is changed.
+
+### F10 — **The hook makes the gateway call itself. This is a day-one blocker, in `record` mode as much as `enforce`.**
+The rail's judge model is served **by the gateway the hook attaches to** (`GUARDRAILS_LLM_BASE_URL` points at `litellm:4000`; `GUARDRAILS_LLM_MODEL` is a model in the gateway's own list, read live 2026-09-21). With a guardrail attached, a gateway request calls `rayin-guardrails`, whose rail calls its judge **through the gateway**, which calls `rayin-guardrails` again, and so on.
+
+**This is not an `enforce`-time concern.** In `record` mode the hook still calls guardrails on every request, so the loop is identical; only the verdict's effect differs. It would appear on the first request after the hook is enabled, in whichever mode.
+
+Mitigation, in preference order:
+
+1. **Move the judge off the guarded gateway** — a separate route or a direct provider call — so the control does not depend on the thing it controls. This also removes the F3 coupling where one gateway problem takes out both the traffic and the ability to judge it.
+2. **Exclude the judge path by admin-configured key or team metadata.** `should_run_guardrail` honours `disable_global_guardrails` and `opted_out_global_guardrails`, read from **admin** metadata (see F11). Issuing the guardrails service its own virtual key carrying that opt-out is sufficient and is a privileged surface, not a caller-chosen one.
+
+**Gate — a hard requirement, not a recommendation: the judge path must be provably excluded before the hook is enabled in any mode.** "Provably" means a test that demonstrates a judge call does not re-enter the guardrail, not a config review.
+
+### F11 — The guardrail opt-out is admin-only. Recorded so it is not re-raised as a defect.
+A concern was raised on 2026-09-21 that the per-request opt-out might be caller-controlled, which would have made "every prompt is checked" false by construction. **It was checked and it is not true.** `get_disable_global_guardrail` and `get_opted_out_global_guardrails_from_metadata` read from admin-configured key/team metadata only, and LiteLLM's own docstring states the reason: *"not from the request body, to prevent callers from disabling guardrails."* The concern is **withdrawn**; it is not a finding.
+
+What remains is an operational control rather than a defect: an administrator **can** set an opt-out on a key or team, so the claim "every prompt through the gateway is checked" holds only while no key carries one. That belongs in monitoring and in the periodic key review, alongside the exclusion F10 requires — which uses this same mechanism, and must therefore be the **only** key that carries it.
 
 ### F8 — Registering the output parser is necessary but not sufficient.
 Even with a correct `output_parser`, `check_input` still decides a rail fired by verbatim string equality against a hardcoded refusal message (`if content.strip() == _REFUSAL_MESSAGE`). Its own docstring concedes this "breaks if the `.co` files' bot message wording changes" and calls reading NeMo's explain/trace output "a v1 improvement, not done here". **Closing N-56 on the parser alone moves the brittleness rather than removing it.** The durable fix reads which flow fired from the trace, not from the text.
@@ -143,7 +178,8 @@ Readiness must reflect **this pod's own ability to serve a decision**, not wheth
 
 | | Work | Gate |
 |---|---|---|
-| **Step 1** | Build the hook; ship it in **`record`**. Add the guardrails-side timeout and explicit rail-failure handling (F2). Release guardrails through `release.sh` for a real tag (F4). Measure p50/p95 added latency and the would-block count. | One gateway restart — **paired with CHG-2026-009**, so the gateway restarts once rather than twice. |
+| **Step 0, new 2026-09-21** | **Exclude the judge path from the hook, and prove it (F10).** Nothing else in this table can start until this holds, because the loop bites in `record` as much as in `enforce`. | No gateway restart — design and key configuration only. |
+| **Step 1** | Build the hook; ship it in **`record`**. Add the guardrails-side timeout and explicit rail-failure handling (F2). Release guardrails through `release.sh` for a real tag (F4). Measure p50/p95 added latency and the would-block count — with `integrations/promptfoo/config/gateway-eval.yaml`, whose results **stop being comparable to any earlier run at this moment** (§2; `integrations/promptfoo/README.md`, CHG-2026-017). Capture the pre-hook baseline before this step, not after. | One gateway restart — **paired with CHG-2026-009**, so the gateway restarts once rather than twice. |
 | **Step 2** | P0-10 durability; the readiness/metrics split; judge-model credit and health alerting (F3); the multi-node decision (F1). | No gateway restart. |
 | **Step 3** | **Not a flip to `enforce`.** This is where the rail itself is fixed (F5/N-56) — intent detection rather than string matching, and a judge path with a bounded, usable latency distribution. | No gateway restart. |
 | **Step 4, ungated by date** | Flip to `enforce` only when every one of these holds, in this order: **(1) N-56 closed** — meaning a real `output_parser` registered in `prompts.yml` for both self-check tasks (a model swap alone does not count), then a false-positive rate measured at or near zero on finance vocabulary **and** a true-positive rate proving the rail still detects attacks. Both numbers are required: a rail that blocks everything scores a perfect true-positive rate, so that figure is meaningless alone; **(2) a p95 latency budget that is definable and met**; **(3) the PII-ordering bypass closed (F7)** — a PII match must no longer skip the jailbreak rail; **(4) P0-10 closed** — enforcement without a reliable record of why a request was blocked is worse for a regulated buyer than no enforcement: an action that cannot be evidenced is a complaint that cannot be answered; **(5) N-58 closed** — the embeddings model pinned and fetched from a controlled source; then (6) ≥2 replicas on ≥2 nodes, (7) PDB in place, (8) judge model healthy and monitored, (9) guardrails on a release tag. Gates 1–5 are about whether the control works and can be evidenced at all; 6–9 are about whether it can be depended on. **The first five come first.** | One gateway restart, owner present. |
