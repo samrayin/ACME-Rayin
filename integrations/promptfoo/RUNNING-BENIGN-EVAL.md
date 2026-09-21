@@ -6,6 +6,18 @@ that into a 32-prompt measurement with controls.
 
 ## Preconditions
 
+> **Runtime, corrected 2026-09-21 (CHG-2026-021).** `promptfoo@0.123.0` requires Node
+> `>=22.22.0`. This runbook previously specified `node:20-alpine`, on which `npm i`
+> succeeds and the binary then refuses to start. Use `node:22-alpine`.
+>
+> **Nothing is suppressed.** The earlier command sent `npm` to `/dev/null` and chained
+> with `&&`, so that failure produced no output and no results file, and nothing
+> explained why. Keep the diagnostics; a silent eval is worse than a slow one.
+>
+> **Set `EVAL_RUN_ID` per run.** The corpus previously hardcoded a dated `agent_id`, so
+> a later run wrote rows under an earlier run's tag and the two were separable only by
+> timestamp. Give every run its own id.
+
 | | |
 |---|---|
 | Credential needed | **Only** the guardrails shared secret, read from the Secret the pod mounts. **No LiteLLM virtual key** — grading is deterministic, there is no judge model in the loop. |
@@ -26,17 +38,19 @@ cluster. Use this method.
 ```bash
 # 1. Config in, as a ConfigMap (the file contains no secret).
 kubectl create configmap promptfoo-benign -n rayin-platform \
-  --from-file=guardrails-benign.yaml=integrations/promptfoo/config/guardrails-benign.yaml \
+  --from-file=guardrails-benign.yaml=integrations/promptfoo/config/guardrails-benign.yaml \ \
+  --from-file=summarize-benign.js=integrations/promptfoo/config/summarize-benign.js \
   --dry-run=client -o yaml | kubectl apply -f -
 
 # 2. Run it. The shared secret arrives via envFrom and is never printed.
 kubectl run promptfoo-benign --rm -i --restart=Never -n rayin-platform \
-  --image=node:20-alpine \
+  --image=node:22-alpine \
   --overrides='{
     "spec":{"containers":[{
-      "name":"promptfoo-benign","image":"node:20-alpine","stdin":true,"tty":false,
-      "command":["sh","-c","npm i -g promptfoo@0.123.0 >/dev/null 2>&1 && cd /cfg && promptfoo eval -c guardrails-benign.yaml --no-cache --no-progress-bar --output /tmp/out.json && promptfoo eval -c guardrails-benign.yaml --no-cache --no-progress-bar -o /dev/stdout --table 2>/dev/null | tail -60"],
+      "name":"promptfoo-benign","image":"node:22-alpine","stdin":true,"tty":false,
+      "command":["sh","-c","set -x; node -v; npm i -g promptfoo@0.123.0 2>&1 | tail -5; promptfoo --version; cd /cfg; promptfoo eval -c guardrails-benign.yaml --no-cache --no-progress-bar --output /tmp/out.json 2>&1 | tail -40; ls -la /tmp/out.json || echo NO_RESULTS_FILE; node summarize-benign.js /tmp/out.json"],
       "env":[
+          {"name":"EVAL_RUN_ID","value":"promptfoo-benign-YYYY-MM-DD"},
         {"name":"PROMPTFOO_DISABLE_REMOTE_GENERATION","value":"true"},
         {"name":"PROMPTFOO_DISABLE_TELEMETRY","value":"1"},
         {"name":"PROMPTFOO_DISABLE_UPDATE","value":"1"}
