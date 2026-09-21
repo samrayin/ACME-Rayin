@@ -40,7 +40,6 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | CHG-2026-014 | 1 | Enforce the guardrail on the LiteLLM gateway path: a custom guardrail hook calling `rayin-guardrails`, with an explicit timeout, a measured latency budget, and a staged move from record-only to fail-closed (Readiness Ledger H-01 / N-38; designed in ADR-0005) | Anees Ur Rahman | `docs/claim-chg-2026-014` | Claimed |
 | CHG-2026-015 | 1 | Add `groq-judge` and `gemini-judge` to the LiteLLM model list alongside `nvidia-nemotron`, reading their keys from the gateway Secret. **Source only** — no ConfigMap edit and no gateway restart, both of which stay a separate owner gate. Prompted by the judge path having no quota headroom (ADR-0005 F3) | Anees Ur Rahman | `docs/claim-chg-2026-015` | Claimed |
 | CHG-2026-016 | 1 | Close N-56's actual mechanism: swap the guardrail judge to `openai/gpt-oss-safeguard-20b` and reshape the `self_check_input` prompt so the first token conforms to `is_content_safe` (first two words, fallthrough is unsafe). Spans `ACME-Rayin` (gateway model entry) and `rayin-guardrails` (prompt, max_tokens, stop). **Source only** — no ConfigMap, no Secret change, no restart | Anees Ur Rahman | `fix/n56-judge-model-and-prompt` | Claimed |
-| CHG-2026-018 | 1 | ADR-0005 amendment: F7's preferred fix becomes two independent gateway guardrails (PII and jailbreak) so the short-circuit is structurally impossible; **F10** added — the hook makes the gateway call itself via the rail's judge model, a day-one blocker in `record` as much as `enforce`, gated by a new Step 0; **F11** added, recording the guardrail opt-out as admin-only and withdrawing the concern that it was caller-controlled. Documentation only, no implementation | Anees Ur Rahman | `docs/chg-2026-018-adr-0005-amendment` | Claimed |
 
 ## ADR numbers
 
@@ -51,7 +50,7 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | ADR-0002 | CHG-2026-003 | Security review as a real gate | Claimed |
 | ADR-0003 | CHG-2026-005 | CAIRO as the single control plane for LiteLLM: management and request-log capture | Merged (revision 9) |
 | ADR-0004 | CHG-2026-010 | Least-privilege database cutover | Claimed |
-| ADR-0005 | CHG-2026-014 | Enforcing the guardrail on the gateway path: hook, timeout, latency budget, record-only before fail-closed | Claimed — revised 2026-09-21 (CHG-2026-018) |
+| ADR-0005 | CHG-2026-014 | Enforcing the guardrail on the gateway path: hook, timeout, latency budget, record-only before fail-closed | Claimed |
 
 The rows above for CHG-2026-001 to -003 and ADR-0000 to -0002 were reconstructed
 on 2026-09-19 from `main` and every branch on the remote; they were not claimed
