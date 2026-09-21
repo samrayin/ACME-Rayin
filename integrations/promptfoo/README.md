@@ -129,6 +129,22 @@ Verify traffic actually traversed the gateway (not a direct provider call):
 curl -s http://localhost:4000/key/info -H "Authorization: Bearer $LITELLM_PROMPTFOO_KEY" | jq .info.spend
 ```
 
+**This file changes meaning when the gateway guardrail hook ships.** Today the
+gateway has no `guardrails:` block (ADR-0005 / CHG-2026-014 is design only), so
+`gateway-eval.yaml` exercises an **uninspected** path: what it measures is model
+routing, quality and latency, and nothing else. Once the hook lands in `record`
+mode, the *same* config against the *same* endpoint starts exercising an
+**inspected** path, and the run becomes the record-mode corpus — the source of
+the false-positive rate and added-latency figures that ADR-0005's enforcement
+gates are written against.
+
+Nothing in the file needs to change at that point, which is exactly the hazard:
+its behaviour stays identical while what the numbers *mean* does not. Whoever
+picks this up after the hook ships should treat results from before and after as
+two different measurements and not compare them directly. Baseline runs taken now
+are still worth keeping — they are the only "gateway without a guardrail" latency
+figures that will ever exist.
+
 ### Guardrails red-team (`config/guardrails-redteam.yaml`) — needs Phase 2 first
 
 Red-teams `rayin-guardrails`' jailbreak rail. Deterministic grading — the
