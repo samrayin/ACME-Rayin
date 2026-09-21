@@ -2949,3 +2949,58 @@ been its own hazard.
 
 **Risk:** removes a code path that has never executed. No behaviour changes. Applying it
 needs one ConfigMap update and one gateway restart, owner-gated and tracked separately.
+
+---
+
+## 2026-09-21 — Sidebar: upstream promotional notifications switched off (CHG-2026-025, no release yet)
+
+**What:** `AppSidebar.tsx` gains one constant, `ACME_SHOW_UPSTREAM_NOTIFICATIONS =
+false`, ANDed into the condition that builds the sidebar notification list. While
+it is false the list is always empty, so the "Star Langfuse" card — and any
+promotional card upstream adds later — never renders. In `AppSidebar.stories.tsx`
+upstream's `GitHubStar` story, which asserted that the card renders, is replaced by
+`UpstreamPromoDisabled`, which asserts the inverse.
+
+**Why:** the star card has no `createdAt`, so upstream's own expiry never removes
+it. Only a per-browser `localStorage` dismissal does, which means every new browser,
+profile or user sees it again. Its badge is loaded from `img.shields.io` by each
+user's browser, a third-party request from an authenticated session, the same class
+as ledger N-30 and N-32. It renders only while the v4 upgrade UI is off, which is the
+self-hosted default. The five "Launch Week" cards above it in the list expired in
+June and were not the ones users saw.
+
+**Why this approach:** a guard on the existing condition rather than deleting the
+entry. Upstream adds new entries in bursts, at launch weeks roughly every six
+months, directly above the star entry in the same array, so editing the array means a
+merge conflict or a silently shipped promo on every sync. The condition at
+`AppSidebar.tsx:195-205` has not been changed by upstream since it was created, so a
+guard there is the smallest surface. Setting the constant to `true` restores
+upstream's behaviour.
+
+**Not changed:** the notification data and type in `utils.ts` and the dismissal
+storage in `AuthenticatedLayout.tsx`. Stale ids already in users' `localStorage` are
+harmless. Other upstream nudges and third-party fetches in the logged-in UI
+(onboarding videos from `static.langfuse.com`, the version label's server-side call
+to `langfuse.com`, the agent-tools banner, the Support drawer) are out of scope here
+and are tracked separately.
+
+**Verified:** the full web typecheck (`tsc --noEmit`) passes. ESLint on both changed
+files passes with `--max-warnings 0`; its first pass caught a redundant type
+annotation, since removed. Prettier is clean once Windows CR line endings are
+ignored.
+
+**Not verified:** the story itself has **not** been run in a browser. The repository's
+Playwright wants Chromium revision 1200, this machine has 1234, installing the
+matching one is a download, and a run against the installed browser did not connect.
+Nor has the change been seen in a running app, so the popup's disappearance is
+established by reading the code, not by looking at it. CI cannot run these checks on
+this fork (no runner for the heavy jobs, ledger N-51). Confirm in a browser after
+deploy.
+
+**Impact:** removes a card and a third-party image request from every session on a
+deployment where the v4 upgrade UI is off. No routes, permissions or data change.
+
+**Rollback:** revert the commit.
+
+**Deployment status:** source only until a web image is released; the release is an
+owner-gated `scripts/release/release.sh` run.

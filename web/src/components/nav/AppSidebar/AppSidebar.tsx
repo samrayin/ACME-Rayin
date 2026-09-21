@@ -71,6 +71,18 @@ import { cn } from "@/src/utils/tailwind";
 
 const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
 
+// ACME (CHG-2026-025): upstream ships promotional cards in this sidebar
+// ("Star Langfuse", launch-week announcements). ACME does not show upstream
+// marketing inside a customer product, and the star card's badge is loaded from
+// a third-party image host by every user's browser. The card also has no
+// createdAt, so upstream's own filter never expires it.
+//
+// Kept as a guard on the existing condition instead of an edit to
+// SIDEBAR_NOTIFICATIONS: new upstream entries then stay dead on every future
+// sync, with no merge conflict to resolve each release. Flip to true to restore
+// upstream's behaviour.
+const ACME_SHOW_UPSTREAM_NOTIFICATIONS = false;
+
 type SelfHostedPlan = Extract<Plan, "oss" | `self-hosted:${string}`>;
 
 type SidebarVersionState =
@@ -192,17 +204,18 @@ export function AppSidebar({
   canCreateOrganizations,
   canCreateProjects,
 }: AppSidebarProps) {
-  const activeNotifications = !v4UpgradeUiEnabled
-    ? SIDEBAR_NOTIFICATIONS.filter((notification) => {
-        if (notificationState.dismissedIds.includes(notification.id)) {
-          return false;
-        }
-        if (!notification.createdAt) return true;
+  const activeNotifications =
+    ACME_SHOW_UPSTREAM_NOTIFICATIONS && !v4UpgradeUiEnabled
+      ? SIDEBAR_NOTIFICATIONS.filter((notification) => {
+          if (notificationState.dismissedIds.includes(notification.id)) {
+            return false;
+          }
+          if (!notification.createdAt) return true;
 
-        const createdAt = new Date(notification.createdAt).getTime();
-        return Date.now() <= createdAt + (notification.ttlMs ?? TWO_WEEKS_MS);
-      })
-    : [];
+          const createdAt = new Date(notification.createdAt).getTime();
+          return Date.now() <= createdAt + (notification.ttlMs ?? TWO_WEEKS_MS);
+        })
+      : [];
 
   return (
     <Sidebar collapsible="icon" variant="sidebar">
