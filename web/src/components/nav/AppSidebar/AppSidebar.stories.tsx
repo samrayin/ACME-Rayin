@@ -191,8 +191,14 @@ export const LatestLaunchWeek = meta.story({
   },
 });
 
-export const GitHubStar = meta.story({
-  name: "(Test) GitHub star",
+// ACME (CHG-2026-025): upstream's promotional cards are switched off by
+// ACME_SHOW_UPSTREAM_NOTIFICATIONS in AppSidebar.tsx, so the launch-week stories
+// above and AllNotificationsDismissed below now render an empty area. This story
+// replaces upstream's "GitHub star" assertion with its inverse: with the star
+// card present and NOT dismissed, nothing renders and its third-party badge is
+// never requested.
+export const UpstreamPromoDisabled = meta.story({
+  name: "(Test) Upstream promo notifications are disabled",
   args: {
     v4UpgradeUiEnabled: false,
     notificationState: {
@@ -202,10 +208,8 @@ export const GitHubStar = meta.story({
     } satisfies NotificationState,
   },
   play: async ({ canvas }) => {
-    await expect(canvas.getByAltText("Langfuse GitHub stars")).toHaveAttribute(
-      "src",
-      "https://img.shields.io/github/stars/langfuse/langfuse?label=langfuse&style=social",
-    );
+    await expect(canvas.queryByText("Star Langfuse")).toBeNull();
+    await expect(canvas.queryByAltText("Langfuse GitHub stars")).toBeNull();
   },
 });
 
