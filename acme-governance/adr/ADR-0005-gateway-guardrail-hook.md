@@ -56,7 +56,11 @@ and the repo's own comment at `guardrails_engine.py:76-81` states that NeMo's de
 
 **GOVERNING CONSTRAINT — not a recommendation.** The hook is not built to a calendar. It is built once N-56 genuinely closes, whenever that lands, and no schedule overrides that gate. Wiring today's rail into the request path would block essentially all legitimate traffic.
 
-**Closing N-56 therefore requires registering a real `output_parser` in `prompts.yml` for `self_check_input` and `self_check_output`. A judge-model swap alone is not sufficient, and on its own would be worse than the current state**: a different model would produce parseable output, the rail would return a believable mixture of allow and block, and the actual defect — unparseable means block, with no registered parser — would remain in place, now hidden behind a plausible false-positive rate. Today's failure is at least unmistakable.
+**Correction, 2026-09-20 (CHG-2026-016). An earlier revision of this ADR said closing N-56 requires "registering a real `output_parser`". That was wrong, and it would have been a no-op.** Read from the pinned `nemoguardrails==0.11.0` wheel in the running pod: exactly five parsers are registered — `user_intent`, `bot_intent`, `bot_message`, `verbose_v1`, `is_content_safe` — and **`nemoguard_parse_prompt_safety` does not exist in this version.** The start-up warning says as much: it *already falls back to* `is_content_safe`. Registering it explicitly changes nothing.
+
+**The actual mechanism is inside `is_content_safe`.** It lower-cases the reply, replaces non-word runs with spaces, takes **only the first two words**, and matches `safe` → safe, `unsafe` → unsafe, `yes` → unsafe, `no` → safe. If none of those four appears in those two words it falls through to `return (False, [])` — **unsafe**. So any judge that opens with preamble ("Based on the…", "I'll analyse…") blocks unconditionally, and `max_tokens: 10` truncating mid-sentence makes it worse. The rail is not misjudging intent; **the parser expects a token shape the judge does not produce, and fails closed when it does not get it.**
+
+**The fix is to match the model to the parser that already exists, not to write a parser.** Swap the judge to a model trained to emit a bare safety verdict and reshape the prompt so the first token conforms — CHG-2026-016. A general chat model with a better prompt is not sufficient alone: it remains a model coaxed into a shape it was not trained for, with the fail-closed fallthrough still behind it.
 
 This is not a caveat on the design. It is disqualifying for `enforce` on any schedule:
 
@@ -170,7 +174,14 @@ These matter because **they attack N-56's root cause rather than its symptom.** 
 
 This is therefore the leading week-2 candidate for the v5 P0 ("swap the guardrails judge model to a dedicated safety classifier") — a P0 that has been open and unstarted since v5, and which now has a concrete, already-credentialed option.
 
-**It is deliberately not added to the config tonight, and adding it is not a small step.** These are classifiers, not chat models. Whether they integrate with NeMo's `self_check_input` action at all — which expects a chat completion it can parse — is **unverified and must be tested, not assumed.** They may need a different rail implementation rather than a model swap. That discipline is the point: assuming an integration worked, instead of testing it, is precisely how the unregistered output parser survived long enough to become N-56.
+**Narrowed 2026-09-20 after reading the wheel.** `llama-prompt-guard-2-86m` and `-22m` are BERT-class **classifiers**, not generative models, so they almost certainly cannot be called through the chat-completions path `llm_call` uses. Set aside. **`openai/gpt-oss-safeguard-20b` is generative and is the candidate taken forward in CHG-2026-016**, because a model trained to emit a bare safety verdict satisfies `is_content_safe` natively — first token `safe` or `unsafe`, exactly the shape the parser wants.
+
+Still untested: no call has been made through it. Whether it conforms in practice is the question CHG-2026-016's test must answer, and assuming it does is the error that let the parser defect survive this long.
+
+### Deferred, tracked, not part of CHG-2026-016 — the `content_safety` rail type
+NeMo 0.11.0 ships a `content_safety` rail (`library/content_safety/`) whose `content_safety_check_input` action takes a structured policy-category prompt, pins `temperature=1e-20` and `_MAX_TOKENS = 3`, and returns `{"allowed", "policy_violations"}` — so it yields *which policy* was violated, not just a boolean. It is a genuine improvement over `self_check_input`.
+
+**Deliberately excluded from CHG-2026-016.** Both rails terminate in the same `is_content_safe` parser, so the rail type is not what is broken; switching it would enlarge the change without closing the finding any sooner. Recorded here as a distinct future hardening item so it is not lost, and so the better long-term design is not conflated with the fix for the open finding.
 
 ## 7. Open for the owner
 1. **Multi-node pool** — accept F1 and fund it, or accept pod-level redundancy only and record the node as a single point of failure under `enforce`.
