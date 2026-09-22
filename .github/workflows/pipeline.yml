@@ -478,7 +478,15 @@ jobs:
     if: ${{ !cancelled() && (github.event_name != 'push' || needs.pre-job.outputs.should_skip != 'true') }}
     timeout-minutes: 10
     env:
-      VITEST_MAX_WORKERS: "4"
+      # ACME CHG-2026-034/CHG-2026-036: was 4, sized for the old
+      # blacksmith-8vcpu-ubuntu-2404 runner (0.5 workers/vCPU). Halving the
+      # runner's cores to ubuntu-latest's 4 vCPU without retuning this left
+      # it at 1:1 with no headroom, plausibly worsening timing-sensitive
+      # interaction-test flakiness (two different single-test failures
+      # across isolated reruns of this job, run 35748914774). Retuned to 2
+      # for the same 0.5-workers/vCPU ratio the untouched settings elsewhere
+      # in this file already use.
+      VITEST_MAX_WORKERS: "2"
       NODE_ENV: test
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
