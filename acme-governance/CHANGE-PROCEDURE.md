@@ -169,13 +169,16 @@ release.
 
 ## 6. Keeping the records consistent
 
-There are exactly three records. No fourth.
+There are exactly four records. No fifth. (Three until 2026-09-22, when the owner
+adopted the Vision Tracker as a fourth — CHG-2026-031. Updated here so this rule
+does not go stale the moment a fourth record exists.)
 
 | Record | Role | Updated when |
 |---|---|---|
 | `ACME-CHANGELOG.md` | What changed, when, approval, impact, rollback | Same commit as the change |
 | Readiness Ledger | Open risks, gaps, readiness status | **Batched: published once per working session**, carrying everything that opened or closed in it. **Published immediately** if a P0 or P1 finding is discovered. Not republished per change |
 | Readiness Auditor (`acme-governance/READINESS-AUDITOR-PROMPT.md`) | Independent check; verifies this procedure was followed | Run before every customer-bound release |
+| `acme-governance/CAIRO-VISION-TRACKER.md` | Status board only — "are we there yet," in one page, with 🟢🟡🔴⬜ symbols. Not a detailed record; the other three stay that. | **End of every work session or major milestone, before reporting back.** A session that made progress and did not update it is a process miss — flag it, do not wait to be asked |
 
 ADRs and rollback folders are *evidence referenced by* these records, not a separate
 history. The ADR index (`adr/README.md`) is a table of contents only.

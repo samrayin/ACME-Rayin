@@ -1,0 +1,20 @@
+{
+  "_note": "Full pre-edit state of the judge key, captured verbatim from GET /key/list?return_full_object=true, 2026-09-22. Rollback for CHG-2026-029: to revert, PATCH /key/update with token set to this token and models/rpm_limit/metadata restored to exactly these values.",
+  "token": "41516476c17dae288b893f75966ea6254191a10f4dbb86949e8187ff8dd082f8",
+  "key_name": "sk-...YvoA",
+  "key_alias": "cairo-guardrails-judge-rotation-2026-09-20-7fe9a9d4",
+  "models": [],
+  "rpm_limit": null,
+  "tpm_limit": null,
+  "max_budget": null,
+  "metadata": {
+    "cairo_key_id": "7fe9a9d4-75db-4cda-b0bf-7cb958cec8c9",
+    "cairo_org_id": "cmt8ytilx0001tv07aj0hbrx9",
+    "cairo_managed": true,
+    "cairo_created_by": "cmt8y5gae0000tv07ru1mwzsi",
+    "cairo_lineage_id": "7fe9a9d4-75db-4cda-b0bf-7cb958cec8c9",
+    "cairo_project_id": "cmt8yu0jv0006tv07aywsp0n2"
+  },
+  "created_at": "2026-09-20T21:14:29.303000Z",
+  "updated_at": "2026-09-21T15:31:47.623000Z"
+}

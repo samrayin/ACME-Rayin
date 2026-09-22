@@ -3051,6 +3051,152 @@ popup is the old build behaving as built.
 
 ---
 
+## 2026-09-22 — CHG-2026-029 execution deviated from its own design; audit trail did not capture the change; a design gap, not solely an execution error
+
+**Status: not closed.** Held pending a drift check on `acme_litellm_keys` (below) —
+see "Not yet resolved."
+
+**What was designed:** `models` and `rpm_limit` were to go through CAIRO's existing
+`updateKeyLimits()`, specifically to preserve the audit trail (`acme_litellm_events`)
+and keep CAIRO's own `acme_litellm_keys` row in sync with LiteLLM's live state.
+
+**What was executed instead:** all three changes to the judge key
+(`cairo-guardrails-judge-rotation-2026-09-20-7fe9a9d4` — opt-out metadata,
+`rpm_limit`, `models`) were made via the raw LiteLLM `/key/update` API, called
+directly against the gateway pod with the master key. Confirmed by direct query,
+2026-09-22: zero rows exist in `acme_litellm_events` for any of the three changes.
+
+**This was not avoidable in the execution context — state that plainly, not as
+circumstance.** CAIRO provides **no operator-accessible audited path** for this
+operation. `updateKeyLimits()` exists only as an application-code function inside
+`langfuse-web`/`langfuse-worker` — it has no invocation route from outside a running
+app-server session (no CLI, no admin script, no API endpoint callable independent of
+the Next.js/tRPC process). An operator working from cluster access, as this session
+was, has no instrumented way to make this change at all. The deviation is therefore
+**a design gap in CAIRO, not solely an execution error** — the audited path existing
+in code is not the same as the audited path being reachable by whoever actually needs
+to make the change.
+
+**Finding, rated P1 by the owner, 2026-09-22:**
+
+> **LiteLLM key configuration can be modified outside CAIRO's audit path, leaving no
+> record.** `acme_litellm_events` is written only by `auditedMutation()`, inside
+> CAIRO's own application code. Nothing enforces that this is the only way to change
+> a LiteLLM key — any holder of `LITELLM_MASTER_KEY` can call `/key/update` directly
+> and change `models`, `rpm_limit`, or `metadata` with no intent/outcome row
+> produced, no `before`/`after` snapshot, nothing.
+>
+> **Demonstrated, not theoretical.** 2026-09-22, three real configuration changes to
+> the judge key were made via the raw API and confirmed, by direct query, to produce
+> zero `acme_litellm_events` rows.
+>
+> **Directly contradicts ADR-0003's premise** — CAIRO as the single control plane
+> for LiteLLM management, accepted for build and deployed to development.
+>
+> **Mitigated today only by single-operator control of `LITELLM_MASTER_KEY`** — the
+> platform operator is currently the only holder of that credential, so this is not
+> presently exploitable by anyone CAIRO does not already fully trust.
+>
+> **Transition condition, not a caveat: this becomes P0 at first customer
+> deployment where operators hold cluster access.** The mitigation is a fact about
+> who currently holds one credential, not a property of the design. Any deployment
+> where a second party — a customer's own ops team, a second ACME engineer, a
+> compromised credential — gains cluster access removes the mitigation entirely, and
+> the finding's severity moves with it.
+>
+> **Cross-references:** ADR-0003 (the contradicted premise), CHG-2026-029 (the
+> demonstration).
+>
+> **Recording note:** the Readiness Ledger — this project's live record for ratings
+> and open findings — is currently unreachable (dead artifact link; see `CLAUDE.md`
+> "Current state"). This finding is recorded here, in full, as the durable record
+> until the Ledger is reachable again, at which point it needs to be transcribed
+> there rather than left to live only in this changelog entry.
+
+**Backlog item raised, separate from this finding:** CAIRO needs an
+**operator-accessible audited path for LiteLLM key mutations** — a CLI, an admin
+script, or an API endpoint that runs `auditedMutation()`-wrapped changes from outside
+a live app-server session — so that a routine operational change (a rotation, a
+limit correction, a metadata fix) cannot *only* be made by bypassing the audit trail.
+Without it, every future operator in this position faces the same choice this session
+faced: make the change with no instrumented path, or don't make it. Scope and
+priority not yet decided — raised here for the roadmap, not designed.
+
+**Drift check, 2026-09-22 — confirmed stale, not assumed.** Queried
+`acme_litellm_keys` directly for the judge key (`id` = `cairo_key_id`
+`7fe9a9d4-75db-4cda-b0bf-7cb958cec8c9`, the same value sent to LiteLLM as
+`metadata.cairo_key_id`, per this table's own drift-matching design): `models: {}`
+(empty, the pre-edit unrestricted state), `rpm_limit: NULL`, `updated_at:
+2026-09-20 21:14:29` — exactly the row's creation timestamp, never written since.
+CAIRO's database has no knowledge of the three live changes.
+
+**`opted_out_global_guardrails` cannot drift — unaudited by design, not by
+omission.** `acme_litellm_keys` (`schema.prisma`) has no `metadata` column at all.
+CAIRO's database was never the source of truth for this field; only LiteLLM's own
+key record ever holds it. This is a narrower, already-understood gap, distinct from
+the `models`/`rpm_limit` drift below — recorded here so it is not mistaken for an
+oversight in the drift check.
+
+**Correction, same day: the console cannot reconcile this. There is no UI path,
+checked, not assumed.** The plan above — owner reconciles via CAIRO's Key
+Management console — turned out to be wrong on contact. The Keys page has no Edit
+action, only Rotate and Revoke, and already shows this exact key with an amber
+"Drifted: models, rpmLimit" badge: **CAIRO's own drift detection correctly
+identifies a problem the product has built no way to fix.**
+
+Checked the actual router and every frontend file, not inferred from the missing
+button: `updateKeyLimits()` is registered as a working tRPC procedure
+(`acmeLitellmRouter.ts:283`, exposed as `updateKey`) — fully implemented, fully
+audited, read-merge-write, DB-syncing. Grepping the entire `web/src` tree for any
+call to it (`acmeLitellm.updateKey`, `.updateKeyLimits.useMutation`, every variant)
+returns **zero matches**. `Rotate` and `Revoke` do have a frontend home
+(`AcmeLitellmGateway.tsx`); `updateKey` has none, anywhere.
+
+**Revised framing — this is not "no audited path without a UI session," it is "no
+reconciliation UI exists at all, for anyone, through any interface."** The earlier
+framing understated it: the gap was described as an execution-context limitation
+(this session lacked a UI session). It is not that. The audited backend capability
+exists and works; it has simply never been wired to anything a human can click. No
+UI session, however privileged, closes this today.
+
+> **Standing hazard, live today — not hypothetical, not limited to the judge key.**
+> `rotateKey()` sources the replacement key's `models` and `rpm_limit` from
+> `requireKey()` — a plain read of CAIRO's own `acme_litellm_keys` row
+> (`acmeLitellmService.ts:235`, `deps.db.acmeLitellmKey.findFirst(...)`) — **not**
+> from LiteLLM's live state. The only field it reconciles from the live gateway is
+> `spend` (line 579), to avoid resetting a budget. **Using Rotate on any key the
+> Keys page shows as "Drifted" silently reverts that key to CAIRO's stale values
+> under a new token**, discarding whatever the live gateway state actually was.
+> This is a live risk on the Keys page today, for every drifted key it lists, not
+> a scenario specific to today's judge-key change.
+
+**Escalating the P1 finding's reasoning, rating unchanged.** This is no longer an
+inconvenient gap in an edge case: CAIRO's console cannot correct a state it detects
+and displays as wrong, and its one available action on a drifted key makes the
+drift worse. That is a functional gap in the product's core key-management surface,
+not a narrow operational inconvenience. Rating stays **P1** — still not exploitable
+by an outside party, the reasoning already recorded above for that holds — but the
+reasoning now reflects the true scope: this would misfire for any operator, with or
+without console access, on any drifted key, not only one made without a UI session.
+
+**Backlog item, revised and narrower than first thought:** wire `updateKeyLimits()`
+(`updateKey`) to the Keys page UI — or build a dedicated reconciliation action if a
+plain edit form is the wrong shape — so a drifted key can be corrected without
+either bypassing the audit trail or, via Rotate, making the drift worse. The
+backend function already exists, audited and working; this is a frontend gap, not
+a missing feature from scratch.
+
+**This change is blocked, not pending an owner action.** No owner action can
+currently satisfy the reconciliation this entry requires — there is no audited path
+to perform it, full stop. **CHG-2026-029 does not close today.** It stays open
+until one of: `updateKeyLimits()` is wired to a UI a real session can use, a
+dedicated reconciliation action is built, or the owner explicitly authorizes a
+raw database correction with the reasoning recorded to the same standard as the
+original deviation. `acme_litellm_keys` remains stale
+(`models: {}`, `rpm_limit: NULL`) until one of those happens.
+
+---
+
 ## 2026-09-22 — Key limits edit UI: source and tests, no release (CHG-2026-030, ADR-0007)
 
 **What:** `updateKeyLimits()`/`acmeLitellm.updateKey` has existed as a complete,
