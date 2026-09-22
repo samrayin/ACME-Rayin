@@ -3642,3 +3642,56 @@ than chosen unilaterally in this commit. Recorded in the config beside the flag.
 (`opted_out_global_guardrails: ["cairo-guardrail"]`, model allowlist, `rpm_limit`
 10) were applied live on 2026-09-22 under CHG-2026-029 and reconciled under
 CHG-2026-030.
+
+## 2026-09-23 — Guardrail hook timeout set to 2s, and why not fire-and-forget (CHG-2026-038)
+
+**What:** `CAIRO_GUARDRAIL_TIMEOUT_S` now defaults to **2 seconds**, down from the
+10 the hook shipped with. The record-mode call stays **synchronous**. Recorded as
+an addendum to ADR-0005 §3c so the decision is reviewable rather than buried in a
+default. Source and test only — nothing enabled, no ConfigMap, no restart.
+
+**Precisely what was and wasn't a deviation.** ADR-0005 §3c requires "one explicit
+timeout on the gateway→guardrails call" and §1 requires "an explicit **short**
+timeout". Neither ever fixed a value. The 10s was this hook file's own default
+from CHG-2026-014 Step 0 — a placeholder in code, not an approved number. So this
+change sets a value the ADR always required and had left open, rather than
+overriding an approved one. Framing it as a deviation from the ADR would be
+inaccurate; the thing being corrected is the code's default.
+
+**Why 10s could not stand.** The call sits in front of every request. At 10s a
+guardrails outage adds up to 10s to *every* gateway request **in record mode** —
+whose whole contract is to change nothing about what the gateway returns. A
+record-mode hook that can add ten seconds has broken that contract already,
+whether or not it blocks anything.
+
+**Why not fire-and-forget, which would remove the added latency entirely.**
+Because it defeats the mode's purpose. Record mode exists to measure what *would*
+have happened, and the would-block count is Step 1's stated deliverable (ADR-0005
+§5). Fire-and-forget drops the verdict whenever the response is slow, so the
+signal goes missing exactly on slow responses and the resulting count is silently
+biased low. A short bounded wait keeps the signal; the cap already buys the
+latency protection fire-and-forget would trade the signal away for.
+
+**Why 2s rather than 1s — from the measured distribution, not taste.** Post-fix
+p50 is 470ms (CHG-2026-016) and **no p95 exists**. `block` verdicts can only come
+from the judge/LLM path: Presidio runs first and returns early on any redaction
+(ADR-0005 F7), so the fast deterministic path produces no blocks at all. The slow
+tail is therefore exactly where the `would_block` signal lives. 1s is ≈2× p50 for
+an LLM-backed call with no known p95 and would systematically truncate that tail —
+biasing the measurement the same direction fire-and-forget does, just less
+completely. 2s is ≈4× p50 and still a hard cap. The `guard_unavailable` rate
+observed at 2s is itself the first real evidence of where p95 sits, which is what
+Step 1 is meant to produce.
+
+**Tests: 58, up from 55.** A timeout now provably resolves to `guard_unavailable`
+rather than hanging or propagating — asserted with a bounded elapsed time, so a
+regression that reinstates a hang fails the suite instead of stalling it — plus
+the record/enforce split on that same outcome, a ceiling assertion that stops the
+default drifting back up, and the environment override.
+
+**Still open, and not closed by this change.** ADR-0005 F2 requires a timeout on
+**both** sides — a shorter one inside guardrails on the rail's own upstream call,
+so the inner can never outlive the outer. That inner timeout does not exist yet.
+Until it does, a fired gateway timeout abandons the request while the guardrails
+pod keeps working on it, which is the work-leak F2 describes. Bounding the outer
+call is worth doing and is not a substitute for F2.

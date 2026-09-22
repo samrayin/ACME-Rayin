@@ -366,16 +366,27 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
         )
         # One explicit timeout on the gateway -> guardrails call. ADR-0005 F2: a
         # gateway-side timeout is necessary but not sufficient; guardrails needs
-        # its own, shorter one so the inner call cannot outlive the outer.
+        # its own, shorter one so the inner call cannot outlive the outer. That
+        # inner timeout does NOT exist yet (F2 is open), so today a fired
+        # timeout here leaves the guardrails pod still working on the abandoned
+        # call. Bounding the gateway is still worth doing; it is not the whole
+        # of F2.
         #
-        # NOTE, open decision, deliberately NOT changed here: at this default a
-        # guardrails outage adds up to 10s to EVERY gateway request even in
-        # record mode, where nothing is being blocked. That is a
-        # production-impacting property of a mode whose contract is "change
-        # nothing". Lowering it (or making the record-mode call fire-and-forget)
-        # is a deviation from ADR-0005 as approved, so it is the owner's call
-        # before the hook is switched on, not this commit's.
-        self.timeout_s = float(os.environ.get("CAIRO_GUARDRAIL_TIMEOUT_S", "10"))
+        # 2 seconds, decided 2026-09-23 (CHG-2026-038, ADR-0005 §3b addendum).
+        # ADR-0005 required "an explicit short timeout" and never fixed a value;
+        # 10 was this file's own default, and 10s of added latency per request
+        # during a guardrails outage is not "short" for a mode whose contract is
+        # to change nothing. Not fire-and-forget: that would drop the
+        # `would_block` signal precisely on slow responses, and measuring what
+        # would have happened is the entire purpose of record mode.
+        #
+        # 2 rather than 1, on the measured distribution: post-fix p50 is 470ms
+        # (CHG-2026-016) and no p95 exists. `block` verdicts can only come from
+        # the judge/LLM path -- Presidio short-circuits and returns `redact`
+        # before the rail runs (ADR-0005 F7) -- so the slow tail is exactly
+        # where the signal lives. 1s is ~2x p50 and would systematically drop
+        # it; 2s is ~4x, still a hard cap.
+        self.timeout_s = float(os.environ.get("CAIRO_GUARDRAIL_TIMEOUT_S", "2"))
         # Read once at construction. Absent means every call 401s, so it is
         # treated as unavailable rather than attempted -- see _post_guard.
         self.guard_secret = os.environ.get(GUARD_SECRET_ENV, "").strip()

@@ -186,6 +186,25 @@ The numbers are **not** invented here. They come from the record-mode measuremen
 
 A timeout is a fail-closed condition in `enforce` and a recorded event in `record`. It is never a silent hang, in either mode.
 
+#### Addendum, 2026-09-23 (CHG-2026-038): the gateway-side timeout is **2 seconds**, and the record-mode call stays synchronous
+
+**What this section said, and what it did not.** §3c above requires "one explicit timeout on the gateway→guardrails call" and §1 requires "an **explicit short timeout**". Neither fixes a value. The hook shipped (CHG-2026-014 Step 0) with its own default of **10s**, which was never an approved number — it was a placeholder in code. This addendum fixes the value at **2s** and records why, so the decision is reviewable rather than buried in a default.
+
+**Why 10s could not stand.** The call is synchronous and sits in front of every request. At 10s, a guardrails outage adds up to 10s to **every** gateway request *in `record` mode* — a mode whose entire contract is to change nothing about what the gateway returns. A record-mode hook that can add ten seconds to a request has already broken that contract, regardless of it blocking nothing.
+
+**Why not fire-and-forget, which would remove the latency entirely.** Because it would defeat the purpose of the mode. `record` exists to measure *what would have happened* — the `would_block` count is Step 1's stated deliverable (§5, Step 1: "Measure p50/p95 added latency and the would-block count"). A fire-and-forget call drops the verdict whenever the response is slow, so the signal would go missing precisely on the slow responses, and the resulting would-block count would be silently biased low. A short bounded wait keeps the signal and caps the cost; fire-and-forget trades the signal away to buy latency the cap already buys.
+
+**Why 2s rather than 1s**, on the measured distribution rather than taste:
+
+- Post-fix p50 is **470ms** (CHG-2026-016, measured 2026-09-21). **No p95 exists** — §3c's own note that the budget "comes from the record-mode measurement" is still unsatisfied, and F5 records that a p95 was *not definable* against the pre-fix spread.
+- `block` verdicts can only originate on the judge/LLM path. Presidio runs first and **returns early** on any redaction (F7), so `redact` never reaches the rail — the fast, deterministic path produces no blocks at all. The slow tail is therefore exactly where the `would_block` signal lives.
+- 1s is ≈2× p50 for an LLM-backed call with no known p95; it would systematically truncate that tail and bias the measurement in the same direction fire-and-forget does, just less completely. 2s is ≈4× p50 and still a hard cap.
+- The `guard_unavailable` rate observed at 2s is itself the missing data: it is the first real evidence of where p95 sits, which is what Step 1 is supposed to produce.
+
+**Still open, not closed by this addendum.** F2 requires a timeout on **both** sides — "a second, shorter one inside guardrails on the rail's own upstream call, so the inner can never outlive the outer". That inner timeout does **not** exist yet. Until it does, a fired gateway timeout abandons the request while the guardrails pod keeps working on it, which is the work-leak F2 describes. Bounding the outer call is worth doing on its own and is not a substitute for F2.
+
+**Scope.** Source and test only (`CAIRO_GUARDRAIL_TIMEOUT_S` default, one timeout test). Nothing enabled, no ConfigMap, no restart. The value stays environment-overridable, so the measurement in Step 1 can tune it without a code change.
+
 ### 3d. What "surfaced in readiness and monitoring" means
 Readiness must reflect **this pod's own ability to serve a decision**, not whether CAIRO or the judge model is reachable — otherwise an upstream problem empties the Service and causes the very outage fail-closed exists to prevent. Rail-dependency and delivery health belong in metrics and alerts: `guardrail_calls_total{outcome}`, `guardrail_latency_seconds`, `guardrail_unavailable_total`, plus the judge model's health. Same split as the P0-10 design; the two should land together.
 

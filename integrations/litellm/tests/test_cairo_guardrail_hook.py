@@ -467,6 +467,91 @@ class TestPostGuardFailsSafe(unittest.TestCase):
             "a secret-less call would 401; it must resolve to 'no verdict', not an exception",
         )
 
+    def test_a_timeout_becomes_guard_unavailable_and_does_not_hang(self):
+        """CHG-2026-038: the timeout resolves to a verdict, not a hang.
+
+        Uses a real ``asyncio.TimeoutError`` raised from inside the client call,
+        which is what httpx's timeout surfaces as -- the point being that
+        ``_post_guard`` catches it and returns None rather than letting it
+        propagate into the request. Bounded by ``assertLess`` so a regression
+        that reinstates a hang fails the suite instead of stalling it.
+        """
+        import asyncio
+        import time
+
+        import cairo_guardrail_hook as m
+
+        g = m.CairoGuardrail()
+        g.guard_secret = "test-secret"
+
+        class TimingOutClient:
+            def __init__(self, *a, **k):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, *a, **k):
+                raise asyncio.TimeoutError("timed out")
+
+        original_httpx, original_flag = m.httpx, m._HTTPX_AVAILABLE
+        try:
+            m.httpx = type("FakeHttpx", (), {"AsyncClient": TimingOutClient})
+            m._HTTPX_AVAILABLE = True
+            started = time.monotonic()
+            verdict = asyncio.run(
+                g._post_guard({"agent_id": "a", "direction": "input", "text": "t"})
+            )
+            elapsed = time.monotonic() - started
+        finally:
+            m.httpx, m._HTTPX_AVAILABLE = original_httpx, original_flag
+
+        self.assertIsNone(verdict, "a timeout must surface as 'no verdict'")
+        self.assertLess(elapsed, 5, "the timeout must not have hung the caller")
+        self.assertEqual(
+            m.decide(verdict, enforcing=False),
+            m.GuardOutcome(True, None, "guard_unavailable"),
+            "record mode: a timeout proceeds and is recorded as guard_unavailable",
+        )
+        self.assertFalse(
+            m.decide(verdict, enforcing=True).proceed,
+            "enforce mode: the same timeout fails closed",
+        )
+
+    def test_default_timeout_is_short_enough_to_bound_an_outage(self):
+        """CHG-2026-038. A regression raising this default is a latency change.
+
+        ADR-0005 asked for "an explicit short timeout" without fixing a number,
+        so nothing but this test stops the default drifting back up. 2s is the
+        decided value; the assertion is a ceiling, not an equality, so lowering
+        it later does not need a test edit.
+        """
+        import cairo_guardrail_hook as m
+
+        self.assertLessEqual(
+            m.CairoGuardrail().timeout_s,
+            2,
+            "record mode must not add more than ~2s per request during an outage",
+        )
+
+    def test_timeout_is_overridable_by_environment(self):
+        import os
+
+        import cairo_guardrail_hook as m
+
+        original = os.environ.get("CAIRO_GUARDRAIL_TIMEOUT_S")
+        try:
+            os.environ["CAIRO_GUARDRAIL_TIMEOUT_S"] = "0.5"
+            self.assertEqual(m.CairoGuardrail().timeout_s, 0.5)
+        finally:
+            if original is None:
+                os.environ.pop("CAIRO_GUARDRAIL_TIMEOUT_S", None)
+            else:
+                os.environ["CAIRO_GUARDRAIL_TIMEOUT_S"] = original
+
     def test_record_mode_survives_a_missing_secret_end_to_end(self):
         """The misconfiguration that would otherwise break every request."""
         import asyncio
