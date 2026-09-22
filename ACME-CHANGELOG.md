@@ -3996,3 +3996,38 @@ but §10's third choice was *accept reviewed-not-monitored* while §4.3's third
 option was *real Prometheus* — opposite meanings. The accompanying reasoning
 ("don't build worker-evaluated thresholds now") made the intent unambiguous, so
 the decision is recorded by content and the colliding numbering removed.
+
+## 2026-09-23 — Codespell false positives unblocked (CHG-2026-042)
+
+**What:** added `unparseable` and `pre-empt` to `ignore_words_list` in
+`.github/workflows/codespell.yml`, alongside `retuned`. CI configuration only.
+
+**Why it mattered now: the check was failing on `main` itself**, not just on a
+branch — the last three `main` runs all failed — so it blocked every open PR,
+including one-line documentation changes. It was flagging words that already
+existed on `main`, so no PR introduced it and no PR could escape it.
+
+**Both are false positives, and the tool is corrected rather than the prose** —
+the precedent CHG-2026-036 set with `retuned`, where "fixing" the text would
+have made the sentence wrong:
+
+- **`unparseable`** — codespell prefers `unparsable`. Both are accepted English;
+  `unparseable` is the form used throughout ADR-0005 and the guardrail hook,
+  where it describes a judge reply the parser cannot read.
+- **`pre-empt`** — codespell prefers `preempt`. `pre-empt` is the British
+  spelling, which is this repository's register throughout ("behaviour",
+  "organisation", "recognisers").
+
+**Verified locally against the exact files CI flagged, rather than assumed:**
+with the old list, all seven hits reproduce and codespell exits 65 — the same
+failure CI reported. With the new list, exit 0. That run also confirms the
+case-insensitivity claim made in the file's own comment: ADR-0009's
+`UNPARSEABLE` enum value is cleared by the lowercase entry, so no separate
+uppercase entry is needed.
+
+**Overlap worth knowing about:** PR #83 (CHG-2026-027, open since 09:18 on
+2026-09-22) takes the opposite approach for the same word, rewriting ADR-0005's
+`unparseable` to `unparsable`. That change is now unnecessary but harmless — the
+ignore entry covers the word wherever it appears, including the hook and
+ADR-0009 which #83 does not touch. Whether #83 still merges is the owner's call;
+nothing breaks either way.

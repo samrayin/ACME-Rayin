@@ -31,6 +31,23 @@ jobs:
           # patches/ holds pnpm-patch diffs of vendored (often minified)
           # package code, whose identifiers are not prose.
           skip: "./.git,./patches"
-          # "retuned" (re-tuned a setting) is real English that codespell's
-          # dictionary maps to "returned" -- a false positive, not a typo.
-          ignore_words_list: retuned
+          # Words codespell's dictionary maps to something else, all of which
+          # are real English as used here. Each is a false positive, not a typo,
+          # so the tool is corrected rather than the prose (CHG-2026-036 set
+          # this precedent with "retuned"; "correcting" the text would have made
+          # the sentence wrong).
+          #
+          #   retuned     re-tuned a setting          -> codespell says "returned"
+          #   unparseable cannot be parsed            -> codespell says "unparsable"
+          #               Both spellings are accepted English and "unparseable"
+          #               is the form used throughout ADR-0005 and the guardrail
+          #               hook, where it describes a judge reply the parser
+          #               cannot read.
+          #   pre-empt    to forestall                -> codespell says "preempt"
+          #               British spelling, which is this repository's register
+          #               throughout ("behaviour", "organisation", "recognisers").
+          #
+          # Case variants are covered: codespell matches case-insensitively, so
+          # the UNPARSEABLE enum value in ADR-0009 is covered by the lowercase
+          # entry here.
+          ignore_words_list: retuned,unparseable,pre-empt
