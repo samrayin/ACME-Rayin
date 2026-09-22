@@ -60,7 +60,7 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | ADR-0003 | CHG-2026-005 | CAIRO as the single control plane for LiteLLM: management and request-log capture | Merged (revision 9) |
 | ADR-0004 | CHG-2026-010 | Least-privilege database cutover | Claimed |
 | ADR-0005 | CHG-2026-014 | Enforcing the guardrail on the gateway path: hook, timeout, latency budget, record-only before fail-closed | Claimed — revision pending in CHG-2026-018 |
-| ADR-0006 | CHG-2026-026 | Gateway tracing into CAIRO: what is written, where, what it costs in retention, and how it is turned off | Claimed — written, Gate A passed, still Proposed. Exhaustive audit (2026-09-22) found ~12 unredacted metadata fields/mechanisms feeding the trace, not 4 — including a content leak (`metadata.prompt`) and an unbounded wildcard (`trace_`-prefixed keys). Original 4-field strip mitigation superseded; owner must choose an allowlist-shaped mitigation before hook design |
+| ADR-0006 | CHG-2026-026 | Gateway tracing into CAIRO: what is written, where, what it costs in retention, and how it is turned off | Claimed — written, Gate A passed, still Proposed. Exhaustive audit (2026-09-22) found ~12 unredacted metadata fields/mechanisms, not 4 — a content leak (`metadata.prompt`) and an unbounded wildcard (`trace_`-prefixed keys). Mitigation shape decided (allowlist, scoped in ADR §11) — hook not yet built |
 
 The rows above for CHG-2026-001 to -003 and ADR-0000 to -0002 were reconstructed
 on 2026-09-19 from `main` and every branch on the remote; they were not claimed
