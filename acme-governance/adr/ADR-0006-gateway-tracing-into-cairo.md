@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Change** | CHG-2026-026 · Tier 1 · owner: Anees Ur Rahman |
-| **Status** | **Proposed — design only.** No ConfigMap edit, no Secret change, no gateway restart. Gate A (§9) passed 2026-09-22: `turn_off_message_logging` confirmed, by source read, to redact before the Langfuse callback receives data. Still Proposed, not Accepted — §11's open question (metadata-only vs content-visible tracing) needs an owner answer first. |
+| **Status** | **Proposed — design only, blocked from Accepted.** No ConfigMap edit, no Secret change, no gateway restart. Gate A (§9) passed 2026-09-22: `turn_off_message_logging` confirmed, by source read, to redact before the Langfuse callback receives data — and the digest it was verified against confirmed, by registry lookup, to be the deployed version. **New 2026-09-22: a second, unmitigated gap found in the same pass — `metadata.generation_name`/`trace_name`/`session_id` reach the trace unredacted regardless of the flag (§3). This blocks Accepted on its own, independent of §11's original question.** |
 | **Reverses** | The re-enablement conditions recorded in CHG-2026-024 (Readiness Ledger N-20) when this same callback was removed. This document is that reversal's required justification — see §7. |
 | **Related** | CHG-2026-024 (removed the inert callback) · CHG-2026-009 / ADR-0003 (the *other* gateway logging path — CAIRO's own Postgres request-log mirror, a separate destination from this one) · Readiness Ledger P0-11 (no deletion path in any store) · P0-5 / CHG-2026-010 (least-privilege cutover, still not built) |
 | **Blocked by** | Owner approval of this ADR. No implementation exists yet — this is the ADR, not the change. |
@@ -70,11 +70,38 @@ Nothing raw ever leaves LiteLLM bound for Langfuse when `litellm.turn_off_messag
 is True` — so the blob-storage-vs-ClickHouse distinction inside Langfuse's own pipeline
 doesn't apply; content is scrubbed upstream of both.
 
-**Two caveats, not full closure of ambiguity:** (1) `perform_redaction()` scrubs known
-fields only — an arbitrary caller-supplied `metadata` key stuffed with prompt text
-would not be caught; (2) the digest↔`v1.100.1` mapping itself is unverified in this
-pass (needs a registry lookup, not a source read). Gate A passes on the core question;
-these two residual risks carry into §11.
+**2026-09-22 — both follow-up items closed, one of them against this ADR.**
+
+**Digest↔version mapping: verified, not assumed.** Queried `ghcr.io` directly:
+`GET /v2/berriai/litellm/manifests/v1.100.1` returns `docker-content-digest:
+sha256:a3715fa7ad8387941ab697259bd2881d68931657247a41984f90fae6d11c62bf` — an exact
+match to `integrations/litellm/k8s/deployment.yaml`'s pinned digest. Gate A's source
+read was against the deployed version, cryptographically confirmed.
+
+**Metadata pass-through: real, and it blocks enablement as currently scoped — not a
+residual caveat.** `perform_redaction()` scrubs `messages`/`prompt`/`input`/`response`/
+`choices` only. Source-confirmed in `litellm/integrations/langfuse/langfuse.py`:
+`generation_name`, `trace_name`, and `session_id` are read directly from
+caller-supplied `metadata` into the trace, untouched by redaction. This is not
+hypothetical: `product-decisions/CAIRO-HLD-2026-09-20.html` documents the only
+chatbot integration pattern that exists today — "the user name is free text the
+chatbot supplies," unvalidated — which is exactly the shape of value that lands in
+these fields. Insight 360 carries zero risk today because no integration exists at
+all (same document, explicit) — not because the pattern is safe. Salary-masking
+(`PD-0002`, Horizon 2, still unbuilt, blocked on identity work) targets message
+*content*, a different path than trace *labels*, so no direct conflict with this
+ADR's redaction today — but it is the likely shape of a worse version of this same
+gap once identity work lands. Against **P0-11**: this makes the abstract "no deletion
+path" finding concrete — free-text, potentially user-identifying values landing in
+`session_id`/trace `name` fields indefinitely, in a store nothing can purge.
+
+**Consequence for §6 Decision: this ADR cannot move to Accepted on `turn_off_message_logging`
+alone.** Enabling as designed would still let user-supplied free text reach a
+retained trace through `metadata.generation_name`/`trace_name`/`session_id`, unredacted,
+regardless of the flag. A mitigation must be chosen and added to this design before
+re-proposal — e.g. CAIRO stripping or validating these specific fields at the point it
+issues gateway credentials to a caller, or a documented policy forbidding free text in
+them, enforced somewhere checkable. Neither exists yet.
 
 ## 4. What it costs in retention — P0-11 is not closed by this change
 
@@ -116,12 +143,15 @@ every gateway release, not only at the moment this ADR's change merges.
 
 ## 6. Decision
 
-**Proposed, not yet approved.** Enable the Langfuse callback only together with all
-four of: (1) `turn_off_message_logging: true` in the same ConfigMap edit, (2) a named
-owner for the `LANGFUSE_*` credentials in the gateway Secret, (3) an explicit owner
-approval gate on the resulting restart (this document, once accepted, plus the
-CHG-2026-026 register row moving from Claimed to a merge), and (4) Gate A (§9) passed
-first, with evidence attached to this document before Status changes from Proposed.
+**Proposed, not yet approved — and not approvable as designed.** Enable the Langfuse
+callback only together with all five of: (1) `turn_off_message_logging: true` in the
+same ConfigMap edit, (2) a named owner for the `LANGFUSE_*` credentials in the gateway
+Secret, (3) an explicit owner approval gate on the resulting restart (this document,
+once accepted, plus the CHG-2026-026 register row moving from Claimed to a merge),
+(4) Gate A (§9) passed first, with evidence attached to this document before Status
+changes from Proposed — **done, 2026-09-22** — and **(5) a chosen, implemented
+mitigation for the §3 metadata pass-through finding.** (5) does not exist yet. Until
+it does, this ADR stays Proposed regardless of (1)–(4) being satisfied.
 
 **Alternative considered and rejected:** re-enable without `turn_off_message_logging`,
 accepting the content exposure, on the reasoning that dev has no real customer data yet.
@@ -152,7 +182,8 @@ sharpest argument for not enabling casually: off is fast, but off does not undo.
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| `turn_off_message_logging` does not scrub before the blob-storage write CHG-2026-024 identified | Unknown — unverified | High: recreates the exact exposure this ADR exists to avoid | Gate A (below) before Status leaves Proposed |
+| `turn_off_message_logging` does not scrub before the blob-storage write CHG-2026-024 identified | **Closed 2026-09-22** — confirmed false: redaction runs before Langfuse dispatch in all three call paths | N/A | Gate A, §3/§10 |
+| Caller-supplied `metadata.generation_name`/`trace_name`/`session_id` reach the trace unredacted, bypassing `turn_off_message_logging` entirely | **Certain** — confirmed in source, and already the pattern in use per the HLD's "free text the chatbot supplies" | High: user-identifying free text in a retained, undeletable store | **None chosen yet. Blocks Accepted — §6.** |
 | `turn_off_message_logging` gets unset later (config drift, a future merge from upstream, CHG-2026-009 reverted) while this callback stays enabled | Medium over time | High | Recurring release-verification assertion, §5 |
 | Metadata-only traces still accumulate against P0-11 with no deletion path | Certain if enabled | Medium, ongoing | None available in this OSS instance today; owner accepts as a stated, not hidden, cost |
 | Traces inherit the not-yet-effective append-only control (P0-5) | Certain until ADR-0004 lands | Medium | Tracked already under CHG-2026-010; not duplicated here |
@@ -161,18 +192,28 @@ sharpest argument for not enabling casually: off is fast, but off does not undo.
 
 | Gate | Result | Evidence |
 |---|---|---|
-| **A — confirm `turn_off_message_logging` behaviour against pinned LiteLLM 1.100.1** | **Passed, 2026-09-22** | Source read of `litellm_core_utils/litellm_logging.py` and `redact_messages.py` at tag `v1.100.1` (commit `1dba17b10`): redaction runs before the Langfuse callback dispatch in all three call paths, mutating the shared `model_call_details` in place before Langfuse's handler copies it. See §3. Two residual caveats carried to §11 (arbitrary metadata fields; digest↔tag mapping unverified) |
+| **A — confirm `turn_off_message_logging` behaviour against pinned LiteLLM 1.100.1** | **Passed, 2026-09-22** | Source read of `litellm_core_utils/litellm_logging.py` and `redact_messages.py` at tag `v1.100.1` (commit `1dba17b10`): redaction runs before the Langfuse callback dispatch in all three call paths, mutating the shared `model_call_details` in place before Langfuse's handler copies it. See §3 |
+| **A2 — confirm the digest↔`v1.100.1` mapping** | **Passed, 2026-09-22** | `GET ghcr.io/v2/berriai/litellm/manifests/v1.100.1` → `docker-content-digest` matches `deployment.yaml`'s pinned digest exactly |
+| **A3 — metadata pass-through check** | **Failed, 2026-09-22 — blocks Accepted** | `langfuse.py` reads `generation_name`/`trace_name`/`session_id` from caller metadata, unredacted. See §3, §6, §9 |
 | B — staging | Not available | Same standing note as ADR-0003/ADR-0005: no staging environment exists yet |
 | C — post-deploy | Pending | Once enabled: pull one real trace from CAIRO's Observability view and confirm no `messages`/completion content is present, only metadata |
 
 ## 11. Assumptions and open questions
 
+- **Blocking, new 2026-09-22:** what stops `metadata.generation_name`/`trace_name`/
+  `session_id` from carrying free text into a retained trace. Two shapes considered,
+  neither designed yet: (a) CAIRO validates or strips these fields at the point it
+  issues a gateway credential to a caller — but no caller-facing credential-issuance
+  surface for chatbot integrations exists yet to attach that check to; (b) a documented
+  policy restricting these fields to structured, non-free-text values, enforced by
+  something checkable rather than trust. **Owner to decide which shape, or whether a
+  narrower interim scope (e.g. omit `session_id`/`trace_name` from what CAIRO's
+  gateway credentials populate, until a real caller-facing surface exists) is
+  acceptable instead of solving the general case now.**
 - Whether "every request is a trace in CAIRO" (the register row's stated goal) is fully
   met by metadata-only traces, or whether the owner actually wants content visible for
   debugging — if the latter, this ADR's design does not deliver that, and the real ask
-  is a different, larger change with its own retention story. **Owner to confirm which
-  is wanted before Gate A work starts**, so the verification target is right the first
-  time.
+  is a different, larger change with its own retention story.
 - Whether the recurring release-verification check in §5 should live alongside
   ADR-0005-A's existing three-layer test family or as its own standalone check —
   implementation detail, deferred to whoever builds this once accepted.
