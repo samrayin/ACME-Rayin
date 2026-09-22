@@ -3528,3 +3528,35 @@ layout finding instead of describing it itself.
 
 **Deployment status:** the Codespell fix is CI configuration only. The two
 findings are documentation only — no product code changed.
+
+## 2026-09-22 — Approval-tiers standing rule adopted (CHG-2026-037)
+
+**What:** `acme-governance/CAIRO-Approval-Tiers-Standing-Rule.md` — a
+standing Tier 1 / Tier 2 / Tier 2.5 boundary for what needs the owner's
+explicit go-ahead versus what proceeds and reports afterward, for all
+CAIRO/ACME-Rayin work, across every session.
+
+**The single test:** if it's wrong, can it be undone by deleting a branch,
+or does undoing it need a rollback of something live? Branch-deletable →
+Tier 2 (proceed, report afterward). Needs a live rollback, a rating change,
+or a merge to undo → Tier 1 (stop and ask, no exceptions).
+
+**Tier 2.5** is the one narrow exception: a PR may be self-merged with no
+owner approval only if its entire diff is a bare register-claim row (one ID,
+nothing else touched) or a pure doc-typo fix — any ambiguity on any of its
+four conditions defaults to Tier 1, and every 2.5 self-merge must be logged
+explicitly as such.
+
+**Why now:** written the same day PR #100 bundled a register claim with real
+findings and a real fix in one commit — caught only because the owner was
+reviewing before merge. Tier 2.5's condition 4 (nothing else bundled into
+the claim PR) exists specifically because of that.
+
+**First application:** this change's own claim, CHG-2026-037, was itself a
+bare register-only row and was self-merged under the rule it defines
+(logged in PR #103's description). This file — the actual content — is not
+a bare claim, so it stays Tier 1 for merge, per the rule's own §2/§3
+distinction.
+
+**Deployment status:** documentation only. No product code, no workflow, no
+rating changed.
