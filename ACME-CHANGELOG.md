@@ -3374,3 +3374,98 @@ this investigation (Thread 2) stayed fully separate from Thread 1's parallel
 guardrail/gateway/judge-key deploy. Register claim (CHG-2026-033, ADR-0008)
 merged register-only first, per the hard rule, before this write-up used either
 ID.
+
+---
+
+## 2026-09-22 — Two findings from PR #94's real CI run, plus a Codespell false positive (CHG-2026-036)
+
+**What, and why separate from CHG-2026-035:** CHG-2026-034/PR #94's first real
+dispatch of `pipeline.yml` surfaced nine failures. Five are the already-filed
+CHG-2026-035 migration bug (`REASSIGN OWNED BY postgres`, byte-confirmed across
+`e2e-tests`, `tests-worker (mode-redis-cluster)`, `tests-web (mode-azure)`,
+`e2e-server-tests`, and — from the `langfuse-web` container's own boot log,
+downloaded from the run's diagnostics artifact — `test-docker-build (web)`: DB
+error code `2BP01`, `routine: "shdepReassignOwned"`, matching the other four
+exactly). Three (`knip`, `lint`, `tests-web-client`) are ordinary pre-existing
+debt, exactly what N-51 predicted real CI would surface, tracked as issues #96
+and #97. The remaining two don't fit either bucket and are recorded here:
+
+**1. `scripts/smoke-image.sh` has no readiness retry before its health-check
+`curl`.** `tests-ai-gateway` passed on the first real run (`35744928871`) and
+failed on the re-run (`35747624514`) with `curl: (56) Recv failure: Connection
+reset by peer` — timestamped *before* the gateway's own "listening" log line.
+The script curls once, immediately after starting the container, with no wait
+or retry loop. This is a pre-existing script defect, not something the
+`ubuntu-latest` migration introduced — but **the possibility that this runner
+type's startup-timing margin differs enough from Blacksmith's to make a
+previously-rare race fire more often is not ruled out**, only that the defect
+itself (no retry) is the same on any runner. Needs a readiness wait/retry loop
+in the script; not fixed here.
+
+**2. `layout.clienttest.ts`'s "stays finite on degenerate shapes" test — a
+real, reproducible non-termination bug. Rated P1, owner-confirmed
+2026-09-22.**
+
+**Proven, twice, independently:** the timeline-layout algorithm does not
+terminate (or is pathologically slow enough to be indistinguishable from not
+terminating within vitest's window) when given a zero-width box. Checked
+directly against both pipeline runs' raw job logs, not inferred from a
+summary: `35744928871` — `1. 152.10s ... [failed] [retries=3]`; `35747624514`
+— `1. 155.46s ... [failed] [retries=3]`. In both, every one of 4 attempts
+(1 initial + `retries=3`) hit vitest's hard 30000ms timeout — never an
+assertion failure, never a partial pass, in either run. The test's own input
+set (`layout.clienttest.ts:110-115`) includes `{width: 0, height: 0}` and
+`{width: 320, height: 0}`. This is proven in jsdom, under vitest — not
+independently confirmed in a real browser.
+
+**Inferred, not proven, and stated at lower confidence on purpose:** a
+zero-width container is not an exotic input — it is what a React layout
+container legitimately measures as on its very first render, before a
+`ResizeObserver` reports real dimensions. *If* the production component ever
+called the layout algorithm during that window, this could plausibly hang
+the tab rendering a trace timeline. This is inference, not a demonstrated
+production failure, and is not claimed as one.
+
+**Checked, not left as an open question: does the production path actually
+reach a zero-width box?** No — a guard exists, and it closes the gap between
+the two paragraphs above. `TraceTimelineCompact.tsx` (`web/src/features/
+traces/components/TraceTimelineDense/`) is the sole caller of `TimelineDense`
+(itself the sole production caller of the `layout()` algorithm — confirmed by
+grepping every importer of the module; `TimelineRowMetrics.tsx` and
+`searchMatches.ts` reference `layout()` only in comments/types, never call
+it). `TraceTimelineCompact.tsx:67-141`: `box` starts `null`; a `ResizeObserver`
+via `measureRef` sets it to the measured `clientWidth`/`clientHeight`; the
+render guard is `{box && box.width > 0 && box.height > 0 ? <TimelineDense
+.../> : null}` — `TimelineDense`, and therefore `layout()`, is never rendered
+until both dimensions are confirmed strictly positive. The exact degenerate
+inputs that hang the test are structurally unreachable through this
+component today.
+
+**What this means for urgency:** the test finding is 100% valid and worth
+fixing regardless — a non-terminating algorithm is a real defect, and a
+future caller (a different component, a changed guard, a widget embedding
+the timeline elsewhere) could reintroduce the exposure this guard currently
+prevents. But it is not, right now, a live production hang — the existing
+guard closes that path. P1 reflects "real, confirmed, reproducible bug in a
+core algorithm, not routine test debt" without asserting an unverified
+production incident.
+
+**Also fixes a Codespell false positive found while investigating (1) and (2)**,
+unrelated to either finding: `codespell` flagged `retuned` (real English — "the
+three settings were retuned to 4 cores," ADR-0008's own wording) as a typo for
+`returned`. Fixing the text to `returned` would have made the sentence wrong;
+the correct fix is telling the tool it's wrong, not the prose. Added
+`ignore_words_list: retuned` to `.github/workflows/codespell.yml`.
+
+**Not fixed here, by design:** neither the smoke-test race nor the layout
+timeout is fixed in this change — both need their own investigation
+(`smoke-image.sh`'s retry logic; the layout algorithm's zero-width path) before
+a fix is written, not a quick patch alongside an unrelated CI-runner change.
+
+**Correction, same day:** issue #97 originally misattributed a
+`V4MigrationEntryPoints.clienttest.tsx` assertion error to this test —
+corrected directly against both runs' raw logs; #97 now points here for the
+layout finding instead of describing it itself.
+
+**Deployment status:** the Codespell fix is CI configuration only. The two
+findings are documentation only — no product code changed.
