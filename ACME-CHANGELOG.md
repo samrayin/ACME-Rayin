@@ -3695,3 +3695,47 @@ so the inner can never outlive the outer. That inner timeout does not exist yet.
 Until it does, a fired gateway timeout abandons the request while the guardrails
 pod keeps working on it, which is the work-leak F2 describes. Bounding the outer
 call is worth doing and is not a substitute for F2.
+
+## 2026-09-23 — Guardrail hook emits a structured health record (CHG-2026-041)
+
+**The interim bridge for CHG-2026-039**, so record mode is measurable at
+switch-on without waiting for ADR-0009's durable capability. Source and tests
+only; nothing enabled, no ConfigMap, no restart, no schema.
+
+**What it does.** Every hook invocation now emits one line of valid JSON to
+gateway stdout, carrying the two figures CHG-2026-039 identified as otherwise
+unrecoverable: the outcome (including `guard_unavailable`, which by construction
+can never reach CAIRO) and the measured round-trip duration. Field names are
+deliberately the ones ADR-0009's table is expected to use, so the migration
+reads these rather than redefining them. Correlation is `litellm_call_id` — the
+same identifier `AcmeLitellmRequestLog` already keys on, so the two join without
+inventing an identifier.
+
+**Honest about what it is not.** Pod stdout is not a durable record; it is lost
+on restart unless something collects it. This does not pretend otherwise. It is
+strictly more than exists today, which is nothing, and it is explicitly the
+bridge rather than the destination.
+
+**Two things the tests forced out that were not in the plan:**
+
+1. **An excluded key was invisible.** The Step 0 judge exclusion returned
+   silently, so "the judge key was correctly excluded" and "the hook never ran
+   at all" looked identical from outside — and those have opposite meanings for
+   whether the loop prevention works. ADR-0005-A layer 3 has to verify that
+   exclusion live at switch-on (B4). Exclusions are now recorded, with
+   `called: false` so they stay out of the latency and availability figures,
+   and they name the key they excluded so layer 3 can confirm it fired for the
+   judge key and nothing else.
+2. **A real clock bug.** The first implementation used `time.monotonic()`,
+   whose granularity on Windows is ~15ms — a 10ms call measured as exactly
+   zero, which the test caught. Switched to `time.perf_counter()`, the
+   high-resolution clock Python documents for short durations. This was not
+   cosmetic: it would have understated p50 at precisely the low end that
+   matters, and the understatement would have looked like good news.
+
+**`duration_ms` is null, not zero, when no call was made** (an exclusion, or a
+payload that could not be built). Zero would assert an instantaneous call that
+never happened; `called` disambiguates without the reader inferring it from a
+null.
+
+**Tests: 70, up from 58.**
