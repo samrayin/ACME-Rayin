@@ -64,7 +64,7 @@ import { useHasProjectAccess } from "@/src/features/rbac";
 import { showErrorToast, showSuccessToast } from "@/src/features/notifications";
 import { AcmeLitellmRequestLogs } from "@/src/features/acme-enhancements/components/AcmeLitellmRequestLogs";
 
-type KeyRow = RouterOutputs["acmeLitellm"]["keys"]["keys"][number];
+export type KeyRow = RouterOutputs["acmeLitellm"]["keys"]["keys"][number];
 
 // ---------------------------------------------------------------------------
 // Small pieces
@@ -420,7 +420,7 @@ export function buildUpdateKeyLimitsInput(
   };
 }
 
-function EditLimitsDialog({
+export function EditLimitsDialog({
   row,
   availableModels,
   busy,

@@ -3093,9 +3093,38 @@ and are exposed over CAIRO's stale row; both are `null`, not stale-defaulted, wh
 the gateway is unreachable), no regression in the pre-existing suite. `eslint
 --max-warnings 0` on all four changed/new files: exit 0, clean.
 
-**Not verified:** in a browser. No screenshot, no manual click-through of the new
-dialog. Per this fork's standing note (N-51), no CI runner exists for the heavy
-jobs on this fork, so this is self-reported from local runs, not a CI gate.
+**Update, same day: now rendered in a real (headless) browser, not just
+type-checked.** `EditLimitsDialog` and the `KeyRow` type were exported and a
+Storybook story file (`EditLimitsDialog.stories.tsx`, test/preview-only — not
+imported by any production page, never reaches the shipped bundle) added with
+three variants built from fake data mirroring the actual CHG-2026-029 judge-key
+scenario, not a generic example: drifted (CAIRO stale `models: []`/no `rpm_limit`
+vs. live `groq-safeguard`+`nvidia-nemotron`/`rpm_limit 10`, confirming the dialog
+pre-fills from live state), live-state-unavailable (confirming the fallback to
+CAIRO's own row and its warning banner), and no-drift (contrast case). Run via
+`DOCKER_BUILD=1 vitest run --project storybook` — the same mechanism already
+verified this session. First run failed all three (Vite's own log: "optimized
+dependencies changed, reloading" — a new `@radix-ui/react-alert-dialog` import
+triggering mid-run re-optimization, a diagnosed cause, not a guess); retried once
+with the dependency now cached, 3/3 passed. `AcmeLitellmGateway.clienttest.tsx`
+re-run after the two exports: still 6/6, no regression. Still not clicked through
+by a human in an actual browser window — this is a real headless render, not a
+manual review, and does not substitute for the owner's own look before merging.
+
+**Separate finding, incidental, not blocking:** `pnpm install` in this environment
+currently fails outright. Root cause isolated, not just observed: `scripts/agents/
+sync-agent-shims.mjs:15` does `resolve(new URL("../..", import.meta.url).pathname)`
+— on Windows, a `file://` URL's `.pathname` keeps a leading slash before the drive
+letter, and passing that straight to `resolve()` instead of through Node's own
+`fileURLToPath()` produces a duplicated drive prefix (`C:\C:\Cairo-acme\...`),
+so the script can never find `.agents/config.json` on this platform. `postinstall`
+runs this script unconditionally, so every `pnpm install` on Windows fails at that
+step — separately, `ssh2`'s optional native crypto binding also fails to compile
+here for lack of Visual Studio build tools, though that one is merely an optional
+dependency, not fatal by itself. Neither blocks anything today (existing
+`node_modules` still work), but **this would block any future contributor doing a
+fresh clone-and-install on Windows** — worth a backlog item: swap `.pathname` for
+`fileURLToPath()` in `sync-agent-shims.mjs`.
 
 **Deployment status:** source and tests only. **No ConfigMap change, no gateway
 restart, no live deploy** — this ADR does not authorize a release, same gate as
