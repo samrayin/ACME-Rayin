@@ -60,6 +60,7 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | CHG-2026-037 | 2 | Adopts `CAIRO-Approval-Tiers-Standing-Rule.md` as a standing Tier 1 / Tier 2 / Tier 2.5 approval boundary for all CAIRO/ACME-Rayin work | Anees Ur Rahman | `docs/claim-chg-2026-037-approval-tiers-standing-rule` | Claimed |
 | CHG-2026-038 | 2 | Sets the gateway guardrail hook's request timeout and records the reasoning in ADR-0005; source and test only, nothing enabled | Anees Ur Rahman | `feat/chg-2026-038-guardrail-timeout` | Claimed |
 | CHG-2026-039 | — | **Finding, not yet a change.** Record mode's own measurement is not visible in CAIRO: the hook writes its outcome to gateway stdout only | Anees Ur Rahman | `docs/chg-2026-039-record-mode-observability` | Claimed |
+| CHG-2026-041 | 2 | Structured JSON logging of the guardrail hook's own outcome and round-trip duration to gateway stdout; the interim bridge that makes record mode measurable without waiting for ADR-0009. Source and tests only | Anees Ur Rahman | `feat/chg-2026-041-hook-structured-logging` | Claimed |
 
 ## ADR numbers
 
