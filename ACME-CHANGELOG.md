@@ -3215,6 +3215,32 @@ things are tracked in this entry and must not be conflated when CHG-2026-030 shi
 Deploying CHG-2026-030 should not be read, here or in the Ledger once it is
 reachable again, as resolving this finding.
 
+**Reconciliation performed and confirmed, 2026-09-22 — CHG-2026-029's mechanism
+closes. The P1 finding above does not.** CHG-2026-030 deployed as `acme-v4.38.0.6`
+(digest `sha256:08083ee3...2957`; full deploy record above at CHG-2026-030). The
+owner then used the new Edit dialog against the judge key
+(`cairo-guardrails-judge-rotation-2026-09-20-7fe9a9d4`,
+`7fe9a9d4-75db-4cda-b0bf-7cb958cec8c9`) — dialog pre-filled from live state exactly
+as designed, `models: groq-safeguard, nvidia-nemotron`, `10 rpm`, matching the
+gateway. Save succeeded in the UI, then confirmed independently against the
+database directly, not taken on the UI's word alone:
+
+- `acme_litellm_keys`: `models = {groq-safeguard,nvidia-nemotron}`,
+  `rpm_limit = 10`, `updated_at = 2026-09-22 15:05:43.379` — no longer the stale
+  `2026-09-20 21:14:29` row. Matches live state exactly.
+- `acme_litellm_events`: a matched `INTENT`/`OUTCOME` pair,
+  `action = key.update`, `resource_id = 7fe9a9d4-75db-4cda-b0bf-7cb958cec8c9`,
+  both `2026-09-22 15:05:43`, `outcome: success`. `before.models: []`,
+  `before.rpmLimit: null` → `after.models: ["groq-safeguard","nvidia-nemotron"]`,
+  `after.rpmLimit: 10` — this time through `auditedMutation()`, unlike the original
+  2026-09-22 raw-API change this entry exists to record.
+
+**CHG-2026-029 is closed.** Its own reconciliation mechanism worked as designed and
+was used to fix the exact drift this entry documents. **The P1 finding stays open,
+unaffected** — the reconciliation *tool* now exists and works; the standing gap
+that a raw API call can bypass the audit trail entirely is untouched by this and
+needs the separate, not-yet-scoped backlog item to close.
+
 ---
 
 ## 2026-09-22 — Key limits edit UI: source and tests, no release (CHG-2026-030, ADR-0007)
