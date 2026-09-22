@@ -3560,3 +3560,85 @@ distinction.
 
 **Deployment status:** documentation only. No product code, no workflow, no
 rating changed.
+
+## 2026-09-23 — Guardrail hook Step 1: the verdict path (CHG-2026-014, ADR-0005)
+
+**What:** `apply_guardrail()` in `integrations/litellm/config/cairo_guardrail_hook.py`
+ended in `raise NotImplementedError` — Step 0 (the judge-key exclusion) shipped
+in PR #75, and calling the guardrails service was deferred to "Step 1's next
+commit." This is that commit. The hook now builds a `/v1/guard` request, reads
+the verdict, and acts on it per ADR-0005 §3b.
+
+**Source and tests only. Nothing is enabled.** No ConfigMap applied, no Secret
+change, no gateway restart, no deploy. The `guardrails:` block added to
+`litellm-config.yaml` ships with `default_on: false`.
+
+**Shape, following Step 0's own reasoning rather than inventing a new one.**
+The parts that decide anything are pure functions — `extract_text`,
+`build_guard_payload`, `decide` — so the whole ADR-0005 §3b decision table is
+provable on a bare Python with no cluster and no network, exactly as
+`should_skip` already was. Only `_post_guard` does I/O, and it is a thin
+overridable seam the tests substitute rather than mocking a HTTP library.
+
+**Record mode's contract is "change nothing," so every failure proceeds:** an
+unreachable service, a timeout, a non-200, an unparseable body, `httpx` absent
+from the image, a missing secret, an input shape we could not read. In enforce
+mode those same failures refuse (fail closed). Both directions are tested; the
+two modes are the same pure function with one flag, so they cannot drift apart.
+Enforce remains unreachable by configuration.
+
+**`agent_id` is taken only from proxy-injected, authenticated metadata**
+(`user_api_key_alias` and friends), never from anything caller-supplied — it
+lands in an audit row, and a forgeable value would poison the evidence. When no
+authenticated identifier exists the row says `unknown-agent` rather than naming
+the wrong application. Tested with a request that supplies its own `agent_id`.
+
+**Tests: 55 pass, up from 25.** `python -m unittest discover -s integrations/litellm/tests`.
+The 25 Step 0 tests are unchanged and still green; one was replaced (it asserted
+the verdict path raises `NotImplementedError`, which is now false by design).
+
+**Two things found while building this that would have broken the switch-on, and
+are fixed here:**
+
+1. **The gateway has no way to authenticate to the guardrails service.**
+   `/v1/guard` requires an `x-config-secret` header, and `rayin-guardrails` fails
+   closed when its own copy is unset ("reject every request",
+   `app/settings.py`). The gateway pod takes its whole environment from the
+   `litellm-provider-keys` Secret via `envFrom`, which carries provider keys,
+   `DATABASE_URL` and `LITELLM_MASTER_KEY` — **no guardrails secret**, and the
+   hook had no code to read one. Added as `CAIRO_GUARDRAIL_SECRET`. Putting the
+   value in the Secret is an owner-gated step, not done here. Without it the
+   hook degrades safely (record mode proceeds and logs the misconfiguration)
+   rather than failing requests — but it would be inspecting nothing while
+   appearing to be switched on, which is why it is called out rather than left
+   to be noticed later.
+2. **The documented ConfigMap command would have produced a gateway that cannot
+   start.** `k8s/deployment.yaml`'s `--from-file` command mounts only
+   `litellm-config.yaml`. The new `guardrails:` block names
+   `cairo_guardrail_hook.CairoGuardrail`, and litellm imports that class while
+   *parsing* the block — before, and regardless of, `default_on`. So a ConfigMap
+   carrying only the YAML does not yield a gateway with the guardrail off; it
+   yields one that fails on its next restart, whenever that happens to be. The
+   command now includes both files, with the reasoning recorded inline.
+
+**Unverified, and deliberately not asserted:** the exact shape litellm hands to
+`inputs` per `input_type` (hence `extract_text` being defensive — unrecognised
+shapes return None, a record-mode proceed, not a crash), and that litellm
+resolves `cairo_guardrail_hook.CairoGuardrail` from the ConfigMap mount. No hook
+in this repository has ever been referenced from this config before
+(CHG-2026-028 shipped its hook without a ConfigMap edit), so there is no local
+precedent. Both are ADR-0005-A layer 2 questions, answered by the watched
+restart at switch-on, not by this change.
+
+**Open decision, owner's, not taken here:** `CAIRO_GUARDRAIL_TIMEOUT_S` defaults
+to 10 and the call is synchronous, so a guardrails outage would add up to 10s to
+**every** gateway request even in record mode, where nothing is being blocked.
+That is a production-impacting property of a mode whose contract is to change
+nothing. Lowering it, or making the record-mode call fire-and-forget, is a
+deviation from ADR-0005 as approved — so it is decided before switch-on rather
+than chosen unilaterally in this commit. Recorded in the config beside the flag.
+
+**Already satisfied, so not a blocker:** the judge key's Step 0 prerequisites
+(`opted_out_global_guardrails: ["cairo-guardrail"]`, model allowlist, `rpm_limit`
+10) were applied live on 2026-09-22 under CHG-2026-029 and reconciled under
+CHG-2026-030.

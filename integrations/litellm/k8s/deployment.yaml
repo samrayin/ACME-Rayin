@@ -79,9 +79,19 @@ spec:
             # which silently overwrote the real one (created via the
             # --from-file command below) on every `kubectl apply -f
             # deployment.yaml`. Real source of truth stays
-            # ../config/litellm-config.yaml, applied with:
+            # ../config/, applied with:
             #   kubectl create configmap litellm-config \
             #     --namespace rayin-platform \
             #     --from-file=litellm-config.yaml=../config/litellm-config.yaml \
+            #     --from-file=cairo_guardrail_hook.py=../config/cairo_guardrail_hook.py \
             #     --dry-run=client -o yaml | kubectl apply -f -
+            #
+            # BOTH files, not just the YAML (CHG-2026-014 Step 1). The config's
+            # `guardrails:` block names `cairo_guardrail_hook.CairoGuardrail`,
+            # and litellm imports that class while PARSING the block — before,
+            # and regardless of, `default_on`. A ConfigMap carrying only the
+            # YAML therefore does not produce a gateway with the guardrail
+            # switched off: it produces a gateway that cannot start, on the
+            # next restart, whenever that happens to be. The hook file must be
+            # in the ConfigMap in the same apply that introduces the block.
             name: litellm-config
