@@ -13,7 +13,15 @@ cleanup() {
 trap cleanup EXIT
 port="$(docker port "$container" 8080/tcp)"
 for route in health ready; do
-  body="$(curl --fail --silent --show-error --retry 20 --retry-connrefused \
+  # ACME CHG-2026-034/CHG-2026-036: --retry-connrefused only retries when
+  # nothing is listening yet. The gateway's port can accept a TCP connection
+  # and reset it (curl exit 56, "Recv failure: Connection reset by peer")
+  # in the brief window before its HTTP server is actually ready to answer --
+  # confirmed by run 35747624514's log, where the reset was timestamped
+  # ~14ms before the gateway's own "listening" line, and curl exited without
+  # ever retrying. --retry-all-errors covers that case too (superset of
+  # --retry-connrefused, curl >= 7.71).
+  body="$(curl --fail --silent --show-error --retry 20 --retry-all-errors \
     --retry-delay 1 --max-time 2 "http://$port/$route")"
   case "$route:$body" in
     'health:{"status":"ok"}'|'ready:{"status":"ready"}') ;;

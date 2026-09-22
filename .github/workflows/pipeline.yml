@@ -65,7 +65,7 @@ jobs:
   # it instantly and their jobs start without waiting for it (~45-100s of
   # wall clock per run).
   pre-job:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     if: github.event_name == 'push'
     outputs:
       should_skip: ${{ steps.skip_check.outputs.should_skip }}
@@ -126,7 +126,7 @@ jobs:
           fi
 
   llm-connections-filter:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     outputs:
       changed: ${{ steps.filter.outputs.llm_connections }}
     timeout-minutes: 15
@@ -151,7 +151,7 @@ jobs:
               - 'worker/src/__tests__/llmConnections.test.ts'
 
   ai-gateway-filter:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     outputs:
       changed: ${{ steps.filter.outputs.ai_gateway }}
     timeout-minutes: 15
@@ -181,7 +181,7 @@ jobs:
 
   tests-ai-gateway:
     timeout-minutes: 20
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     needs:
       - pre-job
     if: ${{ !cancelled() && (github.event_name != 'push' || needs.pre-job.outputs.should_skip != 'true') }}
@@ -207,7 +207,7 @@ jobs:
 
   lint:
     timeout-minutes: 12
-    runs-on: blacksmith-16vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     needs:
       - pre-job
     # pre-job only runs on push events; everywhere else it resolves as skipped
@@ -268,8 +268,17 @@ jobs:
         run: |
           cp .env.dev.example .env
       - name: lint web
-        # Three packages with four ESLint workers leave headroom on 16 vCPUs.
-        run: pnpm turbo run lint --filter=!ai-gateway --filter=!@langfuse/native --concurrency=3 -- --concurrency=4
+        # ACME CHG-2026-034: was 4 ESLint workers per package (3 packages,
+        # headroom on 16 Blacksmith vCPUs). Retuned to 1 for the same
+        # headroom ratio (3 concurrent processes, not 12) on ubuntu-latest's
+        # 4 vCPUs. Verified run 35744928871: web's second eslint invocation
+        # (the .next/cache/eslint one) still hit "JavaScript heap out of
+        # memory" at concurrency=1 — a RAM ceiling, not a worker-count
+        # problem. tests-web's own Build step already sets this same flag
+        # for the same reason; matched here.
+        run: pnpm turbo run lint --filter=!ai-gateway --filter=!@langfuse/native --concurrency=3 -- --concurrency=1
+        env:
+          NODE_OPTIONS: --max_old_space_size=8192
       # Rust packages lint with cargo, which rejects the trailing ESLint flag
       # above, so they run outside that invocation (ai-gateway in its own job).
       - name: lint native addon (rustfmt, clippy)
@@ -278,7 +287,7 @@ jobs:
         run: pnpm run typecheck --filter=!ai-gateway
 
   knip:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     needs:
       - pre-job
     # pre-job only runs on push events; everywhere else it resolves as skipped
@@ -313,7 +322,7 @@ jobs:
         run: pnpm exec knip
 
   prettier-check:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     needs:
       - pre-job
     # pre-job only runs on push events; everywhere else it resolves as skipped
@@ -375,7 +384,7 @@ jobs:
           fi
 
   tests-eslint-plugin:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     needs:
       - pre-job
     # pre-job only runs on push events; everywhere else it resolves as skipped
@@ -412,7 +421,7 @@ jobs:
         run: pnpm --filter @repo/eslint-plugin run test
 
   tests-in-app-agent-sandbox-runtime:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     needs:
       - pre-job
@@ -460,7 +469,7 @@ jobs:
         run: pnpm --filter @repo/in-app-agent-sandbox-runtime run test:e2e
 
   tests-storybook:
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     needs:
       - pre-job
     # pre-job only runs on push events; everywhere else it resolves as skipped
@@ -469,7 +478,15 @@ jobs:
     if: ${{ !cancelled() && (github.event_name != 'push' || needs.pre-job.outputs.should_skip != 'true') }}
     timeout-minutes: 10
     env:
-      VITEST_MAX_WORKERS: "4"
+      # ACME CHG-2026-034/CHG-2026-036: was 4, sized for the old
+      # blacksmith-8vcpu-ubuntu-2404 runner (0.5 workers/vCPU). Halving the
+      # runner's cores to ubuntu-latest's 4 vCPU without retuning this left
+      # it at 1:1 with no headroom, plausibly worsening timing-sensitive
+      # interaction-test flakiness (two different single-test failures
+      # across isolated reruns of this job, run 35748914774). Retuned to 2
+      # for the same 0.5-workers/vCPU ratio the untouched settings elsewhere
+      # in this file already use.
+      VITEST_MAX_WORKERS: "2"
       NODE_ENV: test
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -517,7 +534,7 @@ jobs:
 
   tests-shared:
     timeout-minutes: 15
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     needs:
       - pre-job
     # pre-job only runs on push events; everywhere else it resolves as skipped
@@ -611,11 +628,11 @@ jobs:
         include:
           - component: web
             service: langfuse-web
-            runner: blacksmith-8vcpu-ubuntu-2404
+            runner: ubuntu-latest
             health_url: http://localhost:3000/api/public/health
           - component: worker
             service: langfuse-worker
-            runner: blacksmith-4vcpu-ubuntu-2404
+            runner: ubuntu-latest
             health_url: http://localhost:3030/api/health
     steps:
       - name: Checkout
@@ -628,10 +645,16 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME_READ }}
           password: ${{ secrets.DOCKERHUB_TOKEN_READ }}
-      - name: Setup Blacksmith Builder
-        uses: useblacksmith/setup-docker-builder@1e75355f81cbb3f93cba1eb5dd5e5b05110ca8f9 # v2.0.1
-        with:
-          cache-key: langfuse/test-${{ matrix.component }}
+      # ACME CHG-2026-034: useblacksmith/setup-docker-builder configured a
+      # Buildx builder backed by Blacksmith's remote build service and only
+      # functions from a Blacksmith runner — the same structural coupling
+      # upstream's own outage swap (435042a4f) kept two jobs on Blacksmith
+      # for. This job isn't release-gated (unlike those two), so it moves to
+      # ubuntu-latest's standard Buildx setup instead of staying on
+      # Blacksmith for this one step; the Blacksmith remote cache-key input
+      # has no GitHub-hosted equivalent and is dropped, not replaced.
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Set NEXT_PUBLIC_BUILD_ID
         run: echo "NEXT_PUBLIC_BUILD_ID=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
       - name: Start dependency containers in background
@@ -691,7 +714,7 @@ jobs:
           if-no-files-found: ignore
   tests-web:
     timeout-minutes: 30
-    runs-on: blacksmith-16vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     needs:
       - pre-job
     # pre-job only runs on push events; everywhere else it resolves as skipped
@@ -700,7 +723,11 @@ jobs:
     if: ${{ !cancelled() && (github.event_name != 'push' || needs.pre-job.outputs.should_skip != 'true') }}
     name: tests-web (node${{ matrix.node-version }}, pg${{ matrix.postgres-version }}, mode${{ matrix.deploy-mode }})
     env:
-      VITEST_MAX_WORKERS: "12"
+      # ACME CHG-2026-034: was 12, sized for 16 Blacksmith vCPUs (0.75
+      # workers/vCPU, the ratio this job's own "one vCPU per worker" comment
+      # below already keeps headroom under). Retuned to 3 for the same ratio
+      # on ubuntu-latest's 4 vCPUs.
+      VITEST_MAX_WORKERS: "3"
       NODE_ENV: test
     strategy:
       matrix:
@@ -860,7 +887,7 @@ jobs:
 
   tests-web-client:
     timeout-minutes: 10
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     needs:
       - pre-job
     if: ${{ !cancelled() && (github.event_name != 'push' || needs.pre-job.outputs.should_skip != 'true') }}
@@ -902,7 +929,10 @@ jobs:
 
   tests-worker:
     timeout-minutes: 20
-    runs-on: ${{ matrix.deploy-mode == '-redis-cluster' && 'blacksmith-16vcpu-ubuntu-2404' || 'blacksmith-8vcpu-ubuntu-2404' }}
+    # ACME CHG-2026-034: both matrix legs ran on different Blacksmith vCPU
+    # tiers (16 for redis-cluster, 8 otherwise); both now run on the same
+    # GitHub-hosted ubuntu-latest, so the split no longer does anything.
+    runs-on: ubuntu-latest
     needs:
       - pre-job
     # pre-job only runs on push events; everywhere else it resolves as skipped
@@ -911,7 +941,12 @@ jobs:
     if: ${{ !cancelled() && (github.event_name != 'push' || needs.pre-job.outputs.should_skip != 'true') }}
     name: tests-worker (node${{ matrix.node-version }}, pg${{ matrix.postgres-version }}, mode${{ matrix.deploy-mode }})
     env:
-      VITEST_MAX_WORKERS: ${{ matrix.deploy-mode == '-redis-cluster' && '8' || '4' }}
+      # ACME CHG-2026-034: redis-cluster leg's worker count was sized for its
+      # old 16vcpu Blacksmith runner (8 workers, 0.5/vCPU). Retuned to 2 to
+      # keep that same ~0.5-workers-per-vCPU ratio on ubuntu-latest's 4 vCPUs
+      # — the other leg's '4' already used that ratio on its old 8vcpu runner
+      # and needs no change on 4 actual cores.
+      VITEST_MAX_WORKERS: ${{ matrix.deploy-mode == '-redis-cluster' && '2' || '4' }}
       NODE_ENV: test
     strategy:
       matrix:
@@ -1003,7 +1038,7 @@ jobs:
           LANGFUSE_CODE_EVAL_AWS_LAMBDA_ENDPOINT: ${{ matrix.deploy-mode == '' && 'http://localhost:4566' || '' }}
   test-worker-llm-connections:
     timeout-minutes: 20
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     needs:
       - pre-job
       - llm-connections-filter
@@ -1085,7 +1120,7 @@ jobs:
           LANGFUSE_LLM_CONNECTION_GOOGLEAISTUDIO_KEY: ${{ secrets.LANGFUSE_LLM_CONNECTION_GOOGLEAISTUDIO_KEY }}
 
   e2e-tests:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     needs:
       - pre-job
     # pre-job only runs on push events; everywhere else it resolves as skipped
@@ -1209,7 +1244,7 @@ jobs:
         run: pnpm --filter=web run test:e2e
 
   e2e-server-tests:
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     needs:
       - pre-job
     # pre-job only runs on push events; everywhere else it resolves as skipped
@@ -1312,7 +1347,7 @@ jobs:
 
   test-ai-gateway-e2e:
     timeout-minutes: 25
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     needs:
       - pre-job
       - ai-gateway-filter
@@ -1407,7 +1442,7 @@ jobs:
 
   all-ci-passed:
     # This allows us to have a branch protection rule for tests and deploys with matrix
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     needs:
       [
         lint,

@@ -3375,6 +3375,65 @@ guardrail/gateway/judge-key deploy. Register claim (CHG-2026-033, ADR-0008)
 merged register-only first, per the hard rule, before this write-up used either
 ID.
 
+## 2026-09-22 — Heavy `pipeline.yml` jobs moved to `ubuntu-latest` (CHG-2026-034, ADR-0008, PR #94, not yet merged)
+
+**What:** implements ADR-0008's owner-decided path (b). 18 heavy CI jobs
+(build, lint, typecheck, every test suite, `test-docker-build`) move
+`runs-on: blacksmith-*` → `ubuntu-latest`. The 4 tag-gated release jobs
+(`validate-v3-release-tag`, `build-docker-image-release`,
+`publish-docker-image-release`, `notify-docker-image-release`) are untouched —
+release-related, out of scope. Three settings sized for 16 Blacksmith vCPUs
+retuned to keep their established workers/vCPU ratio on 4: `lint`'s ESLint
+`--concurrency` 4→1, `tests-web`'s `VITEST_MAX_WORKERS` 12→3, `tests-worker`'s
+redis-cluster leg 8→2. `test-docker-build`'s "Setup Blacksmith Builder" step
+(`useblacksmith/setup-docker-builder`, only functions from a Blacksmith
+runner — the same coupling upstream's own outage swap, `435042a4f`, kept two
+jobs on Blacksmith for) swapped to standard `docker/setup-buildx-action@v4.4.1`
+(pinned by commit SHA, looked up live via `gh api`), since this job isn't
+release-gated.
+
+**Verified by a real run, not just YAML validity — this fork's first genuine
+`pipeline.yml` pass/fail.** Run `35744928871` dispatched immediately (proof
+N-51's root cause is fixed: zero runners → real dispatch) and completed with a
+real `conclusion: failure` — 9 jobs passed for real
+(`llm-connections-filter`, `ai-gateway-filter`, `tests-ai-gateway`,
+`test-docker-build (worker)`, `tests-storybook`, `tests-eslint-plugin`,
+`tests-shared`, `prettier-check`, `tests-in-app-agent-sandbox-runtime`).
+`lint` failed on a genuine Node heap OOM at the retuned concurrency=1 (a RAM
+ceiling, not a worker-count problem) — fixed by adding
+`NODE_OPTIONS: --max_old_space_size=8192` to the "lint web" step, matching the
+identical pattern `tests-web`'s own Build step already carries. Re-run
+`35747624514` confirmed the OOM is gone; `lint` now fails on 46 real,
+pre-existing ESLint warnings instead (`--max-warnings 0`), never caught
+before because CI never ran.
+
+**Three more genuine, pre-existing findings surfaced by this being the first
+real run, none caused by this change, none fixed here:** `knip` found real
+dead code (3 unused files, 1 unused dependency, 9 unused exports, 7 unused
+exported types — filed as issue #96). `tests-web-client` found real failing
+assertions plus a cascading timeout (filed as issue #97). Most significant:
+migration `20260917090000_add_acme_guardrail_events_push_support` fails
+`REASSIGN OWNED BY postgres` on a from-scratch database — rated **P0**,
+recorded separately as its own finding (CHG-2026-035, above; register-claimed
+and PR'd independently since it's a product/database issue, not a CI-runner
+one).
+
+**This PR cannot reach a fully green run on its own.** CHG-2026-035's bug
+blocks every job that runs `db:migrate` or boots an image whose entrypoint
+migrates on boot — `tests-web`, all three `tests-worker` legs, `e2e-tests`,
+`e2e-server-tests`, `test-docker-build (web)`. Neither a CI-side workaround nor
+that migration's fix exists yet; this change's own scope (runner
+infrastructure) is separately verified working by the jobs that don't touch
+the database, listed above.
+
+**Does not retroactively verify anything.** Per ADR-0008 and explicit
+instruction: no test "passed locally" claim anywhere in this fork's history
+before today is upgraded to CI-verified by this change. Going forward is what
+changes.
+
+**Deployment status:** CI configuration only. No product code, no deployment.
+Held for owner review of the complete PR #94 pass/fail table before merge.
+
 ---
 
 ## 2026-09-22 — Two findings from PR #94's real CI run, plus a Codespell false positive (CHG-2026-036)
