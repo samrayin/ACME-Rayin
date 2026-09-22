@@ -3789,6 +3789,68 @@ Until it does, a fired gateway timeout abandons the request while the guardrails
 pod keeps working on it, which is the work-leak F2 describes. Bounding the outer
 call is worth doing and is not a substitute for F2.
 
+## 2026-09-23 — Finding: record mode measures the detection, not the reliability (CHG-2026-039)
+
+**A finding, not a change.** No code here. Raised before switching the hook on
+rather than after, because it changes what the switch-on is worth.
+
+**The question that surfaced it.** Asked what would actually appear in CAIRO once
+the guardrail hook goes live — a fair question, since nothing built on 2026-09-23
+is running. Checked against the cluster first: the `litellm` pod has not restarted,
+the live ConfigMap holds only `litellm-config.yaml` with no `guardrails` block and
+no hook file, and `rayin-guardrails` logged zero `/v1/guard` calls in the
+preceding two hours, only `/healthz`. So the honest answer today is "nothing, and
+nothing is wrong" — but the answer *after* switch-on needed checking too.
+
+**First answer was wrong, and is corrected here.** The initial claim was that the
+would-block count would live in `kubectl logs` rather than CAIRO. That is false,
+and reading `rayin-guardrails/app/events.py` rather than inferring from the hook's
+own logging shows why: its opening line is *"Emits a decision event for every
+`/v1/guard` call"*, and every event is pushed durably to CAIRO's Postgres
+(`rayin_push.push_event_with_retry`, a detached task, with the in-memory buffer as
+the reconciliation fallback). **So the would-block count will be visible** — each
+one lands as a `block` row on the Guardrails page, with allows and redacts beside
+it. Recording the correction because the overstated version had already reached
+the HLD, and an overstated gap is as misleading as a missed one.
+
+**What genuinely will not be visible, and why each is structural rather than an
+oversight:**
+
+1. **`guard_unavailable` cannot appear in CAIRO by construction.** When the hook's
+   call times out, gets a non-200, or cannot authenticate, `rayin-guardrails`
+   never receives the request — so there is no decision to emit and no event to
+   push. The only record is the hook's own `log.warning`/`log.info` on gateway
+   stdout. This matters more than it looks: that count is precisely the evidence
+   the 2s timeout was chosen on (CHG-2026-038), and ADR-0005 F5 records that a p95
+   was *not definable* against the pre-fix spread. Record mode was supposed to
+   produce it, and as built it produces it only into pod logs.
+2. **The added latency of the gateway→guardrails round trip is measured nowhere.**
+   The hook does not time its own call; the guardrails service times nothing on
+   the caller's behalf. ADR-0005 §5 Step 1 asks for "p50/p95 added latency" as a
+   deliverable of this exact step.
+3. **None of the §3d metrics exist** — `guardrail_calls_total{outcome}`,
+   `guardrail_latency_seconds`, `guardrail_unavailable_total`. §3d names them and
+   nothing emits them.
+
+**The shape of the gap, stated plainly:** switching the hook on in record mode
+will tell us **what the guardrails would have caught**. It will not tell us **how
+often the guardrail was reachable, or what it cost**. Detection without
+reliability or cost is half of what Step 1 is defined to produce, and it is the
+half that cannot be reconstructed afterwards — an absent event leaves no trace to
+count later.
+
+**Not proposed as a blocker.** Enabling the hook is still worth doing without
+this; the detection numbers are real and useful on their own. But the decision to
+switch on should be made knowing which half of the measurement arrives, rather
+than discovering it when the second half is asked for.
+
+**Fix shape, not built and not reviewed.** The narrow version is to have the hook
+record its own outcome where the rest of the evidence already goes, so
+`guard_unavailable` and the round-trip duration become rows rather than log lines
+— reusing the existing push path rather than inventing a second one. The broader
+version is §3d's metrics. Which of those is right, and whether either is worth
+doing before the switch-on rather than after, is the owner's call.
+
 ## 2026-09-23 — Guardrail hook emits a structured health record (CHG-2026-041)
 
 **The interim bridge for CHG-2026-039**, so record mode is measurable at
