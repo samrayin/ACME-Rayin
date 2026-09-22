@@ -3894,3 +3894,105 @@ never happened; `called` disambiguates without the reader inferring it from a
 null.
 
 **Tests: 70, up from 58.**
+
+## 2026-09-23 — ADR-0009: guardrail health events, designed (CHG-2026-040)
+
+**Design only. Nothing built:** no migration, no endpoint, no credential, no
+release. Closes the design half of CHG-2026-039.
+
+**What it designs:** a dedicated `acme_guardrail_health_events` table recording
+whether the gateway→guardrails call succeeded and how long it took, the three
+ADR-0005 §3d metrics as queries over it, the credential that authorises the push,
+the web-side endpoint and read-only console view, and the release sequencing.
+
+**A separate table, not a widened enum, and §3.1 records why:** a
+`guard_unavailable` is not a guardrail decision, it is the absence of one.
+Widening `AcmeGuardrailEventAction` would make the decision table assert
+something it does not mean — every existing query, the tiered content rules and
+the dedup key all assume a decision was reached.
+
+**Two fields where one looked sufficient.** `outcome` records what the hook did;
+`failureClass` records why. The hook's `decide()` deliberately collapses every
+failure to "I do not know what the guardrails think", because the response must
+not depend on the cause. Diagnosis does: `AUTH_FAILURE` means a misconfigured
+credential and someone must act now, `TIMEOUT` means the judge is slow and the 2s
+cap is working. Both are `GUARD_UNAVAILABLE` to the request and are not the same
+incident.
+
+**Three things the design had to state rather than solve:**
+
+1. **The credential cannot be scoped as narrowly as it should be.** Checked, not
+   assumed: `ApiKeyScope` is `ORGANIZATION | PROJECT` and `ApiAccessLevel` is
+   `"organization" | "project" | "scores"`. A project-scoped key can call every
+   project-scoped public route — so a key issued for health pushes can also
+   ingest traces and push guardrail decisions. What is achievable (dedicated key,
+   `expiresAt`, project scope, identifying note, console-provisioned) is
+   specified; what would actually close it is a new access level, which is a
+   change to the auth model and larger than this ADR.
+2. **There is no metrics substrate.** No `prom-client`, no `/metrics`, no
+   Prometheus, no Alertmanager. The three §3d metrics are therefore defined as
+   SQL over the table rather than emitted, which needs no new infrastructure and
+   is exact rather than sampled — but it is pull-only. **There is no alerting and
+   this ADR does not create it.** A readiness claim resting on this should say
+   "reviewed", not "monitored".
+3. **It adds unbounded growth to a store with no purge path.** One row per
+   gateway request, into a system where P0-11 is open and the retention job (PR
+   #51) is unmerged and gated behind ADR-0004. Health rows carry no prompt
+   content, so a shorter retention is defensible here in a way it is not for
+   decision rows — but the precondition is stated rather than discovered later.
+
+**Effort, stated plainly because it was asked for plainly: 6–10 working days,
+not a weekend.** §8 breaks it down and says what compressing it would cost — the
+migration rehearsal, the buffering correctness, and the credential discipline.
+A rushed version adds an unbounded table behind an over-scoped credential with a
+push path that can add latency to every request, in service of measuring
+latency. The recommendation is explicit: ship CHG-2026-041's stdout bridge this
+weekend, which yields both missing figures with no schema, credential or
+release, and let this proceed on its own timeline with its rehearsal intact.
+
+**Confirmed, as the brief required (§7):** `AcmeGuardrailEventAction` is not
+altered, `acme_guardrail_events` is not altered, and no existing query against
+either is affected. One deliberate read-only reuse —
+`AcmeGuardrailEventDirection` — with no value added to it.
+
+**Update, same day: all four open questions answered by the owner (§10), and
+the design revised to record them.**
+
+1. **Retention — 14 days, firm, and deliberately not tied to PR #51/ADR-0004.**
+   Health rows carry no prompt content at all, so P0-11's sensitivity argument
+   does not transfer, and this needs neither the least-privilege cutover nor an
+   archive-and-verify step — a simple age-based delete suffices. A firm target
+   was chosen over an unbounded caveat because "grows without bound, addressed
+   later" is how a table becomes a problem nobody owns.
+2. **Alerting — "reviewed, not monitored", and nothing built.** Worker-evaluated
+   thresholds were rejected as new logic with their own failure modes (an
+   evaluator that silently stops evaluating is worse than none, because it looks
+   like "no alerts, therefore fine") and as a repeat of the scope creep that
+   turned "add a log line" into this ADR. Customer-monitoring export stays on
+   Horizon 1. **Recorded with the limit of its own reasoning:** this is
+   acceptable only because record mode fails *open*, so an unnoticed outage
+   costs measurement data rather than availability — and it stops being
+   acceptable at `enforce`, where the same outage fails requests closed.
+   **Owner-confirmed as a hard gate, not a note:** ADR-0005 §5 Step 4 is
+   amended by this change to carry **gate (10) — alerting on guardrail
+   unavailability actually in place** — so `enforce` is not authorised until it
+   holds, on the same footing as the other nine. Gate (8) already covers the
+   judge model's health; it does not cover the guardrails service's
+   reachability from the gateway, which is a different failure and the one this
+   capability measures. "Reviewed, not monitored" is a decision about `record`
+   mode only, and it expires the moment `enforce` is proposed.
+3. **Credential scope — accepted as a named follow-on**, tracked as issue #115
+   and cross-referenced from §5.1 so it is not later read as an oversight.
+4. **Sequencing — after the guardrail switch-on, not in parallel.** The
+   substantive reason, beyond cost: `failureClass` proposes seven values as a
+   Postgres enum, and those seven are currently a *prediction* of how the call
+   fails in practice. The bridge (CHG-2026-041) emits exactly these fields, so
+   running the switch-on first replaces the prediction with evidence before it
+   is committed to a schema that is awkward to change. Build does not start
+   until that window has been collected and the enum corrected against it.
+
+**One ambiguity resolved rather than guessed:** the answer named "option 3",
+but §10's third choice was *accept reviewed-not-monitored* while §4.3's third
+option was *real Prometheus* — opposite meanings. The accompanying reasoning
+("don't build worker-evaluated thresholds now") made the intent unambiguous, so
+the decision is recorded by content and the colliding numbering removed.
