@@ -31,3 +31,6 @@ jobs:
           # patches/ holds pnpm-patch diffs of vendored (often minified)
           # package code, whose identifiers are not prose.
           skip: "./.git,./patches"
+          # "retuned" (re-tuned a setting) is real English that codespell's
+          # dictionary maps to "returned" -- a false positive, not a typo.
+          ignore_words_list: retuned
