@@ -275,6 +275,15 @@ What would actually close it: a narrower `ApiAccessLevel` (e.g.
 `guardrail-health`) restricting the key to this one route. That is a change to
 the authentication model, affects every consumer of `RouteAccessLevel`, and is
 **larger than this ADR** — named here as a follow-on rather than smuggled in.
+
+**Owner-accepted as a named follow-on, 2026-09-23, and tracked as issue #115**
+so the limitation is not later mistaken for an oversight. It is a pre-existing
+property of the auth model — the `rayin-guardrails` push credential already has
+it — surfaced by this ADR rather than introduced by it. For a customer-operated
+deployment, "this key can only do one thing" is a claim a regulated buyer is
+likely to ask about directly; today the honest answer is that key scope is
+project-wide, and that answer should be given knowingly rather than discovered
+during a review.
 Until then, the honest statement for a readiness review is: *this credential is
 project-scoped and cannot be scoped tighter with the current auth model.*
 
