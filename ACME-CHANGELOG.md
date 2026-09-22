@@ -3374,3 +3374,58 @@ this investigation (Thread 2) stayed fully separate from Thread 1's parallel
 guardrail/gateway/judge-key deploy. Register claim (CHG-2026-033, ADR-0008)
 merged register-only first, per the hard rule, before this write-up used either
 ID.
+
+---
+
+## 2026-09-22 — Two findings from PR #94's real CI run, plus a Codespell false positive (CHG-2026-036)
+
+**What, and why separate from CHG-2026-035:** CHG-2026-034/PR #94's first real
+dispatch of `pipeline.yml` surfaced nine failures. Five are the already-filed
+CHG-2026-035 migration bug (`REASSIGN OWNED BY postgres`, byte-confirmed across
+`e2e-tests`, `tests-worker (mode-redis-cluster)`, `tests-web (mode-azure)`,
+`e2e-server-tests`, and — from the `langfuse-web` container's own boot log,
+downloaded from the run's diagnostics artifact — `test-docker-build (web)`: DB
+error code `2BP01`, `routine: "shdepReassignOwned"`, matching the other four
+exactly). Three (`knip`, `lint`, `tests-web-client`) are ordinary pre-existing
+debt, exactly what N-51 predicted real CI would surface, tracked as issues #96
+and #97. The remaining two don't fit either bucket and are recorded here:
+
+**1. `scripts/smoke-image.sh` has no readiness retry before its health-check
+`curl`.** `tests-ai-gateway` passed on the first real run (`35744928871`) and
+failed on the re-run (`35747624514`) with `curl: (56) Recv failure: Connection
+reset by peer` — timestamped *before* the gateway's own "listening" log line.
+The script curls once, immediately after starting the container, with no wait
+or retry loop. This is a pre-existing script defect, not something the
+`ubuntu-latest` migration introduced — but **the possibility that this runner
+type's startup-timing margin differs enough from Blacksmith's to make a
+previously-rare race fire more often is not ruled out**, only that the defect
+itself (no retry) is the same on any runner. Needs a readiness wait/retry loop
+in the script; not fixed here.
+
+**2. `layout.clienttest.ts`'s "stays finite on degenerate shapes" test is not
+routine flakiness.** Checked before filing, per instruction, rather than
+assumed: it hit vitest's hard 30000ms timeout on every one of 4 attempts
+(1 initial + `retries=3`), summing to the reported 155.46s — not an assertion
+failure, a timeout on each attempt. The test's own input set includes a
+zero-width degenerate box (`{width: 0, height: 0}`, `{width: 320, height: 0}`),
+consistent with a division/scaling loop in the layout algorithm that never
+converges at zero width. The log's retry summary doesn't expose distinct
+per-attempt traces (vitest folds them into one reported failure), so this is
+strong circumstantial evidence, not a confirmed root cause — but it is evidence
+of a real non-termination bug, not noise, and is filed as such rather than
+downgraded.
+
+**Also fixes a Codespell false positive found while investigating (1) and (2)**,
+unrelated to either finding: `codespell` flagged `retuned` (real English — "the
+three settings were retuned to 4 cores," ADR-0008's own wording) as a typo for
+`returned`. Fixing the text to `returned` would have made the sentence wrong;
+the correct fix is telling the tool it's wrong, not the prose. Added
+`ignore_words_list: retuned` to `.github/workflows/codespell.yml`.
+
+**Not fixed here, by design:** neither the smoke-test race nor the layout
+timeout is fixed in this change — both need their own investigation
+(`smoke-image.sh`'s retry logic; the layout algorithm's zero-width path) before
+a fix is written, not a quick patch alongside an unrelated CI-runner change.
+
+**Deployment status:** the Codespell fix is CI configuration only. The two
+findings are documentation only — no product code changed.
