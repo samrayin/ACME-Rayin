@@ -60,7 +60,7 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | ADR-0003 | CHG-2026-005 | CAIRO as the single control plane for LiteLLM: management and request-log capture | Merged (revision 9) |
 | ADR-0004 | CHG-2026-010 | Least-privilege database cutover | Claimed |
 | ADR-0005 | CHG-2026-014 | Enforcing the guardrail on the gateway path: hook, timeout, latency budget, record-only before fail-closed | Claimed — revision pending in CHG-2026-018 |
-| ADR-0006 | CHG-2026-026 | Gateway tracing into CAIRO: what is written, where, what it costs in retention, and how it is turned off | Claimed — written, Gate A passed, blocked from Accepted by an unmitigated metadata pass-through finding (§3/§6/§11) |
+| ADR-0006 | CHG-2026-026 | Gateway tracing into CAIRO: what is written, where, what it costs in retention, and how it is turned off | Claimed — written, Gate A passed, still Proposed — owner chose a candidate mitigation (§11 pre-call hook strip) for the metadata pass-through finding, not yet built or reviewed |
 
 The rows above for CHG-2026-001 to -003 and ADR-0000 to -0002 were reconstructed
 on 2026-09-19 from `main` and every branch on the remote; they were not claimed
