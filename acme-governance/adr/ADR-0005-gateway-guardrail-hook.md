@@ -53,7 +53,7 @@ The same call also demonstrates **F2** end to end: the provider's 429 propagated
 
 > `Deprecation Warning: Output parser is not registered for the task ... for 'self_check_input' task. It uses 'is_content safe' ...`
 
-and the repo's own comment at `guardrails_engine.py:76-81` states that NeMo's default parser "treats anything that doesn't parse as an unambiguous 'no' as unsafe -- fail-closed". So: **no parser is registered, the judge's free-text reply does not parse, unparseable is treated as unsafe, and the verdict is `block` unconditionally.** The rail does not misread intent. It never evaluates intent at all. It has never functioned as a detector.
+and the repo's own comment at `guardrails_engine.py:76-81` states that NeMo's default parser "treats anything that doesn't parse as an unambiguous 'no' as unsafe -- fail-closed". So: **no parser is registered, the judge's free-text reply does not parse, unparsable is treated as unsafe, and the verdict is `block` unconditionally.** The rail does not misread intent. It never evaluates intent at all. It has never functioned as a detector.
 
 **Two independent eval runs agree**, with no shared prompts:
 - the promptfoo suite (`promptfoo-benign-2026-09-20`, 32 calls, 18:27–18:29 UTC): 26/26 benign blocked, including `"hello"` and `"Thanks, that helps."`;
@@ -248,7 +248,7 @@ Gemini is pinned rather than `gemini-flash-latest`: floating aliases drift exact
 ### The stronger candidate, and why it is not in the config
 Verifying those slugs turned up something better. The Groq account can call **dedicated safety classifiers**: `meta-llama/llama-prompt-guard-2-86m` and `-22m` (Llama Prompt Guard 2, purpose-built jailbreak and prompt-injection detection) and `openai/gpt-oss-safeguard-20b`.
 
-These matter because **they attack N-56's root cause rather than its symptom.** N-56 is not that the judge model is slow or inaccurate — it is that no `output_parser` is registered, so the judge's **free text** does not parse, and unparseable defaults to unsafe. A classifier returns a **label**. There is no free text to parse and nothing to string-match against a hardcoded refusal message, which is also what F8 identifies as the second brittle layer. A chat-model swap leaves both defects standing; a classifier removes the class of defect.
+These matter because **they attack N-56's root cause rather than its symptom.** N-56 is not that the judge model is slow or inaccurate — it is that no `output_parser` is registered, so the judge's **free text** does not parse, and unparsable defaults to unsafe. A classifier returns a **label**. There is no free text to parse and nothing to string-match against a hardcoded refusal message, which is also what F8 identifies as the second brittle layer. A chat-model swap leaves both defects standing; a classifier removes the class of defect.
 
 This is therefore the leading week-2 candidate for the v5 P0 ("swap the guardrails judge model to a dedicated safety classifier") — a P0 that has been open and unstarted since v5, and which now has a concrete, already-credentialed option.
 
