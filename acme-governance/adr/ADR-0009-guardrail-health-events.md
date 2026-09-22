@@ -253,12 +253,30 @@ claim resting on it must say **"reviewed"**, never "monitored". Nothing here
 will page anyone; a guardrails outage at 3am is discovered when someone next
 opens the view.
 
-That is an accepted limitation of this change, not an oversight in it — and it
-is acceptable precisely because the hook fails *open* in record mode. An
-unnoticed outage in record mode costs measurement data, not availability. **This
-reasoning does not survive the move to `enforce`,** where an unnoticed
-guardrails outage would fail requests closed: alerting becomes a hard
-prerequisite at that point, and ADR-0005 §5's Step 4 gates should say so.
+That is an accepted limitation of this change, not an oversight in it.
+
+**The acceptance is conditional, and the condition is load-bearing.** It holds
+*only* because the hook fails **open** in `record` mode: an unnoticed guardrails
+outage costs measurement data, not availability. Nothing breaks for a caller, so
+discovering it late is tolerable.
+
+**Under `enforce`, the identical outage fails every request closed.** The same
+absence of alerting that is tolerable in record mode becomes the difference
+between an incident detected in minutes and one first reported by the customer
+saying nothing works. The reasoning above does not merely weaken at that point —
+it inverts.
+
+**This is therefore recorded as a hard gate, not a note (owner-confirmed
+2026-09-23).** ADR-0005 §5 Step 4 has been amended by this change to carry it as
+**gate (10): alerting on guardrail unavailability actually in place.** `enforce`
+is not authorised until that gate holds, on the same footing as the other nine.
+Gate (8) already covers the judge model's health; it does not cover the
+guardrails service's *reachability from the gateway*, which is a different
+failure and the one this capability measures.
+
+The dependency runs in the direction that matters: **"reviewed, not monitored"
+is a decision about `record` mode only, and it expires the moment `enforce` is
+proposed.**
 
 ---
 

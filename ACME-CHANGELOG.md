@@ -3973,6 +3973,14 @@ the design revised to record them.**
    acceptable only because record mode fails *open*, so an unnoticed outage
    costs measurement data rather than availability — and it stops being
    acceptable at `enforce`, where the same outage fails requests closed.
+   **Owner-confirmed as a hard gate, not a note:** ADR-0005 §5 Step 4 is
+   amended by this change to carry **gate (10) — alerting on guardrail
+   unavailability actually in place** — so `enforce` is not authorised until it
+   holds, on the same footing as the other nine. Gate (8) already covers the
+   judge model's health; it does not cover the guardrails service's
+   reachability from the gateway, which is a different failure and the one this
+   capability measures. "Reviewed, not monitored" is a decision about `record`
+   mode only, and it expires the moment `enforce` is proposed.
 3. **Credential scope — accepted as a named follow-on**, tracked as issue #115
    and cross-referenced from §5.1 so it is not later read as an oversight.
 4. **Sequencing — after the guardrail switch-on, not in parallel.** The
