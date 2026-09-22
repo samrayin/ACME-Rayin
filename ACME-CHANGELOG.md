@@ -3894,3 +3894,63 @@ never happened; `called` disambiguates without the reader inferring it from a
 null.
 
 **Tests: 70, up from 58.**
+
+## 2026-09-23 — ADR-0009: guardrail health events, designed (CHG-2026-040)
+
+**Design only. Nothing built:** no migration, no endpoint, no credential, no
+release. Closes the design half of CHG-2026-039.
+
+**What it designs:** a dedicated `acme_guardrail_health_events` table recording
+whether the gateway→guardrails call succeeded and how long it took, the three
+ADR-0005 §3d metrics as queries over it, the credential that authorises the push,
+the web-side endpoint and read-only console view, and the release sequencing.
+
+**A separate table, not a widened enum, and §3.1 records why:** a
+`guard_unavailable` is not a guardrail decision, it is the absence of one.
+Widening `AcmeGuardrailEventAction` would make the decision table assert
+something it does not mean — every existing query, the tiered content rules and
+the dedup key all assume a decision was reached.
+
+**Two fields where one looked sufficient.** `outcome` records what the hook did;
+`failureClass` records why. The hook's `decide()` deliberately collapses every
+failure to "I do not know what the guardrails think", because the response must
+not depend on the cause. Diagnosis does: `AUTH_FAILURE` means a misconfigured
+credential and someone must act now, `TIMEOUT` means the judge is slow and the 2s
+cap is working. Both are `GUARD_UNAVAILABLE` to the request and are not the same
+incident.
+
+**Three things the design had to state rather than solve:**
+
+1. **The credential cannot be scoped as narrowly as it should be.** Checked, not
+   assumed: `ApiKeyScope` is `ORGANIZATION | PROJECT` and `ApiAccessLevel` is
+   `"organization" | "project" | "scores"`. A project-scoped key can call every
+   project-scoped public route — so a key issued for health pushes can also
+   ingest traces and push guardrail decisions. What is achievable (dedicated key,
+   `expiresAt`, project scope, identifying note, console-provisioned) is
+   specified; what would actually close it is a new access level, which is a
+   change to the auth model and larger than this ADR.
+2. **There is no metrics substrate.** No `prom-client`, no `/metrics`, no
+   Prometheus, no Alertmanager. The three §3d metrics are therefore defined as
+   SQL over the table rather than emitted, which needs no new infrastructure and
+   is exact rather than sampled — but it is pull-only. **There is no alerting and
+   this ADR does not create it.** A readiness claim resting on this should say
+   "reviewed", not "monitored".
+3. **It adds unbounded growth to a store with no purge path.** One row per
+   gateway request, into a system where P0-11 is open and the retention job (PR
+   #51) is unmerged and gated behind ADR-0004. Health rows carry no prompt
+   content, so a shorter retention is defensible here in a way it is not for
+   decision rows — but the precondition is stated rather than discovered later.
+
+**Effort, stated plainly because it was asked for plainly: 6–10 working days,
+not a weekend.** §8 breaks it down and says what compressing it would cost — the
+migration rehearsal, the buffering correctness, and the credential discipline.
+A rushed version adds an unbounded table behind an over-scoped credential with a
+push path that can add latency to every request, in service of measuring
+latency. The recommendation is explicit: ship CHG-2026-041's stdout bridge this
+weekend, which yields both missing figures with no schema, credential or
+release, and let this proceed on its own timeline with its rehearsal intact.
+
+**Confirmed, as the brief required (§7):** `AcmeGuardrailEventAction` is not
+altered, `acme_guardrail_events` is not altered, and no existing query against
+either is affected. One deliberate read-only reuse —
+`AcmeGuardrailEventDirection` — with no value added to it.
