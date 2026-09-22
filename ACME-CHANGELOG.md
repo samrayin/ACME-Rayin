@@ -3297,3 +3297,54 @@ restart, no live deploy** — this ADR does not authorize a release, same gate a
 every other Tier 1 change in this fork. The reconciliation this exists to unblock
 (the judge key from CHG-2026-029) is the owner's action once this ships to a running
 environment, not part of this change.
+
+## 2026-09-22 — N-51 CI runner root cause confirmed; two fix paths compared, no fix built (CHG-2026-033, ADR-0008)
+
+**What:** ADR-0001 §10 (2026-09-19) flagged by name that "heavy test jobs remain
+queued with no runner" without investigating why. This change investigates it:
+every job in `pipeline.yml` ("CI/CD") is pinned to a `blacksmith-*` runner label,
+which only resolves through the Blacksmith GitHub App. `GET
+/repos/samrayin/ACME-Rayin/actions/runners` returns zero registered runners; a
+sampled run sat at API `status: "pending"` for 2h26m+ with `{"total_count":0,
+"jobs":[]}` on its own jobs endpoint — GitHub never dispatches a job, not slow,
+not degraded, never assigned. Every run sampled across the last day either hangs
+`pending`/`queued` or resolves `cancelled`; not one shows a real pass/fail from
+the actual build/lint/test jobs. No PR in this repo's history has ever received a
+real CI verdict — every test result recorded anywhere in this fork's history to
+date is local, from a developer machine.
+
+**Not an ACME decision.** All 228 commits touching `pipeline.yml` are upstream
+Langfuse's; none from this fork ever touched a `runs-on:` line. The `blacksmith-*`
+labels are inherited unmodified from the sync, never chosen or examined here.
+
+**Two fix paths, compared in ADR-0008, not decided:**
+- **(a) Provision the Blacksmith GitHub App.** Blacksmith's own docs: *"Blacksmith
+  is limited to GitHub organizations and not available for personal
+  repositories."* `samrayin` is confirmed `"type": "User"` — a personal account.
+  **This path is not a provisioning task today — it's blocked by the repo's
+  account type**, which is a separate ownership decision this ADR does not make.
+- **(b) Move the heavy jobs to GitHub-hosted `ubuntu-latest`.** No external
+  dependency, available immediately, free and unmetered on this public repo.
+  Checked against the file, not assumed: only two jobs (`lint`, `tests-web`) plus
+  one conditional matrix leg (`tests-worker`'s `redis-cluster` variant) request
+  16vcpu; everything else already runs at 4 or 8vcpu, close to `ubuntu-latest`'s
+  standard 4vCPU/16GB spec. Upstream's own history already ran this exact swap:
+  commit `435042a4f` moved every general CI/lint/test/build job onto
+  `ubuntu-latest` during a Blacksmith outage with no recorded failures, reverting
+  only once Blacksmith came back — proof by upstream's own operation, not a
+  hypothesis. The three 16vcpu-tuned concurrency settings (`lint`'s
+  `--concurrency=4`, `tests-web`'s `VITEST_MAX_WORKERS: "12"`, the
+  `redis-cluster` leg's `VITEST_MAX_WORKERS: "8"`) would need retuning to 4 cores
+  to avoid oversubscription — a mechanical adjustment, not a redesign; no job
+  needs splitting.
+
+**Recommendation recorded in the ADR:** path (b) is the only one buildable today;
+path (a) becomes viable only after a separate account/ownership decision this ADR
+doesn't make.
+
+**Scope held deliberately narrow, by explicit instruction:** doc-only. No
+`pipeline.yml` edit, no other workflow file touched, nothing release-related —
+this investigation (Thread 2) stayed fully separate from Thread 1's parallel
+guardrail/gateway/judge-key deploy. Register claim (CHG-2026-033, ADR-0008)
+merged register-only first, per the hard rule, before this write-up used either
+ID.

@@ -1,7 +1,7 @@
 # CAIRO — Vision Tracker
 **Purpose:** single source of truth for "are we there yet," updated at every stage. Not a changelog — a status board. The changelog and ledger remain the detailed record; this file answers one question fast: what's done, what's next, what's blocking.
 
-**Last updated:** 2026-09-22 (PR #85 and PR #86 / CHG-2026-030 merged to `main`; not yet deployed)
+**Last updated:** 2026-09-22 (PR #85 and PR #86 / CHG-2026-030 merged to `main`; not yet deployed. Also: N-51 root cause confirmed and two fix paths compared, CHG-2026-033 / ADR-0008 — separate Thread 2, no product code touched)
 **Update rule:** Claude Code updates this file at the end of every work session or major milestone, before reporting back. If it hasn't been touched in a session where status changed, that's a process miss — flag it.
 
 ---
@@ -38,6 +38,7 @@
 | **CHG-2026-030 / ADR-0007** | Wire `updateKeyLimits()` to a Keys page edit dialog — the fix for the console defect above | 🟢 **Merged.** PR #86 merged to `main` 2026-09-22T13:27:21Z, commit `e881eb13`. **Not deployed** — `release.sh` has not been run, no ConfigMap change, no restart. Confirmed the push-to-main "Deploy to ECS" workflow that fired on this merge targets AWS ECS staging, unmodified upstream tooling irrelevant to this Azure/AKS fork — not a CAIRO deploy. |
 | **CHG-2026-029** | Judge key drift (models/rpm_limit wrong in CAIRO's own DB; live gateway state is already correct) | 🔴 **Blocked**, narrowed — the fix is merged; now waiting on it to actually ship (`release.sh`) to a running environment, then the owner uses the new UI to reconcile CAIRO's record |
 | **CHG-2026-031** | This file — adopted as a fourth standing record alongside the changelog, ledger and readiness-auditor prompt | 🟢 Merged (PR #87) |
+| **CHG-2026-033 / ADR-0008** | N-51: why `pipeline.yml` never runs (zero registered runners, `blacksmith-*` labels needing an app this personal-account repo can't install), two fix paths compared (provision Blacksmith vs. move to `ubuntu-latest`) | 🟡 Written, owner to pick a path — no workflow file changed, nothing implemented yet |
 
 ---
 
@@ -50,6 +51,7 @@
 | P0-5 | Append-only not enforced at DB level | P0 | Open |
 | P0-11 | No deletion path in any data store | P0 | Open — blocks Langfuse tracing re-enablement (ADR-0006) |
 | N-20 | Inert Langfuse tracing callback | — | Closed (removed 2026-09-21) |
+| N-51 | Heavy CI (`pipeline.yml`) has never run for any change in this fork's history — all test evidence to date is local, not CI-verified | — | Root cause confirmed 2026-09-22 (CHG-2026-033 / ADR-0008): zero registered runners, `blacksmith-*` labels need an app blocked by this repo's personal-account ownership. Two fix paths compared, owner to pick; not yet fixed |
 
 ---
 
