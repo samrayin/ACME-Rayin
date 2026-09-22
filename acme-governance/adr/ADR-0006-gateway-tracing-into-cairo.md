@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Change** | CHG-2026-026 · Tier 1 · owner: Anees Ur Rahman |
-| **Status** | **Proposed — design only, blocked from Accepted.** No ConfigMap edit, no Secret change, no gateway restart. Gate A (§9) passed 2026-09-22: `turn_off_message_logging` confirmed, by source read, to redact before the Langfuse callback receives data — and the digest it was verified against confirmed, by registry lookup, to be the deployed version. **Gate A passing does not close this ADR's disqualifying finding: four fields, confirmed by source inspection not recollection — `session_id`, `trace_name`, `generation_name`, `user_api_key_end_user_id` — reach the trace unredacted regardless of the flag (§3). Owner has chosen a candidate mitigation covering all four (§11, 2026-09-22) — not yet implemented, not yet reviewed, not yet built. Still Proposed.** |
+| **Status** | **Proposed — design only, blocked from Accepted.** No ConfigMap edit, no Secret change, no gateway restart. Gate A (§9) passed 2026-09-22: `turn_off_message_logging` confirmed, by source read, to redact before the Langfuse callback receives data — and the digest it was verified against confirmed, by registry lookup, to be the deployed version. **Gate A passing does not close this ADR's disqualifying finding. An initial 4-field pass was superseded the same day, 2026-09-22, by an exhaustive audit (§11): roughly a dozen fields/mechanisms reach the trace unredacted, including a genuine content leak (`metadata.prompt`, not a label) and an unbounded wildcard (`trace_`-prefixed keys) that no fixed strip list can close. The owner must decide the mitigation's shape (allowlist, not denylist) before any hook design proceeds. Still Proposed, not Accepted.** |
 | **Reverses** | The re-enablement conditions recorded in CHG-2026-024 (Readiness Ledger N-20) when this same callback was removed. This document is that reversal's required justification — see §7. |
 | **Related** | CHG-2026-024 (removed the inert callback) · CHG-2026-009 / ADR-0003 (the *other* gateway logging path — CAIRO's own Postgres request-log mirror, a separate destination from this one) · Readiness Ledger P0-11 (no deletion path in any store) · P0-5 / CHG-2026-010 (least-privilege cutover, still not built) |
 | **Blocked by** | Owner approval of this ADR. No implementation exists yet — this is the ADR, not the change. |
@@ -151,12 +151,15 @@ the gateway Secret, (3) an explicit owner approval gate on the resulting restart
 document, once accepted, plus the CHG-2026-026 register row moving from Claimed to a
 merge), (4) Gate A (§9) passed first, with evidence attached to this document before
 Status changes from Proposed — **done, 2026-09-22, disqualifying result: design as
-originally scoped cannot proceed** — and (5) a mitigation for the §3 finding, **chosen
-2026-09-22 (§11: strip all four source-confirmed fields — `session_id`, `trace_name`,
-`generation_name`, `user_api_key_end_user_id` — at a pre-call hook, unconditionally,
-for every CAIRO-managed key) but not yet implemented, not yet reviewed, not yet
-built.** Nothing in (5) changes Status. This ADR does not become Accepted until (5)
-is actually built and verified.
+originally scoped cannot proceed** — and (5) a mitigation for the §3 finding. A
+four-field strip-list mitigation was chosen 2026-09-22, then **superseded the same
+day by an exhaustive audit (§11)**: the real count is roughly a dozen
+fields/mechanisms, including one **content** leak (`metadata.prompt`, not a label)
+and one **wildcard** (`trace_`-prefixed keys) that a fixed strip list cannot close
+structurally. (5) does not exist in a form that would satisfy this ADR — the owner
+must decide the mitigation's *shape* (allowlist vs. expanded denylist) before hook
+design proceeds. Nothing here changes Status. This ADR does not become Accepted
+until a mitigation of the right shape is chosen, built, and verified.
 
 **Alternative considered and rejected:** re-enable without `turn_off_message_logging`,
 accepting the content exposure, on the reasoning that dev has no real customer data yet.
@@ -188,7 +191,9 @@ sharpest argument for not enabling casually: off is fast, but off does not undo.
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
 | `turn_off_message_logging` does not scrub before the blob-storage write CHG-2026-024 identified | **Closed 2026-09-22** — confirmed false: redaction runs before Langfuse dispatch in all three call paths | N/A | Gate A, §3/§10 |
-| Caller-supplied `session_id`/`trace_name`/`generation_name`/`user_api_key_end_user_id` reach the trace unredacted, bypassing `turn_off_message_logging` entirely — all four confirmed by source, not recollection | **Certain** — confirmed in source, and already the pattern in use per the HLD's "free text the chatbot supplies" | High: user-identifying free text in a retained, undeletable store | **Candidate chosen 2026-09-22 (§11, pre-call hook strip, all four fields) — not implemented, not reviewed. Blocks Accepted — §6.** |
+`metadata.prompt` writes arbitrary caller text directly into a generation's `prompt` field — a content leak, not a label leak | **Certain** — confirmed in source (`langfuse.py:1064`) | **Highest in this table** — this is prompt/completion-class content reaching the trace by a path `turn_off_message_logging` does not guard at all | **No mitigation chosen. Blocks Accepted — §6, §11.** |
+| Any `trace_`-prefixed metadata key promotes verbatim into `trace_params` — unbounded, not a fixed field set | **Certain** — confirmed in source (`langfuse.py:669-670`) | High, open-ended: a fixed strip list cannot close a wildcard | **No mitigation chosen — a denylist is structurally the wrong shape here. Blocks Accepted — §6, §11.** |
+| `session_id`/`trace_name`/`generation_name`/`user_api_key_end_user_id`, plus ~8 more label/identifier fields (§11 table) reach the trace unredacted | **Certain** — confirmed in source, and the `user_id` case already the pattern in use per the HLD's "free text the chatbot supplies" | High: user-identifying free text in a retained, undeletable store | **Original 4-field strip-list candidate superseded by the exhaustive audit, 2026-09-22 — not sufficient as scoped. Blocks Accepted — §6.** |
 | `turn_off_message_logging` gets unset later (config drift, a future merge from upstream, CHG-2026-009 reverted) while this callback stays enabled | Medium over time | High | Recurring release-verification assertion, §5 |
 | Metadata-only traces still accumulate against P0-11 with no deletion path | Certain if enabled | Medium, ongoing | None available in this OSS instance today; owner accepts as a stated, not hidden, cost |
 | Traces inherit the not-yet-effective append-only control (P0-5) | Certain until ADR-0004 lands | Medium | Tracked already under CHG-2026-010; not duplicated here |
@@ -199,55 +204,97 @@ sharpest argument for not enabling casually: off is fast, but off does not undo.
 |---|---|---|
 | **A — confirm `turn_off_message_logging` behaviour against pinned LiteLLM 1.100.1** | **Passed, 2026-09-22** | Source read of `litellm_core_utils/litellm_logging.py` and `redact_messages.py` at tag `v1.100.1` (commit `1dba17b10`): redaction runs before the Langfuse callback dispatch in all three call paths, mutating the shared `model_call_details` in place before Langfuse's handler copies it. See §3 |
 | **A2 — confirm the digest↔`v1.100.1` mapping** | **Passed, 2026-09-22** | `GET ghcr.io/v2/berriai/litellm/manifests/v1.100.1` → `docker-content-digest` matches `deployment.yaml`'s pinned digest exactly |
-| **A3 — metadata pass-through check** | **Failed, 2026-09-22 — blocks Accepted** | `langfuse.py` reads four fields from caller metadata, unredacted: `generation_name`, `trace_name`, `session_id`, `user_api_key_end_user_id`. See §3, §6, §9, §11 |
+| **A3 — metadata pass-through check** | **Failed, 2026-09-22 — blocks Accepted** | Initial pass found 4 fields; **exhaustive re-check the same day found ~12**, including a content leak (`metadata.prompt`) and an unbounded wildcard (`trace_`-prefixed keys). See §3, §6, §9, §11 for the full table and method |
 | B — staging | Not available | Same standing note as ADR-0003/ADR-0005: no staging environment exists yet |
 | C — post-deploy | Pending | Once enabled: pull one real trace from CAIRO's Observability view and confirm no `messages`/completion content is present, only metadata |
 
 ## 11. Assumptions and open questions
 
-- **Owner decision, 2026-09-22: narrow interim scope, not the general case.** Rather
-  than solve validation for a caller-facing credential-issuance surface that does not
-  exist yet, the chosen mitigation is narrower and checkable today: strip a fixed set
-  of fields from every request's metadata before it reaches logging, unconditionally,
-  for every CAIRO-managed gateway key — don't attempt to validate or selectively
-  allow them. This is a proposed design for owner review, not yet implemented; no
-  ConfigMap, no code change has shipped.
+- **Exhaustive audit, 2026-09-22 — the answer is not four. Two findings change the
+  shape of the mitigation, not only its length.**
 
-  **The strip list is derived from source inspection of what actually bypasses
-  `perform_redaction()`, not from recollection of what was originally asked for.**
-  Three fields were named when this mitigation was first proposed; a fourth was
-  found by checking `langfuse.py` directly against `perform_redaction()`'s actual
-  coverage, the same method already used for the first three, and folded in on that
-  basis rather than left out for not having been named. **All four, confirmed by
-  source, none redacted by `turn_off_message_logging`:**
+  **Method, recorded for reproducibility — this must be re-run on every LiteLLM
+  version bump, not rediscovered by accident:** grep
+  `litellm/integrations/langfuse/langfuse.py` for every read against `metadata`,
+  `clean_metadata`, `allowlisted_metadata`, and the header-merge path
+  (`metadata\.(get|pop)\(|clean_metadata\.(get|pop)\(|allowlisted_metadata\.(get|pop)\(|add_metadata_from_header`).
+  For each match, trace forward to confirm whether it is assigned into a dict passed
+  to a `Langfuse` SDK call (`trace_params`, `generation_params`, `trace.span(...)`
+  kwargs, or a nested `metadata` sub-object within one of those). Cross-check each
+  against `redact_messages.py`'s `perform_redaction()`, which only mutates
+  `model_call_details['messages']/['prompt']/['input']` and the response object —
+  a structurally separate data path from `litellm_params['metadata']` and proxy
+  headers, so by construction nothing reached this way can be covered by redaction;
+  this was confirmed structurally, once, rather than re-derived per field. **This
+  check should be a named step in whatever process handles a LiteLLM version bump
+  (`deployment.yaml`'s pinned digest changing) — not currently tied to one; the
+  owner should decide where it's recorded (a CHG template step, or a line in
+  `ACME-CHANGELOG.md`'s "Upgrade to vX" entries).**
 
-  | Field | Read at | Feeds |
-  |---|---|---|
-  | `session_id` | `langfuse.py:597` (`clean_metadata.pop`) | Trace `session_id` |
-  | `trace_name` | `langfuse.py:598` (`clean_metadata.pop`) | Trace `name` |
-  | `generation_name` | `langfuse.py:507,519` (`metadata.get`) | Generation `name` |
-  | `user_api_key_end_user_id` | `langfuse.py:565` (`allowlisted_metadata.get`) | Trace `user_id` — LiteLLM's mapping of the OpenAI-style `user` field, and the strongest match to the HLD's documented "the user name is free text the chatbot supplies" |
+  **Two input channels, both fully caller-controlled, neither touched by
+  `perform_redaction()`:** the request body's `metadata` object, and — via
+  `add_metadata_from_header` — any HTTP header prefixed `langfuse_`, which
+  *overwrites* the body value for the same key if both are sent. A strip aimed only
+  at the request body misses the header channel entirely.
 
-  **Mechanism, concretely, grounded in this codebase's existing pattern:** a
-  `litellm.integrations.custom_logger.CustomLogger` subclass implementing
-  `async_pre_call_hook`, loaded from the same ConfigMap as `litellm-config.yaml` —
-  the same extension point family already used by `cairo_guardrail_hook.py`
-  (`CustomGuardrail`, a related base). It would pop all four fields above from
-  **both** `data.get("metadata", {})` and `data.get("litellm_metadata", {})` before
-  the request proceeds — checking both containers deliberately, mirroring
-  `cairo_guardrail_hook.py`'s own `_key_level_opt_outs` reasoning: a caller could
-  otherwise shadow the strip by populating whichever container is not checked. Runs
-  for every request through a CAIRO-managed key, unconditionally — no allow-list, no
-  per-caller exception, so there is nothing to misconfigure into a gap.
+  **All findings, confirmed by source:**
 
-  **What this still does not solve:** closes the four fields found by this method,
-  not a proof that no other field in `langfuse.py` reads unredacted caller metadata —
-  this was a targeted check against the fields already in view, not an exhaustive
-  audit of the integration. A full caller-facing validation surface is still the
-  eventual real fix, once one exists to attach it to.
+  | Field / mechanism | Read at | Feeds | Category |
+  |---|---|---|---|
+  | `metadata.prompt` | `langfuse.py:1064`, via `_add_prompt_to_generation_params` | Generation `prompt` — **actual content, not a label** | **Content leak. The serious finding.** |
+  | any `trace_`-prefixed key (e.g. `trace_foo`) | `langfuse.py:669-670` | `trace_params[foo]`, unbounded key name | **Wildcard. Not closable by a fixed strip list.** |
+  | `session_id` | `langfuse.py:597` | Trace `session_id` | Label |
+  | `trace_name` | `langfuse.py:598` | Trace `name` | Label |
+  | `generation_name` | `langfuse.py:777` (v2); `507`,`519` (v1, dead — see below) | Generation `name` | Label |
+  | `user_api_key_end_user_id` | `langfuse.py:565` | Trace `user_id` | Label — the HLD's "free text the chatbot supplies" match |
+  | `trace_id` | `langfuse.py:599` | Trace `id`, spoofable | Identifier |
+  | `existing_trace_id` | `langfuse.py:607` | Overrides `trace_id`; lets a caller attach to/update a trace they know the id of | Identifier |
+  | `update_trace_keys` | `langfuse.py:612` | Names which `trace_*` keys promote when updating an existing trace | Mechanism, gated by admin setting `litellm.langfuse_enable_update_trace_keys` |
+  | `debug_langfuse` | `langfuse.py:616` | When true, dumps **every** primitive-valued metadata entry into `trace_params.metadata.metadata_passed_to_litellm` | **Caller-triggered wildcard dump** |
+  | `version` / `trace_version` | `langfuse.py:663-664` | Trace `version` | Label |
+  | `generation_id` | `langfuse.py:800` | Generation `id`, spoofable | Identifier |
+  | `parent_observation_id` | `langfuse.py:817` | Generation `parent_observation_id` | Identifier |
+  | `requester_metadata` | `langfuse.py:1165` | Nested into generation `metadata.requester_metadata`, whole sub-object | Label/structured |
+  | `tags` (via `request_tags`) | `langfuse.py:895` (`_get_langfuse_tags`) | Trace `tags` array | Label, standard LiteLLM feature |
+  | `hidden_params.cache_key` | `langfuse.py:912` | Tag string `cache_key:{value}` | Lower confidence — `hidden_params` is conventionally system-set, not verified whether a caller can supply it directly; gated by admin config (`cache_key` in `litellm.langfuse_default_tags`) |
+  | `user_api_key_alias` | `langfuse.py:782` (read, not popped) | Fallback generation name component | **Not caller-controlled per-request** — this is the key's alias, admin-set at key creation, listed for completeness only |
 
-  **Owner review needed before this becomes Decision (§6), not Assumption (§11).
-  Design only — the hook described above is not implemented.**
+  **Checked and confirmed not a live risk, so they don't inflate the count:**
+  `clean_headers` (built at `langfuse.py:726-731` from proxy headers, never assigned
+  anywhere afterward — dead code). `masking_function`/`langfuse_masking_function`
+  (caller-suppliable key, but only used `if callable(...)` — a JSON-transported
+  value is never callable, so inert as a leak route, though it could in principle
+  let a caller no-op an admin-configured masking function — a bypass-of-intent
+  concern, not a new leak channel). `mask_input`/`mask_output` (caller-controlled
+  booleans, but `input`/`output` are already the post-redaction values by the time
+  they reach here when `turn_off_message_logging` is set — confirmed by tracing
+  `_get_langfuse_input_output_content` back to `kwargs.get("messages")` and the
+  already-redacted `response_obj`; these booleans cannot un-redact what redaction
+  already removed). The legacy `_log_langfuse_v1` path (`generation_name` at
+  `langfuse.py:507,519`) — gated by `_is_langfuse_v2()`; this fork runs Langfuse
+  v4.38.0, so this path is not reachable in this deployment. Same field as the
+  live v2 finding above; not double-counted.
+
+  **Verdict: not four. Roughly a dozen fields/mechanisms, two of which change the
+  mitigation's required shape, not just its length:**
+  1. `metadata.prompt` is a **content** leak — the original framing ("label fields
+     only, content stays protected by `turn_off_message_logging`") does not hold.
+     A caller can put arbitrary text directly into a generation's `prompt` field via
+     a completely different code path than the one `turn_off_message_logging`
+     guards.
+  2. The `trace_`-prefix wildcard means **a fixed strip list cannot fully close this
+     class of gap** — a caller can always mint a new `trace_whatever` key the list
+     doesn't name yet. A denylist (name and block the bad ones) is structurally the
+     wrong shape here; an allowlist (name and permit only the known-safe ones,
+     stripping everything else in the `trace_` namespace and `debug_langfuse`'s
+     dump path) is the only design that stays closed against a wildcard.
+
+  **This is a materially different finding than "the strip list grows."** The
+  §11/§6/§9 mitigation as chosen (fixed strip list, four fields) does not close
+  either of these two — it should be treated as superseded by this audit, not
+  extended. **Owner decision needed on the mitigation's shape (allowlist vs. an
+  expanded denylist) before any hook design proceeds. Still design only — nothing
+  implemented, nothing built.**
 - Whether "every request is a trace in CAIRO" (the register row's stated goal) is fully
   met by metadata-only traces, or whether the owner actually wants content visible for
   debugging — if the latter, this ADR's design does not deliver that, and the real ask
