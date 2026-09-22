@@ -52,6 +52,7 @@
 | P0-11 | No deletion path in any data store | P0 | Open — blocks Langfuse tracing re-enablement (ADR-0006) |
 | N-20 | Inert Langfuse tracing callback | — | Closed (removed 2026-09-21) |
 | N-51 | Heavy CI (`pipeline.yml`) has never run for any change in this fork's history — all test evidence to date is local, not CI-verified | — | Root cause confirmed 2026-09-22 (CHG-2026-033 / ADR-0008): zero registered runners, `blacksmith-*` labels need an app blocked by this repo's personal-account ownership. Two fix paths compared, owner to pick; not yet fixed |
+| CHG-2026-036 (2) | `layout.clienttest.ts`'s timeline-layout algorithm does not terminate on a zero-width box — proven in both real CI runs, every attempt, jsdom | **P1** | Owner-confirmed 2026-09-22. Not a live production hang: checked directly, `TraceTimelineCompact.tsx`'s `box.width > 0 && box.height > 0` guard is the sole gate on the sole production caller of `layout()`, so the degenerate input is structurally unreachable today. Real bug, worth fixing; not urgent by exposure |
 
 ---
 
