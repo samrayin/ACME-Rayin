@@ -3122,16 +3122,44 @@ Without it, every future operator in this position faces the same choice this se
 faced: make the change with no instrumented path, or don't make it. Scope and
 priority not yet decided — raised here for the roadmap, not designed.
 
-**Not yet resolved — this change does not close until these return:**
+**Drift check, 2026-09-22 — confirmed stale, not assumed.** Queried
+`acme_litellm_keys` directly for the judge key (`id` = `cairo_key_id`
+`7fe9a9d4-75db-4cda-b0bf-7cb958cec8c9`, the same value sent to LiteLLM as
+`metadata.cairo_key_id`, per this table's own drift-matching design): `models: {}`
+(empty, the pre-edit unrestricted state), `rpm_limit: NULL`, `updated_at:
+2026-09-20 21:14:29` — exactly the row's creation timestamp, never written since.
+CAIRO's database has no knowledge of the three live changes.
 
-1. **Drift check on `acme_litellm_keys`.** Does CAIRO's own database row for the
-   judge key still show the pre-edit `models: []` / `rpm_limit: null` (stale,
-   confirming drift), or does it somehow already match LiteLLM's live state? Query
-   prepared, not yet returned.
-2. **If stale, reconciling `acme_litellm_keys` is part of this change, not a
-   follow-up.** The reconciliation write must itself go through the audited path —
-   `updateKeyLimits()` or equivalent — or, if that is genuinely not reachable from
-   wherever the reconciliation is performed, this changelog entry must record why
-   not, by the same standard applied to the original deviation above. A second
-   unaudited write to fix the record of the first unaudited write would compound
-   exactly the gap this entry exists to document.
+**`opted_out_global_guardrails` cannot drift — unaudited by design, not by
+omission.** `acme_litellm_keys` (`schema.prisma`) has no `metadata` column at all.
+CAIRO's database was never the source of truth for this field; only LiteLLM's own
+key record ever holds it. This is a narrower, already-understood gap, distinct from
+the `models`/`rpm_limit` drift below — recorded here so it is not mistaken for an
+oversight in the drift check.
+
+**Reconciliation: routed through the audited path, not a second raw write.** A
+direct database fix was considered and rejected — it would be a second unaudited
+write correcting the record of the first, compounding exactly the gap this entry
+documents. The audited path (`updateKeyLimits()`) is reachable from CAIRO's own
+console UI, which requires a real authenticated session this execution context does
+not have. **The owner is reconciling `models` and `rpm_limit` on the judge key
+through CAIRO's Key Management console directly** — the one path available today
+that is both audited and currently reachable.
+
+**The asymmetry this exposes, stated plainly:** the console can reconcile this kind
+of drift, but only for an operator who holds a UI session. An operator with cluster
+access and no UI session — this execution context, and any future automation or
+break-glass procedure operating the same way — still has no audited path for this
+operation at all. The backlog item above (an operator-accessible audited path for
+key mutations) stands; console access does not substitute for it.
+
+**Not yet resolved — this change does not close until these return, verified by
+query, not inferred from a console success message:**
+
+1. `acme_litellm_keys` shows `models: ["groq-safeguard","nvidia-nemotron"]`,
+   `rpm_limit: 10`, and `updated_at` has moved off the creation timestamp.
+2. `acme_litellm_events` carries new intent/outcome rows for this change — the
+   proof the audited path actually ran, not only that the values changed.
+3. LiteLLM's own live key state is unchanged by the reconciliation write — it
+   should converge CAIRO's record onto the gateway's existing state, not alter the
+   gateway.
