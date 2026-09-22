@@ -565,5 +565,154 @@ class TestPostGuardFailsSafe(unittest.TestCase):
         self.assertEqual(out, "hi", "a missing secret must not fail requests in record mode")
 
 
+class TestHealthLog(unittest.TestCase):
+    """CHG-2026-041: the interim bridge that makes record mode measurable.
+
+    The two figures CHG-2026-039 found otherwise unrecoverable are the
+    ``guard_unavailable`` count and the round-trip duration. Both must survive
+    into a parseable line, with the field names ADR-0009's table will reuse.
+    """
+
+    def test_record_is_valid_json_on_one_line(self):
+        import json
+
+        import cairo_guardrail_hook as m
+
+        line = json.dumps(m.build_health_log("allow", "record", 12.34, True))
+        self.assertNotIn("\n", line)
+        self.assertEqual(json.loads(line)["outcome"], "allow")
+
+    def test_carries_the_marker_so_lines_can_be_selected(self):
+        import cairo_guardrail_hook as m
+
+        self.assertEqual(
+            m.build_health_log("allow", "record", 1.0, True)["event"],
+            m.HEALTH_LOG_EVENT,
+        )
+
+    def test_guard_unavailable_is_recorded_with_its_duration(self):
+        """The count and the cost of the failure, which is the whole point."""
+        import cairo_guardrail_hook as m
+
+        r = m.build_health_log("guard_unavailable", "record", 2000.0, True)
+        self.assertEqual(r["outcome"], "guard_unavailable")
+        self.assertEqual(r["duration_ms"], 2000.0)
+        self.assertTrue(r["called"])
+
+    def test_no_call_made_is_null_duration_not_zero(self):
+        """Zero would assert an instantaneous call that never happened."""
+        import cairo_guardrail_hook as m
+
+        r = m.build_health_log("guard_unreadable", "record", None, False)
+        self.assertIsNone(r["duration_ms"])
+        self.assertFalse(r["called"])
+
+    def test_correlates_to_the_originating_request(self):
+        import cairo_guardrail_hook as m
+
+        r = m.build_health_log(
+            "allow",
+            "record",
+            5.0,
+            True,
+            payload={"direction": "input", "agent_id": "hr-bot", "trace_id": "call-123"},
+        )
+        self.assertEqual(r["litellm_call_id"], "call-123")
+        self.assertEqual(r["direction"], "input")
+        self.assertEqual(r["agent_id"], "hr-bot")
+
+    def test_absent_correlation_is_omitted_not_invented(self):
+        import cairo_guardrail_hook as m
+
+        r = m.build_health_log("allow", "record", 5.0, True, payload={})
+        self.assertNotIn("litellm_call_id", r)
+
+    def test_timestamp_is_utc_with_a_z_suffix(self):
+        """Matches the format CAIRO's push endpoint already requires."""
+        import cairo_guardrail_hook as m
+
+        self.assertTrue(m.build_health_log("allow", "record", 1.0, True)["ts"].endswith("Z"))
+
+
+class TestHealthLogEmittedEndToEnd(unittest.TestCase):
+    """The line is actually emitted, with a real measured duration."""
+
+    def _run_and_capture(self, verdict, mode="record", request_data=None):
+        import asyncio
+        import json
+        import logging
+
+        import cairo_guardrail_hook as m
+
+        g = m.CairoGuardrail()
+        g.mode = mode
+        g.guard_secret = "test-secret"
+
+        async def fake_post(payload):
+            await asyncio.sleep(0.01)  # a real, measurable round trip
+            return verdict
+
+        g._post_guard = fake_post
+
+        captured = []
+
+        class Sink(logging.Handler):
+            def emit(self, record):
+                captured.append(record.getMessage())
+
+        handler = Sink()
+        m.log.addHandler(handler)
+        m.log.setLevel(logging.INFO)
+        try:
+            data = req(key_meta={}) if request_data is None else request_data
+            asyncio.run(g.apply_guardrail(inputs="hello", request_data=data))
+        finally:
+            m.log.removeHandler(handler)
+
+        lines = [json.loads(c) for c in captured if m.HEALTH_LOG_EVENT in c]
+        self.assertEqual(len(lines), 1, "exactly one health line per invocation")
+        return lines[0]
+
+    def test_measures_a_real_round_trip(self):
+        rec = self._run_and_capture({"action": "allow"})
+        self.assertTrue(rec["called"])
+        self.assertGreater(
+            rec["duration_ms"], 5, "a 10ms call must not be reported as instantaneous"
+        )
+
+    def test_would_block_is_emitted_in_record_mode(self):
+        rec = self._run_and_capture({"action": "block"})
+        self.assertEqual(rec["outcome"], "would_block")
+        self.assertEqual(rec["mode"], "record")
+
+    def test_unavailable_is_emitted_with_a_duration(self):
+        """A timed-out call still reports how long it cost before giving up."""
+        rec = self._run_and_capture(None)
+        self.assertEqual(rec["outcome"], "guard_unavailable")
+        self.assertGreater(rec["duration_ms"], 5)
+
+    def test_exclusion_is_observable_and_counts_as_no_call(self):
+        """ADR-0005-A layer 3 needs to see the exclusion fire, live.
+
+        Without a record, "the judge key was correctly excluded" and "the hook
+        never ran at all" look identical from outside — and those have opposite
+        meanings for whether the loop prevention works.
+        """
+        rec = self._run_and_capture(
+            {"action": "block"},
+            request_data=req(key_meta={OPT_OUT_FIELD: [GUARDRAIL_NAME]}),
+        )
+        self.assertEqual(rec["outcome"], "excluded")
+        self.assertFalse(rec["called"], "an exclusion makes no call to measure")
+        self.assertIsNone(rec["duration_ms"])
+
+    def test_exclusion_names_the_key_it_excluded(self):
+        """So layer 3 can confirm it fired for the judge key and not others."""
+        d = req(key_meta={OPT_OUT_FIELD: [GUARDRAIL_NAME]})
+        d["metadata"]["user_api_key_alias"] = "cairo-guardrails-judge"
+        rec = self._run_and_capture({"action": "block"}, request_data=d)
+        self.assertEqual(rec["agent_id"], "cairo-guardrails-judge")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

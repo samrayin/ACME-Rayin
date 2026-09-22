@@ -42,8 +42,11 @@ anything else returns None, which is a record-mode proceed, not a crash.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import time
+from datetime import datetime, timezone
 from typing import Any, Dict, List, NamedTuple, Optional
 
 try:  # pragma: no cover - exercised only inside the gateway image
@@ -256,6 +259,62 @@ def decide(verdict: Any, enforcing: bool) -> GuardOutcome:
     return GuardOutcome(not enforcing, None, "guard_unavailable")
 
 
+#: Marker every health line carries, so an operator can select exactly these
+#: lines out of the gateway's stdout without matching on prose that may change.
+HEALTH_LOG_EVENT = "cairo_guardrail_health"
+
+
+def build_health_log(
+    outcome: str,
+    mode: str,
+    duration_ms: Optional[float],
+    called: bool,
+    guardrail_name: str = GUARDRAIL_NAME,
+    payload: Optional[Dict[str, Any]] = None,
+    now: Optional[datetime] = None,
+) -> Dict[str, Any]:
+    """The health record for one hook invocation, as a flat JSON-able dict.
+
+    **Interim by design (CHG-2026-041).** This is the bridge that makes record
+    mode measurable before ADR-0009's durable capability exists. The two figures
+    CHG-2026-039 identified as otherwise unrecoverable -- the
+    ``guard_unavailable`` count and the round-trip duration -- are both here.
+
+    Field names are deliberately the ones ADR-0009's table is expected to use,
+    so the eventual migration reads these lines rather than redefining them. A
+    log line is not a durable record and this does not pretend otherwise: pod
+    stdout is lost on restart unless something collects it. It is strictly more
+    than exists today, which is nothing.
+
+    ``duration_ms`` is None when no call was made (an excluded key, or a payload
+    that could not be built) -- distinct from 0, which would claim an
+    instantaneous call that never happened. ``called`` disambiguates the two
+    without the reader having to infer it from a null.
+    """
+    stamp = (now or datetime.now(timezone.utc)).isoformat().replace("+00:00", "Z")
+    record: Dict[str, Any] = {
+        "event": HEALTH_LOG_EVENT,
+        "ts": stamp,
+        "guardrail": guardrail_name,
+        "mode": mode,
+        "outcome": outcome,
+        "called": called,
+        "duration_ms": round(duration_ms, 1) if duration_ms is not None else None,
+    }
+    # Correlation to the originating request, when the proxy supplied one. Same
+    # field AcmeLitellmRequestLog already keys on, so the two can be joined
+    # without inventing a new identifier.
+    if isinstance(payload, dict):
+        for field in ("direction", "agent_id"):
+            value = payload.get(field)
+            if isinstance(value, str) and value:
+                record[field] = value
+        call_id = payload.get("trace_id")
+        if isinstance(call_id, str) and call_id:
+            record["litellm_call_id"] = call_id
+    return record
+
+
 class CairoGuardrailBlocked(Exception):
     """Raised to refuse a request in enforce mode.
 
@@ -411,26 +470,75 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
         # ADR-0005 Step 0. First thing, before any work: if this key is excluded,
         # return untouched. This is what stops the rail's own judge call from
         # re-entering the guardrail and looping.
+        #
+        # Recorded rather than returned silently (CHG-2026-041). ADR-0005-A
+        # layer 3 has to verify live that the exclusion actually fires for the
+        # judge key and for nothing else; a silent return leaves that
+        # unobservable, and "no loop happened" is indistinguishable from "the
+        # hook never ran". `called: false` keeps these out of the latency and
+        # availability figures, which are about calls that were made.
         if should_skip(data, self.guardrail_name):
-            return inputs
+            return self._resolve(
+                GuardOutcome(True, None, "excluded"),
+                inputs,
+                duration_ms=None,
+                called=False,
+                payload={"agent_id": _authenticated_agent_id(data)},
+            )
 
         enforcing = self._is_enforcing()
         payload = build_guard_payload(inputs, data, input_type)
         if payload is None:
             # Nothing honest to ask. Record: proceed. Enforce: fail closed.
             return self._resolve(
-                GuardOutcome(not enforcing, None, "guard_unreadable"), inputs
+                GuardOutcome(not enforcing, None, "guard_unreadable"),
+                inputs,
+                duration_ms=None,
+                called=False,
+                payload=None,
             )
 
+        # Timed here rather than inside _post_guard so the measurement survives
+        # the tests substituting that seam, and so it covers the whole call
+        # including client setup -- which is latency the caller really pays.
+        #
+        # perf_counter, not monotonic: monotonic's granularity on Windows is
+        # ~15ms, so a fast call rounds to zero and the p50 would be understated
+        # at exactly the low end we care about. perf_counter is the
+        # high-resolution clock on every platform, and is what Python documents
+        # for measuring short durations.
+        started = time.perf_counter()
         verdict = await self._post_guard(payload)
-        return self._resolve(decide(verdict, enforcing), inputs)
+        duration_ms = (time.perf_counter() - started) * 1000.0
 
-    def _resolve(self, outcome: GuardOutcome, inputs: Any) -> Any:
-        """Apply a decided outcome: log it, then proceed, replace, or refuse."""
-        log.info(
-            "cairo_guardrail decision",
-            extra={"event": outcome.event, "mode": self.mode},
+        return self._resolve(
+            decide(verdict, enforcing),
+            inputs,
+            duration_ms=duration_ms,
+            called=True,
+            payload=payload,
         )
+
+    def _resolve(
+        self,
+        outcome: GuardOutcome,
+        inputs: Any,
+        duration_ms: Optional[float] = None,
+        called: bool = False,
+        payload: Optional[Dict[str, Any]] = None,
+    ) -> Any:
+        """Apply a decided outcome: record it, then proceed, replace, or refuse."""
+        record = build_health_log(
+            outcome=outcome.event,
+            mode=self.mode,
+            duration_ms=duration_ms,
+            called=called,
+            guardrail_name=self.guardrail_name,
+            payload=payload,
+        )
+        # One line, valid JSON, no interpolation -- so a log collector can parse
+        # it without a regex and the fields survive a message-wording change.
+        log.info(json.dumps(record, separators=(",", ":"), sort_keys=True))
         if not outcome.proceed:
             raise CairoGuardrailBlocked(
                 f"Blocked by {self.guardrail_name} ({outcome.event})."
