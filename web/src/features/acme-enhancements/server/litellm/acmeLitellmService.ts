@@ -836,6 +836,13 @@ export async function listProjectKeys(
         rotatedToKeyId: row.rotatedToKeyId,
         liveSpend: live?.spend ?? null,
         lastActive: live?.last_active ?? null,
+        // CHG-2026-030: previously fetched and compared (driftFields above)
+        // but never forwarded. Lets the edit dialog pre-fill from the
+        // gateway's actual state, not CAIRO's possibly-stale row -- prefilling
+        // from the stale row would let an operator "fix" drift by writing
+        // CAIRO's wrong value back onto the gateway.
+        liveModels: live?.models ?? null,
+        liveRpmLimit: live?.rpm_limit ?? null,
         drift,
         driftFields,
       };

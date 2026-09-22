@@ -592,6 +592,49 @@ describe("listing, drift and degradation", () => {
     expect(a.key.id).toBeTruthy();
   });
 
+  it("exposes live models/rpmLimit for the edit dialog to prefill from, not CAIRO's own stale row (CHG-2026-030)", async () => {
+    const t = setup();
+    const a = await createKey(t.deps, SCOPE, ACTOR, {
+      displayName: "a",
+      teamId: null,
+      expiresInDays: null,
+      ...LIMITS,
+    });
+    // Changed behind CAIRO's back -- live state now disagrees with CAIRO's row.
+    const live = t.keys.get(hashLitellmKey(a.secret))!;
+    live.models = ["groq-safeguard", "nvidia-nemotron"];
+    live.rpm_limit = 10;
+    const out = await listProjectKeys(t.deps, SCOPE);
+    const row = out.keys.find((k) => k.displayName === "a")!;
+    expect(row.drift).toBe("drifted");
+    expect(row.driftFields).toEqual(
+      expect.arrayContaining(["models", "rpmLimit"]),
+    );
+    // The live values must be exposed, not CAIRO's stale LIMITS fixture --
+    // prefilling an edit dialog from CAIRO's own row would let an operator
+    // "fix" drift by writing CAIRO's wrong value back onto the gateway.
+    expect(row.liveModels).toEqual(["groq-safeguard", "nvidia-nemotron"]);
+    expect(row.liveRpmLimit).toBe(10);
+    expect(row.models).toEqual(LIMITS.models); // CAIRO's own record, untouched
+    expect(row.rpmLimit).toBe(LIMITS.rpmLimit);
+  });
+
+  it("liveModels/liveRpmLimit are null, not stale-defaulted, when the gateway is unreachable (CHG-2026-030)", async () => {
+    const t = setup();
+    await createKey(t.deps, SCOPE, ACTOR, {
+      displayName: "a",
+      teamId: null,
+      expiresInDays: null,
+      ...LIMITS,
+    });
+    t.client.listAllKeys.mockRejectedValueOnce(
+      new LitellmUnreachableError("/key/list", "down"),
+    );
+    const out = await listProjectKeys(t.deps, SCOPE);
+    expect(out.keys[0]!.liveModels).toBeNull();
+    expect(out.keys[0]!.liveRpmLimit).toBeNull();
+  });
+
   it("degrades to CAIRO's own rows when LiteLLM is unreachable", async () => {
     const t = setup();
     await createKey(t.deps, SCOPE, ACTOR, {

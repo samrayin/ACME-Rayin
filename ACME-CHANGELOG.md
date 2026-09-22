@@ -3194,3 +3194,86 @@ dedicated reconciliation action is built, or the owner explicitly authorizes a
 raw database correction with the reasoning recorded to the same standard as the
 original deviation. `acme_litellm_keys` remains stale
 (`models: {}`, `rpm_limit: NULL`) until one of those happens.
+
+---
+
+## 2026-09-22 — Key limits edit UI: source and tests, no release (CHG-2026-030, ADR-0007)
+
+**What:** `updateKeyLimits()`/`acmeLitellm.updateKey` has existed as a complete,
+audited tRPC procedure since CHG-2026-005 with zero frontend call sites — the gap
+CHG-2026-029 ran into when it needed to reconcile a drifted key and found the Keys
+page could only detect drift, not fix it. This change wires it up: an `Edit` button
+per active key, next to `Rotate`/`Revoke`, opening a dialog scoped to `models` and
+`rpm_limit` only.
+
+**Why this shape.** `listProjectKeys()` (`acmeLitellmService.ts`) already fetched
+each key's live LiteLLM state to compute the drift badge, but discarded the live
+`models`/`rpm_limit` values after comparing — never sent them to the frontend. The
+dialog now pre-fills its editable fields from those live values, not from CAIRO's
+own (possibly stale) row: pre-filling from CAIRO's record would let an operator "fix"
+drift by writing CAIRO's wrong value straight back onto the gateway. Falls back to
+CAIRO's row, with a visible warning, only when `row.drift` is `"unknown"`/`"missing"`
+— no valid live comparison exists in that case.
+
+**A hazard found while wiring the submit path, not by inspection alone.**
+`limitsInput` (`acmeLitellmRouter.ts`, shared by `createKey`/`updateKey`) has a Zod
+`.default()` on every field. For `updateKey`, omitting a field does not leave it
+unchanged — Zod fills the default and the mutation sends it, so a form exposing only
+`models`/`rpm_limit` would silently clear `maxBudget`/`budgetDuration`/`tpmLimit` on
+first save. Fixed by factoring the payload assembly into one exported pure function,
+`buildUpdateKeyLimitsInput()`, which always carries the three unexposed fields
+through from the row unchanged — one place that can get this right, instead of one
+per call site.
+
+**Scope held deliberately narrow.** No change to `updateKeyLimits()` itself, no new
+fields on `KeyLimits`, no `metadata` editing — ADR-0005-A's judge-key exclusion
+design depends on that field being set through a controlled path, and widening this
+generic form to touch it would undermine that reasoning, not just add convenience.
+
+**Verified, not type-checked only:** `tsc --noEmit --skipLibCheck` clean (twice — the
+initial build and again after the pure-function refactor). 6/6 new tests pass in
+`AcmeLitellmGateway.clienttest.tsx` (real `vitest run`, asserting the Zod-default
+hazard above is actually prevented, not just type-shaped correctly). 28/28 pass in
+`acmeLitellmService.servertest.ts` (26 pre-existing + 2 new — live values differ from
+and are exposed over CAIRO's stale row; both are `null`, not stale-defaulted, when
+the gateway is unreachable), no regression in the pre-existing suite. `eslint
+--max-warnings 0` on all four changed/new files: exit 0, clean.
+
+**Update, same day: now rendered in a real (headless) browser, not just
+type-checked.** `EditLimitsDialog` and the `KeyRow` type were exported and a
+Storybook story file (`EditLimitsDialog.stories.tsx`, test/preview-only — not
+imported by any production page, never reaches the shipped bundle) added with
+three variants built from fake data mirroring the actual CHG-2026-029 judge-key
+scenario, not a generic example: drifted (CAIRO stale `models: []`/no `rpm_limit`
+vs. live `groq-safeguard`+`nvidia-nemotron`/`rpm_limit 10`, confirming the dialog
+pre-fills from live state), live-state-unavailable (confirming the fallback to
+CAIRO's own row and its warning banner), and no-drift (contrast case). Run via
+`DOCKER_BUILD=1 vitest run --project storybook` — the same mechanism already
+verified this session. First run failed all three (Vite's own log: "optimized
+dependencies changed, reloading" — a new `@radix-ui/react-alert-dialog` import
+triggering mid-run re-optimization, a diagnosed cause, not a guess); retried once
+with the dependency now cached, 3/3 passed. `AcmeLitellmGateway.clienttest.tsx`
+re-run after the two exports: still 6/6, no regression. Still not clicked through
+by a human in an actual browser window — this is a real headless render, not a
+manual review, and does not substitute for the owner's own look before merging.
+
+**Separate finding, incidental, not blocking:** `pnpm install` in this environment
+currently fails outright. Root cause isolated, not just observed: `scripts/agents/
+sync-agent-shims.mjs:15` does `resolve(new URL("../..", import.meta.url).pathname)`
+— on Windows, a `file://` URL's `.pathname` keeps a leading slash before the drive
+letter, and passing that straight to `resolve()` instead of through Node's own
+`fileURLToPath()` produces a duplicated drive prefix (`C:\C:\Cairo-acme\...`),
+so the script can never find `.agents/config.json` on this platform. `postinstall`
+runs this script unconditionally, so every `pnpm install` on Windows fails at that
+step — separately, `ssh2`'s optional native crypto binding also fails to compile
+here for lack of Visual Studio build tools, though that one is merely an optional
+dependency, not fatal by itself. Neither blocks anything today (existing
+`node_modules` still work), but **this would block any future contributor doing a
+fresh clone-and-install on Windows** — worth a backlog item: swap `.pathname` for
+`fileURLToPath()` in `sync-agent-shims.mjs`.
+
+**Deployment status:** source and tests only. **No ConfigMap change, no gateway
+restart, no live deploy** — this ADR does not authorize a release, same gate as
+every other Tier 1 change in this fork. The reconciliation this exists to unblock
+(the judge key from CHG-2026-029) is the owner's action once this ships to a running
+environment, not part of this change.

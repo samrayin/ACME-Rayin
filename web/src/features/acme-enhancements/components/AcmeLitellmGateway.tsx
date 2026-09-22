@@ -8,7 +8,7 @@
  *    in the URL or in any query cache (mutation results are not cached).
  *  - Nothing else the server returns contains key material.
  */
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import {
   Card,
   CardContent,
@@ -64,7 +64,7 @@ import { useHasProjectAccess } from "@/src/features/rbac";
 import { showErrorToast, showSuccessToast } from "@/src/features/notifications";
 import { AcmeLitellmRequestLogs } from "@/src/features/acme-enhancements/components/AcmeLitellmRequestLogs";
 
-type KeyRow = RouterOutputs["acmeLitellm"]["keys"]["keys"][number];
+export type KeyRow = RouterOutputs["acmeLitellm"]["keys"]["keys"][number];
 
 // ---------------------------------------------------------------------------
 // Small pieces
@@ -376,6 +376,187 @@ function SecretRevealDialog({
 }
 
 // ---------------------------------------------------------------------------
+// Edit models / rpm limit (CHG-2026-030, ADR-0007)
+//
+// Deliberately narrow: models and rpmLimit only. maxBudget, budgetDuration
+// and tpmLimit are not shown -- but updateKey's shared input schema defaults
+// every field, so omitting one on submit does not leave it unchanged, it
+// CLEARS it. The three unexposed fields are carried through from `row`
+// unchanged on every submit; see submitEditLimits below. Do not "simplify"
+// this by dropping them from the mutation call.
+//
+// Pre-fills from the gateway's live state (row.liveModels / row.liveRpmLimit),
+// not CAIRO's row -- prefilling from CAIRO's stale values would let an
+// operator "fix" drift by writing CAIRO's wrong value back onto the gateway.
+// Falls back to CAIRO's row only when live data was not available for this
+// row (row.drift is "unknown" or "missing"), and says so visibly.
+// ---------------------------------------------------------------------------
+
+// Exported for direct unit testing (AcmeLitellmGateway.clienttest.tsx) --
+// no component render needed to prove the hazard this exists to prevent.
+//
+// updateKey's shared input schema (limitsInput, acmeLitellmRouter.ts)
+// defaults every field it doesn't receive -- maxBudget/budgetDuration/
+// tpmLimit are NOT optional-and-unchanged when omitted, they are CLEARED
+// to their Zod defaults. This function is the one place that assembles the
+// mutation payload, specifically so there is exactly one place that can get
+// this wrong, not one per call site.
+export function buildUpdateKeyLimitsInput(
+  projectId: string,
+  row: Pick<KeyRow, "id" | "maxBudget" | "budgetDuration" | "tpmLimit">,
+  newModels: string[],
+  newRpmLimit: string,
+) {
+  return {
+    projectId,
+    keyId: row.id,
+    models: newModels,
+    rpmLimit: newRpmLimit.trim() === "" ? null : Number(newRpmLimit),
+    // Carried through unchanged -- not exposed as editable in this dialog,
+    // but omitting them would clear them (see comment above).
+    maxBudget: row.maxBudget,
+    budgetDuration: row.budgetDuration,
+    tpmLimit: row.tpmLimit,
+  };
+}
+
+export function EditLimitsDialog({
+  row,
+  availableModels,
+  busy,
+  onClose,
+  onSubmit,
+}: {
+  row: KeyRow | null;
+  availableModels: string[];
+  busy: boolean;
+  onClose: () => void;
+  onSubmit: (row: KeyRow, models: string[], rpmLimit: string) => void;
+}) {
+  const [models, setModels] = useState<string[]>([]);
+  const [rpmLimit, setRpmLimit] = useState("");
+
+  const liveUnavailable =
+    row !== null && (row.drift === "unknown" || row.drift === "missing");
+
+  // Reset the form from live state whenever the dialog opens for a (new) row.
+  // Keyed on row?.id, not on `row` itself, so re-renders from unrelated query
+  // refetches while the dialog is open do not clobber what the admin typed.
+  useEffect(() => {
+    if (!row) return;
+    const sourceModels = liveUnavailable ? row.models : (row.liveModels ?? []);
+    const sourceRpm = liveUnavailable ? row.rpmLimit : row.liveRpmLimit;
+    setModels(sourceModels);
+    setRpmLimit(sourceRpm === null || sourceRpm === undefined ? "" : String(sourceRpm));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [row?.id]);
+
+  const rpmError = (() => {
+    if (rpmLimit.trim() === "") return null;
+    const n = Number(rpmLimit);
+    if (!Number.isFinite(n) || n <= 0)
+      return "Requests per minute must be a positive number, or empty for no limit.";
+    if (!Number.isInteger(n)) return "Requests per minute must be a whole number.";
+    return null;
+  })();
+
+  return (
+    <Dialog open={row !== null} onOpenChange={(open) => (!open ? onClose() : undefined)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit limits: {row?.displayName}</DialogTitle>
+          <DialogDescription>
+            Only the allowed models and the requests-per-minute limit can be
+            changed here. Budget and token limits are unchanged by this form.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogBody>
+          {liveUnavailable ? (
+            <Banner tone="warning" title="Gateway state unavailable">
+              Could not read this key&apos;s current state from the gateway.
+              The fields below start from CAIRO&apos;s own record, which may
+              not match the gateway.
+            </Banner>
+          ) : (
+            <p className="text-muted-foreground text-xs">
+              CAIRO currently records:{" "}
+              {row && row.models.length ? row.models.join(", ") : "all models"},{" "}
+              {row?.rpmLimit ? `${row.rpmLimit} rpm` : "no rpm limit"}.
+              {row?.drift === "drifted" ? (
+                <>
+                  {" "}
+                  <span className="font-bold">
+                    This disagrees with the gateway — the fields below start
+                    from the gateway&apos;s actual state.
+                  </span>
+                </>
+              ) : null}
+            </p>
+          )}
+          <div className="mt-3">
+            <Label>Models this may call</Label>
+            <p className="text-muted-foreground text-xs">
+              None selected = every model in the catalogue.
+            </p>
+            <div className="mt-1.5 flex flex-wrap gap-2">
+              {availableModels.length === 0 ? (
+                <span className="text-muted-foreground text-xs">
+                  Model catalogue unavailable.
+                </span>
+              ) : (
+                availableModels.map((m) => {
+                  const on = models.includes(m);
+                  return (
+                    <Button
+                      key={m}
+                      type="button"
+                      size="sm"
+                      variant={on ? "default" : "outline"}
+                      aria-pressed={on}
+                      onClick={() =>
+                        setModels(
+                          on ? models.filter((x) => x !== m) : [...models, m],
+                        )
+                      }
+                    >
+                      {m}
+                    </Button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+          <div className="mt-3">
+            <Label htmlFor="edit-limits-rpm">Requests / minute</Label>
+            <Input
+              id="edit-limits-rpm"
+              className="mt-1.5"
+              inputMode="numeric"
+              placeholder="No limit"
+              value={rpmLimit}
+              onChange={(e) => setRpmLimit(e.target.value)}
+            />
+          </div>
+          {rpmError ? <p className="text-dark-red text-xs mt-2">{rpmError}</p> : null}
+        </DialogBody>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            disabled={busy || rpmError !== null || !row}
+            onClick={() => row && onSubmit(row, models, rpmLimit)}
+          >
+            {busy ? "Saving…" : "Save"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Keys
 // ---------------------------------------------------------------------------
 
@@ -410,6 +591,7 @@ function KeysTab({
   const [limits, setLimits] = useState<LimitsState>(EMPTY_LIMITS);
   const [revealed, setRevealed] = useState<Revealed>(null);
   const [pending, setPending] = useState<PendingAction>(null);
+  const [editing, setEditing] = useState<KeyRow | null>(null);
 
   const refresh = () => {
     utils.acmeLitellm.keys.invalidate({ projectId });
@@ -474,6 +656,19 @@ function KeysTab({
       refresh();
     },
   });
+  const updateLimits = api.acmeLitellm.updateKey.useMutation({
+    onSuccess: () => {
+      showSuccessToast({
+        title: "Limits updated",
+        description: "The gateway and CAIRO's own record now agree.",
+      });
+      setEditing(null);
+      refresh();
+    },
+    onError: (e) => {
+      showErrorToast("Limits were not updated", e.message);
+    },
+  });
 
   const models = (catalogue.data?.data ?? []).map((m) => m.modelName);
   const formError = limitsError(limits);
@@ -481,7 +676,12 @@ function KeysTab({
     create.isPending ||
     revoke.isPending ||
     rotate.isPending ||
-    resolve.isPending;
+    resolve.isPending ||
+    updateLimits.isPending;
+
+  const submitEditLimits = (row: KeyRow, newModels: string[], newRpmLimit: string) => {
+    updateLimits.mutate(buildUpdateKeyLimitsInput(projectId, row, newModels, newRpmLimit));
+  };
 
   const confirmCopy: Record<
     NonNullable<PendingAction>["kind"],
@@ -681,6 +881,14 @@ function KeysTab({
                             size="sm"
                             variant="outline"
                             disabled={!writable || busy}
+                            onClick={() => setEditing(row)}
+                          >
+                            Edit
+                          </Button>{" "}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={!writable || busy}
                             onClick={() => setPending({ kind: "rotate", row })}
                           >
                             Rotate
@@ -804,6 +1012,14 @@ function KeysTab({
       <SecretRevealDialog
         revealed={revealed}
         onClose={() => setRevealed(null)}
+      />
+
+      <EditLimitsDialog
+        row={editing}
+        availableModels={models}
+        busy={updateLimits.isPending}
+        onClose={() => setEditing(null)}
+        onSubmit={submitEditLimits}
       />
     </div>
   );
