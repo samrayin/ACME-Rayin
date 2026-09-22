@@ -3090,9 +3090,8 @@ initial build and again after the pure-function refactor). 6/6 new tests pass in
 hazard above is actually prevented, not just type-shaped correctly). 28/28 pass in
 `acmeLitellmService.servertest.ts` (26 pre-existing + 2 new — live values differ from
 and are exposed over CAIRO's stale row; both are `null`, not stale-defaulted, when
-the gateway is unreachable), no regression in the pre-existing suite. Lint run
-separately; this fork's own recipe notes it takes several minutes even for a handful
-of files.
+the gateway is unreachable), no regression in the pre-existing suite. `eslint
+--max-warnings 0` on all four changed/new files: exit 0, clean.
 
 **Not verified:** in a browser. No screenshot, no manual click-through of the new
 dialog. Per this fork's standing note (N-51), no CI runner exists for the heavy
