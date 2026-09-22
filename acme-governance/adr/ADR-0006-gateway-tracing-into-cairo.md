@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Change** | CHG-2026-026 · Tier 1 · owner: Anees Ur Rahman |
-| **Status** | **Proposed — design only.** No ConfigMap edit, no Secret change, no gateway restart. |
+| **Status** | **Proposed — design only.** No ConfigMap edit, no Secret change, no gateway restart. Gate A (§9) passed 2026-09-22: `turn_off_message_logging` confirmed, by source read, to redact before the Langfuse callback receives data. Still Proposed, not Accepted — §11's open question (metadata-only vs content-visible tracing) needs an owner answer first. |
 | **Reverses** | The re-enablement conditions recorded in CHG-2026-024 (Readiness Ledger N-20) when this same callback was removed. This document is that reversal's required justification — see §7. |
 | **Related** | CHG-2026-024 (removed the inert callback) · CHG-2026-009 / ADR-0003 (the *other* gateway logging path — CAIRO's own Postgres request-log mirror, a separate destination from this one) · Readiness Ledger P0-11 (no deletion path in any store) · P0-5 / CHG-2026-010 (least-privilege cutover, still not built) |
 | **Blocked by** | Owner approval of this ADR. No implementation exists yet — this is the ADR, not the change. |
@@ -56,14 +56,25 @@ under that flag is metadata only: model name, token counts (prompt/completion/to
 computed cost, latency, HTTP status, and the caller's key/team identifiers — the same
 shape of data CAIRO already handles for its own traces, not new categories of data.
 
-**This claim is not verified and must not be treated as fact until it is.** CHG-2026-024's
-own commit is explicit that "raw payload bodies land in blob storage *before*
-ClickHouse, so masking afterwards would not help" — that finding was about content
-reaching storage unscrubbed under the *old* proposal (no `turn_off_message_logging` at
-all). Whether `turn_off_message_logging` intercepts early enough to prevent that same
-blob-storage write is exactly the question §9 Gate A exists to answer, with the pinned
-LiteLLM source or a live dev-pod test — not with documentation. **Until Gate A passes,
-this ADR cannot move past Proposed.**
+**Verified 2026-09-22 against `BerriAI/litellm` tag `v1.100.1` (commit `1dba17b10`,
+matching the digest recorded for this deployment — that version↔digest mapping is
+itself a record claim, not re-checked here). Confirmed true, not assumed.** In all
+three call paths (`litellm_core_utils/litellm_logging.py`, sync success ~L2464, async
+success ~L2988, failure ~L3298), `redact_message_input_output_from_logging()` runs
+**before** the callback dispatch loop and mutates `self.model_call_details` in place —
+`messages`, `prompt`, `input` redacted/emptied, `result.choices[].message.content` and
+`standard_logging_object` scrubbed. The Langfuse branch (`if callback == "langfuse":`,
+~L2630/L3376) then shallow-copies `self.model_call_details` **after** that redaction
+and passes it, plus the already-redacted `result`, to `LangFuseLogger.log_event_on_langfuse()`.
+Nothing raw ever leaves LiteLLM bound for Langfuse when `litellm.turn_off_message_logging
+is True` — so the blob-storage-vs-ClickHouse distinction inside Langfuse's own pipeline
+doesn't apply; content is scrubbed upstream of both.
+
+**Two caveats, not full closure of ambiguity:** (1) `perform_redaction()` scrubs known
+fields only — an arbitrary caller-supplied `metadata` key stuffed with prompt text
+would not be caught; (2) the digest↔`v1.100.1` mapping itself is unverified in this
+pass (needs a registry lookup, not a source read). Gate A passes on the core question;
+these two residual risks carry into §11.
 
 ## 4. What it costs in retention — P0-11 is not closed by this change
 
@@ -150,7 +161,7 @@ sharpest argument for not enabling casually: off is fast, but off does not undo.
 
 | Gate | Result | Evidence |
 |---|---|---|
-| **A — confirm `turn_off_message_logging` behaviour against pinned LiteLLM 1.100.1** | **Pending** | Read the pinned version's own callback/logging source, or reproduce in a disposable dev pod: register the Langfuse callback with the flag set, send one real request, inspect what actually reaches Langfuse's ingestion endpoint and whether anything touches blob storage first. Required before Status can leave Proposed. |
+| **A — confirm `turn_off_message_logging` behaviour against pinned LiteLLM 1.100.1** | **Passed, 2026-09-22** | Source read of `litellm_core_utils/litellm_logging.py` and `redact_messages.py` at tag `v1.100.1` (commit `1dba17b10`): redaction runs before the Langfuse callback dispatch in all three call paths, mutating the shared `model_call_details` in place before Langfuse's handler copies it. See §3. Two residual caveats carried to §11 (arbitrary metadata fields; digest↔tag mapping unverified) |
 | B — staging | Not available | Same standing note as ADR-0003/ADR-0005: no staging environment exists yet |
 | C — post-deploy | Pending | Once enabled: pull one real trace from CAIRO's Observability view and confirm no `messages`/completion content is present, only metadata |
 
