@@ -3004,3 +3004,47 @@ deployment where the v4 upgrade UI is off. No routes, permissions or data change
 
 **Deployment status:** source only until a web image is released; the release is an
 owner-gated `scripts/release/release.sh` run.
+
+**Amended 2026-09-21, after merge (still CHG-2026-025).**
+
+**Tier 2, confirmed by the owner, with the reasoning recorded so the exception is
+visible and not silent.** `CHANGE-PROCEDURE.md` section 0 lists "anything a client
+can see" under Tier 1 and says "when unsure, it is Tier 1". This change removes
+something a client can see, so it was a genuine judgement call. The owner's reading
+is that the clause targets behavioural and data-path changes, and that a cosmetic
+suppression constant with no schema, authentication or data impact does not warrant
+Tier 1's artefacts (an ADR, a versioned migration, a rehearsed rollback), none of
+which has anything to apply to here. This is a deliberate exception to the letter of
+the clause, not a case where the clause was silent, and it is not a precedent for
+treating other client-visible changes as Tier 2.
+
+**Verification update, superseding "Not verified" above.** After the merge the story
+was run for real. Playwright's pinned browser, Chromium Headless Shell 143.0.7499.4
+(playwright build v1200), was installed with the owner's approval: a one-time download
+of about 180 MB from Playwright's CDN into the user profile, outside the repository.
+Against merged `main` (`3a3e39c61`) the AppSidebar stories passed **13 of 13**,
+including the inverse assertion (star card present and not dismissed, nothing renders).
+
+**Control run.** An absence assertion also passes if the sidebar never rendered, so
+the guard was flipped to `true` in a throwaway edit, since reverted and never
+committed. Exactly one story failed, `(Test) Upstream promo notifications are
+disabled`, reporting `expected <h3> to be null` with "Star Langfuse" in the rendered
+output. The other 12 passed, including the chrome-alignment story, which shows the
+sidebar does render in this browser. So the assertion is not vacuous. One of three runs
+on the pinned browser failed to connect before any test executed and passed when
+repeated; the cause was not isolated. Earlier attempts against an older installed
+browser (revision 1234) also failed to connect.
+
+**Still not verified:** the popup's absence in a running, deployed app. The change is
+not deployed.
+
+**Release held.** The owner decided not to spend a deployment on a cosmetic change.
+It will ride the next web release driven by something substantive, and if none is
+queued in a reasonable window it is to be raised for a standalone release. No window
+was fixed. Nothing web-affecting was queued when this was recorded: #30 is a lint
+chore, and #50 and #52 are parked draft snapshots.
+
+**Observed the same day:** the owner checked the running dev environment in a browser
+and the popup still appeared. That is expected. The running image is `acme-v4.38.0.5`,
+built from `9f7958496`, which predates this change and contains no guard, so the
+popup is the old build behaving as built.
