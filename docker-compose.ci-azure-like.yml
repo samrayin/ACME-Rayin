@@ -1,0 +1,59 @@
+# CI-only overlay making Postgres match Azure Flexible Server (CHG-2026-043).
+#
+# Layered on top of a dev compose file, never used alone:
+#
+#   docker compose -f docker-compose.dev.yml -f docker-compose.ci-azure-like.yml up -d
+#
+# WHY AN OVERLAY RATHER THAN EDITING THE DEV FILES
+# ------------------------------------------------
+# Changing `POSTGRES_USER`'s default in docker-compose.dev*.yml would reach
+# every developer's machine, and would not even work there: initdb only runs on
+# an empty data directory, so an existing local volume would keep `postgres` as
+# its bootstrap superuser while the compose file started asking for `pgboot`.
+# Everyone would have to `docker compose down -v` and lose their local data to
+# adopt a change that exists purely to make CI honest. Those files are also
+# upstream Langfuse's, so every edit is merge friction on the next sync.
+#
+# An overlay keeps the change where the problem is. CI opts in explicitly;
+# local `docker compose up` is untouched; the upstream files stay clean.
+# Migration rehearsals on a developer machine already have their own tool,
+# acme-governance/scripts/rehearsal-db.sh, which builds this same shape.
+#
+# WHAT IT CHANGES
+# ---------------
+# The container's bootstrap superuser becomes `pgboot` instead of `postgres`,
+# which frees the name `postgres` to be an ordinary admin role -- exactly how
+# Azure Flexible Server is shaped, where the customer admin login is not the
+# bootstrap superuser. postgres-azure-like-init.sql then creates that role and
+# the empty `langfuse` database the migration's hardcoded grants expect.
+#
+# Without this, CI runs the one database shape migration 20260917090000 is
+# documented not to survive, and reports a production defect that does not
+# exist. That happened: CHG-2026-035, raised, rated P0, closed as invalidated.
+#
+# The application's own connection is unchanged. DATABASE_URL still points at
+# `postgres:postgres@.../postgres` -- the role exists, it just is not the
+# cluster's superuser any more.
+services:
+  postgres:
+    environment:
+      # Bootstrap superuser. Anything but `postgres`; the name is arbitrary and
+      # matches rehearsal-db.sh's for consistency when comparing the two.
+      - POSTGRES_USER=pgboot
+      # Explicit: with POSTGRES_USER changed, this would otherwise default to
+      # `pgboot` and the app's `.../postgres` connection would have no database
+      # to reach. `postgres` already exists from initdb, so the entrypoint
+      # treats this as a no-op rather than creating it twice.
+      - POSTGRES_DB=postgres
+    healthcheck:
+      # The dev files probe `-U postgres`, which is the bootstrap superuser
+      # there but only an ordinary role here. Probe the superuser this overlay
+      # actually creates, or the container can report unhealthy while being
+      # perfectly fine.
+      test: ["CMD-SHELL", "pg_isready -U pgboot"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    volumes:
+      # Runs once, on an empty data directory. CI always starts empty.
+      - ./scripts/ci/postgres-azure-like-init.sql:/docker-entrypoint-initdb.d/10-azure-like.sql:ro
