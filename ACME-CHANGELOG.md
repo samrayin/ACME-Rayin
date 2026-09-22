@@ -3048,3 +3048,90 @@ chore, and #50 and #52 are parked draft snapshots.
 and the popup still appeared. That is expected. The running image is `acme-v4.38.0.5`,
 built from `9f7958496`, which predates this change and contains no guard, so the
 popup is the old build behaving as built.
+
+---
+
+## 2026-09-22 — CHG-2026-029 execution deviated from its own design; audit trail did not capture the change; a design gap, not solely an execution error
+
+**Status: not closed.** Held pending a drift check on `acme_litellm_keys` (below) —
+see "Not yet resolved."
+
+**What was designed:** `models` and `rpm_limit` were to go through CAIRO's existing
+`updateKeyLimits()`, specifically to preserve the audit trail (`acme_litellm_events`)
+and keep CAIRO's own `acme_litellm_keys` row in sync with LiteLLM's live state.
+
+**What was executed instead:** all three changes to the judge key
+(`cairo-guardrails-judge-rotation-2026-09-20-7fe9a9d4` — opt-out metadata,
+`rpm_limit`, `models`) were made via the raw LiteLLM `/key/update` API, called
+directly against the gateway pod with the master key. Confirmed by direct query,
+2026-09-22: zero rows exist in `acme_litellm_events` for any of the three changes.
+
+**This was not avoidable in the execution context — state that plainly, not as
+circumstance.** CAIRO provides **no operator-accessible audited path** for this
+operation. `updateKeyLimits()` exists only as an application-code function inside
+`langfuse-web`/`langfuse-worker` — it has no invocation route from outside a running
+app-server session (no CLI, no admin script, no API endpoint callable independent of
+the Next.js/tRPC process). An operator working from cluster access, as this session
+was, has no instrumented way to make this change at all. The deviation is therefore
+**a design gap in CAIRO, not solely an execution error** — the audited path existing
+in code is not the same as the audited path being reachable by whoever actually needs
+to make the change.
+
+**Finding, rated P1 by the owner, 2026-09-22:**
+
+> **LiteLLM key configuration can be modified outside CAIRO's audit path, leaving no
+> record.** `acme_litellm_events` is written only by `auditedMutation()`, inside
+> CAIRO's own application code. Nothing enforces that this is the only way to change
+> a LiteLLM key — any holder of `LITELLM_MASTER_KEY` can call `/key/update` directly
+> and change `models`, `rpm_limit`, or `metadata` with no intent/outcome row
+> produced, no `before`/`after` snapshot, nothing.
+>
+> **Demonstrated, not theoretical.** 2026-09-22, three real configuration changes to
+> the judge key were made via the raw API and confirmed, by direct query, to produce
+> zero `acme_litellm_events` rows.
+>
+> **Directly contradicts ADR-0003's premise** — CAIRO as the single control plane
+> for LiteLLM management, accepted for build and deployed to development.
+>
+> **Mitigated today only by single-operator control of `LITELLM_MASTER_KEY`** — the
+> platform operator is currently the only holder of that credential, so this is not
+> presently exploitable by anyone CAIRO does not already fully trust.
+>
+> **Transition condition, not a caveat: this becomes P0 at first customer
+> deployment where operators hold cluster access.** The mitigation is a fact about
+> who currently holds one credential, not a property of the design. Any deployment
+> where a second party — a customer's own ops team, a second ACME engineer, a
+> compromised credential — gains cluster access removes the mitigation entirely, and
+> the finding's severity moves with it.
+>
+> **Cross-references:** ADR-0003 (the contradicted premise), CHG-2026-029 (the
+> demonstration).
+>
+> **Recording note:** the Readiness Ledger — this project's live record for ratings
+> and open findings — is currently unreachable (dead artifact link; see `CLAUDE.md`
+> "Current state"). This finding is recorded here, in full, as the durable record
+> until the Ledger is reachable again, at which point it needs to be transcribed
+> there rather than left to live only in this changelog entry.
+
+**Backlog item raised, separate from this finding:** CAIRO needs an
+**operator-accessible audited path for LiteLLM key mutations** — a CLI, an admin
+script, or an API endpoint that runs `auditedMutation()`-wrapped changes from outside
+a live app-server session — so that a routine operational change (a rotation, a
+limit correction, a metadata fix) cannot *only* be made by bypassing the audit trail.
+Without it, every future operator in this position faces the same choice this session
+faced: make the change with no instrumented path, or don't make it. Scope and
+priority not yet decided — raised here for the roadmap, not designed.
+
+**Not yet resolved — this change does not close until these return:**
+
+1. **Drift check on `acme_litellm_keys`.** Does CAIRO's own database row for the
+   judge key still show the pre-edit `models: []` / `rpm_limit: null` (stale,
+   confirming drift), or does it somehow already match LiteLLM's live state? Query
+   prepared, not yet returned.
+2. **If stale, reconciling `acme_litellm_keys` is part of this change, not a
+   follow-up.** The reconciliation write must itself go through the audited path —
+   `updateKeyLimits()` or equivalent — or, if that is genuinely not reachable from
+   wherever the reconciliation is performed, this changelog entry must record why
+   not, by the same standard applied to the original deviation above. A second
+   unaudited write to fix the record of the first unaudited write would compound
+   exactly the gap this entry exists to document.
