@@ -4031,3 +4031,75 @@ uppercase entry is needed.
 ignore entry covers the word wherever it appears, including the hook and
 ADR-0009 which #83 does not touch. Whether #83 still merges is the owner's call;
 nothing breaks either way.
+
+## 2026-09-23 — CHG-2026-035 closed as invalidated: the migration was never broken on the real target
+
+**Closing a P0 that should not have been raised.** The rating rested on an
+incomplete search. Recorded in full rather than quietly corrected, because an
+owner confirmed **P0** on the strength of it and the correction matters more
+than the tidiness of the record.
+
+**What the finding claimed (2026-09-22).** Migration
+`20260917090000_add_acme_guardrail_events_push_support` fails
+`REASSIGN OWNED BY postgres` on a from-scratch database (`P3018`/`2BP01`),
+proven twice in this fork's own CI — and, critically, *"not demonstrated either
+way against Azure Flexible Server, ACME's actual deployment target"*.
+
+**Both halves were already answered in this repository, on 2026-09-19 — five
+days before CI "found" it.** In two places the original search did not open:
+
+1. `acme-governance/rollback/MIGRATION-ROLLBACK-INVENTORY.md`, the row for this
+   exact migration, ends: *"Also fails on a stock Postgres image where
+   `postgres` is the bootstrap superuser (found 2026-09-19); **it applies on
+   Azure Flexible Server**."*
+2. `acme-governance/scripts/rehearsal-db.sh`'s header explains why the rehearsal
+   environment is built the way it is: *"`postgres` is a NON-superuser admin …
+   and a separate bootstrap superuser `pgboot` exists. **That models Azure
+   Flexible Server.** On a stock image, where `postgres` IS the bootstrap
+   superuser, 20260917090000 fails at `REASSIGN OWNED BY postgres` … Found
+   2026-09-19."*
+
+A rehearsal tool had been deliberately built to model Azure **because** a stock
+image misleads on precisely this point.
+
+**The migration is confirmed working on the real production target**, on two
+independent grounds:
+
+- **Documented:** the rollback inventory states it applies on Azure Flexible
+  Server.
+- **Functional, and stronger:** the durable guardrail audit trail has been live
+  since 2026-09-18, and a real blocked request produced a complete audit row
+  carrying `event_id`, `user_id` and encrypted block-tier content — **columns
+  this very migration adds**. The migration cannot have failed on the Azure
+  database; rows written by its own schema exist in production.
+
+**So the defect is in the test environment, not the migration.** CI runs stock
+`docker.io/postgres:17` with `POSTGRES_USER=postgres`, which makes `postgres`
+the bootstrap superuser — the one configuration the migration is documented not
+to survive, and not the configuration ACME deploys to.
+
+**Not fixed by changing the migration, deliberately.** Narrowing the `REASSIGN`
+statement would have altered working, deployed, verified code — touching the
+audit-table migration — to satisfy a test environment that misrepresents
+production. The correction belongs in CI's Postgres setup, tracked separately.
+
+**No live Azure test was run, and none is needed.** The owner's call, and the
+right one: the existing production evidence is stronger than a fresh
+disposable-instance test would be. A passing test on a throwaway instance would
+prove less than audit rows already written by this migration's own columns.
+
+**The lesson, recorded because it is a real gap in the search process.** A
+finding rated on *"not demonstrated"* is a claim about the **evidence**, and it
+obliges a search of where evidence is kept — not only where code is kept. The
+search that produced this P0 covered the migration SQL, `ACME-CHANGELOG.md`,
+Microsoft's documentation and the CI logs. It did not cover
+`acme-governance/rollback/` or the rehearsal tooling, both of which existed,
+both of which answered it. **Before rating any future finding on "not
+demonstrated", check `acme-governance/rollback/` and any rehearsal or
+verification tooling — the reason a tool exists is often the finding about to be
+re-discovered.**
+
+**Status: CHG-2026-035 closed, invalidated.** The number stays burnt per
+register Rule 4. The two follow-ons it surfaced remain real and are tracked
+elsewhere: the CI environment correction, and the unchanged observation that
+CI's first genuine run is what surfaced all of this.
