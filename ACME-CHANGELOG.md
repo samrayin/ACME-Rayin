@@ -3195,6 +3195,26 @@ raw database correction with the reasoning recorded to the same standard as the
 original deviation. `acme_litellm_keys` remains stale
 (`models: {}`, `rpm_limit: NULL`) until one of those happens.
 
+**Clarification, 2026-09-22, requested explicitly ahead of deploying CHG-2026-030:
+shipping the reconciliation UI does not close the P1 finding above.** Two separate
+things are tracked in this entry and must not be conflated when CHG-2026-030 ships:
+
+1. **CHG-2026-029's own reconciliation mechanism** — closes once the Edit dialog is
+   deployed and the owner uses it to correct `acme_litellm_keys`'s stale row. This
+   is what CHG-2026-030 unblocks.
+2. **The P1 finding itself** — "LiteLLM key configuration can be modified outside
+   CAIRO's audit path, leaving no record" — is a standing structural gap: nothing
+   in CAIRO stops a future raw `/key/update` call from bypassing the audit trail
+   again. CHG-2026-030 does not touch this. It adds an audited *reconciliation*
+   path for drift already caused by a bypass; it does not close the bypass itself.
+   **Only the separately-raised, not-yet-scoped backlog item — an
+   operator-accessible audited path for LiteLLM key mutations — can close this
+   finding.** Until that is designed and shipped, the P1 rating stands, unchanged
+   by any deploy of CHG-2026-030.
+
+Deploying CHG-2026-030 should not be read, here or in the Ledger once it is
+reachable again, as resolving this finding.
+
 ---
 
 ## 2026-09-22 — Key limits edit UI: source and tests, no release (CHG-2026-030, ADR-0007)

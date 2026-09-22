@@ -45,7 +45,7 @@
 
 | ID | What | Rating | Status |
 |---|---|---|---|
-| (unnamed, pending Ledger transcription) | Key config changes via raw LiteLLM API bypass CAIRO's audit trail entirely. Escalated 2026-09-22: **no reconciliation UI exists at all**, for anyone — the audited backend function is fully built and has zero frontend call sites. Rotate makes it worse: it silently reverts any drifted key to CAIRO's stale values. | **P1** | Open — becomes P0 at first customer deployment with external cluster access. Fix (CHG-2026-030) merged to `main`, not yet deployed |
+| (unnamed, pending Ledger transcription) | Key config changes via raw LiteLLM API bypass CAIRO's audit trail entirely. Escalated 2026-09-22: **no reconciliation UI exists at all**, for anyone — the audited backend function is fully built and has zero frontend call sites. Rotate makes it worse: it silently reverts any drifted key to CAIRO's stale values. | **P1** | Open. **Deploying CHG-2026-030 does not close this** — it only unblocks CHG-2026-029's reconciliation of the drift already caused. The bypass itself needs the separate, not-yet-scoped "operator-accessible audited path for LiteLLM key mutations" backlog item. Becomes P0 at first customer deployment with external cluster access. |
 | N-56 | Guardrail false-block defect | P1 | **Root cause fixed & measured**, not yet formally closed (needs 2nd corpus run + judge data-use terms confirmed) |
 | P0-5 | Append-only not enforced at DB level | P0 | Open |
 | P0-11 | No deletion path in any data store | P0 | Open — blocks Langfuse tracing re-enablement (ADR-0006) |
