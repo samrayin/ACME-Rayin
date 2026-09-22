@@ -3048,3 +3048,58 @@ chore, and #50 and #52 are parked draft snapshots.
 and the popup still appeared. That is expected. The running image is `acme-v4.38.0.5`,
 built from `9f7958496`, which predates this change and contains no guard, so the
 popup is the old build behaving as built.
+
+---
+
+## 2026-09-22 — Key limits edit UI: source and tests, no release (CHG-2026-030, ADR-0007)
+
+**What:** `updateKeyLimits()`/`acmeLitellm.updateKey` has existed as a complete,
+audited tRPC procedure since CHG-2026-005 with zero frontend call sites — the gap
+CHG-2026-029 ran into when it needed to reconcile a drifted key and found the Keys
+page could only detect drift, not fix it. This change wires it up: an `Edit` button
+per active key, next to `Rotate`/`Revoke`, opening a dialog scoped to `models` and
+`rpm_limit` only.
+
+**Why this shape.** `listProjectKeys()` (`acmeLitellmService.ts`) already fetched
+each key's live LiteLLM state to compute the drift badge, but discarded the live
+`models`/`rpm_limit` values after comparing — never sent them to the frontend. The
+dialog now pre-fills its editable fields from those live values, not from CAIRO's
+own (possibly stale) row: pre-filling from CAIRO's record would let an operator "fix"
+drift by writing CAIRO's wrong value straight back onto the gateway. Falls back to
+CAIRO's row, with a visible warning, only when `row.drift` is `"unknown"`/`"missing"`
+— no valid live comparison exists in that case.
+
+**A hazard found while wiring the submit path, not by inspection alone.**
+`limitsInput` (`acmeLitellmRouter.ts`, shared by `createKey`/`updateKey`) has a Zod
+`.default()` on every field. For `updateKey`, omitting a field does not leave it
+unchanged — Zod fills the default and the mutation sends it, so a form exposing only
+`models`/`rpm_limit` would silently clear `maxBudget`/`budgetDuration`/`tpmLimit` on
+first save. Fixed by factoring the payload assembly into one exported pure function,
+`buildUpdateKeyLimitsInput()`, which always carries the three unexposed fields
+through from the row unchanged — one place that can get this right, instead of one
+per call site.
+
+**Scope held deliberately narrow.** No change to `updateKeyLimits()` itself, no new
+fields on `KeyLimits`, no `metadata` editing — ADR-0005-A's judge-key exclusion
+design depends on that field being set through a controlled path, and widening this
+generic form to touch it would undermine that reasoning, not just add convenience.
+
+**Verified, not type-checked only:** `tsc --noEmit --skipLibCheck` clean (twice — the
+initial build and again after the pure-function refactor). 6/6 new tests pass in
+`AcmeLitellmGateway.clienttest.tsx` (real `vitest run`, asserting the Zod-default
+hazard above is actually prevented, not just type-shaped correctly). 28/28 pass in
+`acmeLitellmService.servertest.ts` (26 pre-existing + 2 new — live values differ from
+and are exposed over CAIRO's stale row; both are `null`, not stale-defaulted, when
+the gateway is unreachable), no regression in the pre-existing suite. Lint run
+separately; this fork's own recipe notes it takes several minutes even for a handful
+of files.
+
+**Not verified:** in a browser. No screenshot, no manual click-through of the new
+dialog. Per this fork's standing note (N-51), no CI runner exists for the heavy
+jobs on this fork, so this is self-reported from local runs, not a CI gate.
+
+**Deployment status:** source and tests only. **No ConfigMap change, no gateway
+restart, no live deploy** — this ADR does not authorize a release, same gate as
+every other Tier 1 change in this fork. The reconciliation this exists to unblock
+(the judge key from CHG-2026-029) is the owner's action once this ships to a running
+environment, not part of this change.

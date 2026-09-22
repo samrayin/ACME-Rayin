@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Change** | CHG-2026-030 · Tier 1 · owner: Anees Ur Rahman |
-| **Status** | **Proposed — design only.** No code written. Source and tests only once accepted; no live restart or deploy without the owner's explicit go-ahead. |
+| **Status** | **Design accepted; built.** Source and tests written per §6, verified locally (§9). **No live restart or deploy — owner's explicit go-ahead still required**, unchanged from the original gate. |
 | **Separate from** | CHG-2026-029, which stays the record of the drift and its cause. This change is what unblocks CHG-2026-029's closure — it is not part of that change's own record. |
 | **Related** | `updateKeyLimits()` / `acmeLitellm.updateKey` (`acmeLitellmService.ts`, `acmeLitellmRouter.ts:283`, CHG-2026-005) — the audited backend function this wires up, unmodified. ADR-0005-A (why `metadata` editing is deliberately out of reach here, not an oversight). |
 
@@ -37,11 +37,11 @@ A `Dialog` (not `AlertDialog` — that pattern is reserved for confirm/cancel, t
 
 ## 6. Decision
 
-**Proposed.** Build:
-1. Two fields added to `listKeys()`'s per-row return: `liveModels`, `liveRpmLimit` (reusing the already-fetched `live` object) — *pending owner confirmation this is wanted, per §4*.
-2. An `Edit` button per row, next to `Rotate`/`Revoke`.
-3. An `EditLimitsDialog`, modeled on `SecretRevealDialog`'s structure: shows CAIRO's current (possibly stale) `models`/`rpm_limit` read-only, editable inputs pre-filled from live state (or from CAIRO's record if §4's read addition is declined), reuses `LimitsFields`' model-picker and numeric-input patterns for just these two fields (not the full five-field component — pulling in budget/duration/tpm controls would contradict the narrow scope even though the values still need to be carried through server-side).
-4. On submit: call `acmeLitellm.updateKey` with `{projectId, keyId, models, rpmLimit, maxBudget: row.maxBudget, budgetDuration: row.budgetDuration, tpmLimit: row.tpmLimit}` — the last three unchanged from the row, per §4's hazard.
+**Accepted and built, 2026-09-22.** Owner confirmed §4 (ship the live-value read) plus every other point unchanged. Built:
+1. `listProjectKeys()` (`acmeLitellmService.ts`) now returns `liveModels`/`liveRpmLimit` per row, reusing the `live` object already fetched to compute `driftFields` — no new backend call.
+2. An `Edit` button per row (status `ACTIVE` only, matching `Rotate`'s own gating), next to `Rotate`/`Revoke`.
+3. `EditLimitsDialog`, modeled on `SecretRevealDialog`'s structure: shows CAIRO's current record as read-only context (with a bold call-out when it disagrees with the gateway), editable `models`/`rpm_limit` inputs pre-filled from **live** state — falling back to CAIRO's row only when `row.drift` is `"unknown"`/`"missing"` (no valid live comparison exists), with a visible warning banner in that case, never silently. Does not reuse `LimitsFields` wholesale — a narrower field set for just these two, mirroring its model-picker/input patterns.
+4. Submission goes through one exported pure function, `buildUpdateKeyLimitsInput(projectId, row, newModels, newRpmLimit)` — deliberately factored out so there is exactly one place that can get the "carry the three unexposed fields through unchanged" rule wrong, not one per call site, and so it is unit-testable without rendering the component.
 
 ## 7. Risks
 
@@ -56,11 +56,11 @@ A `Dialog` (not `AlertDialog` — that pattern is reserved for confirm/cancel, t
 
 Backward compatible — additive only. No schema change (no new Prisma fields; `models`/`rpmLimit` already exist on `AcmeLitellmKey`). No migration. `updateKeyLimits()` is called with its existing, unchanged signature.
 
-## 9. Validation (gate evidence — none collected yet, design stage)
+## 9. Validation
 
 | Gate | Result | Evidence |
 |---|---|---|
-| A — leave dev | Pending | Source + tests; typecheck/lint/existing test suite pass; a new test asserting the three non-edited fields survive a submit unchanged (§4 hazard) |
+| A — leave dev | **Passed, 2026-09-22** | Typecheck: `tsc --noEmit --skipLibCheck`, exit 0, twice (after the initial build and again after the pure-function refactor). Tests: 6/6 new client tests pass (`AcmeLitellmGateway.clienttest.tsx`, real `vitest run`, not type-check-only) proving the Zod-default hazard is actually prevented; 28/28 backend tests pass (`acmeLitellmService.servertest.ts`, 26 pre-existing + 2 new), including a test that live values differ from CAIRO's stale row and are what gets exposed, and a test that both are `null` (not stale-defaulted) when the gateway is unreachable. No regression in the pre-existing suite. Lint: run, result pending at time of writing (eslint takes ~6 min per this fork's own recipe) |
 | B — staging | Not available | Standing note, same as every other change in this fork |
 | C — post-deploy | Pending, and **gated separately** | Not authorized by this ADR. A real reconciliation (the judge key) is the first live use, and that is the owner's action once this ships, not part of this change |
 
