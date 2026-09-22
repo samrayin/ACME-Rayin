@@ -271,8 +271,14 @@ jobs:
         # ACME CHG-2026-034: was 4 ESLint workers per package (3 packages,
         # headroom on 16 Blacksmith vCPUs). Retuned to 1 for the same
         # headroom ratio (3 concurrent processes, not 12) on ubuntu-latest's
-        # 4 vCPUs.
+        # 4 vCPUs. Verified run 35744928871: web's second eslint invocation
+        # (the .next/cache/eslint one) still hit "JavaScript heap out of
+        # memory" at concurrency=1 — a RAM ceiling, not a worker-count
+        # problem. tests-web's own Build step already sets this same flag
+        # for the same reason; matched here.
         run: pnpm turbo run lint --filter=!ai-gateway --filter=!@langfuse/native --concurrency=3 -- --concurrency=1
+        env:
+          NODE_OPTIONS: --max_old_space_size=8192
       # Rust packages lint with cargo, which rejects the trailing ESLint flag
       # above, so they run outside that invocation (ai-gateway in its own job).
       - name: lint native addon (rustfmt, clippy)
