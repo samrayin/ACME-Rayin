@@ -3561,6 +3561,99 @@ distinction.
 **Deployment status:** documentation only. No product code, no workflow, no
 rating changed.
 
+## 2026-09-22 — P0 finding: migration bootstrap-role bug, found by CI's first real run (CHG-2026-035)
+
+**A finding, not a change.** No fix is built or proposed for implementation here
+— the owner explicitly asked for the finding and a rating first, separately from
+any fix. Rated **P0**, owner-confirmed 2026-09-22.
+
+**What fails, precisely.** Migration
+`20260917090000_add_acme_guardrail_events_push_support`'s
+`REASSIGN OWNED BY postgres TO rayin_migrator` statement fails on a fresh
+database with:
+
+```
+Error: P3018
+Database error code: 2BP01
+ERROR: cannot reassign ownership of objects owned by role postgres because
+they are required by the database system
+```
+
+This is Postgres's unconditional protection on its literal bootstrap/initdb
+superuser — not the same bug as the membership-check failure this same
+migration's own history already found and fixed (commit `6fcc72f06`,
+"permission denied to reassign objects", fixed by adding
+`GRANT rayin_migrator TO postgres;` beforehand). That fix does not help here:
+this restriction cannot be granted around: the connecting role does not merely
+lack a grant, it *is* the role Postgres refuses to reassign objects away from,
+unconditionally.
+
+**Found by CHG-2026-034/PR #94's first real `pipeline.yml` run (`35744928871`,
+then reproduced identically in the re-run `35747624514`).** `db:migrate` had
+never executed against a from-scratch database in this fork's history before
+today, because CI never dispatched (N-51). This is the first time.
+
+**Two facts, stated side by side — the rating is about a demonstrated failure
+mode, not a claim about what's currently deployed:**
+
+- **Proven, repeatedly, against vanilla/Docker Postgres.** Docker's official
+  `postgres` image — used by every job in this fork's CI (`POSTGRES_USER`
+  defaults to `postgres` in `docker-compose.dev.yml`, `docker-compose.build.yml`
+  and `.env.dev.example`'s `DATABASE_URL`) and by local `docker compose up` —
+  runs its default user as the literal bootstrap superuser. Every job that runs
+  `db:migrate` against that setup hits this exact error, every time.
+- **Not demonstrated against Azure Database for PostgreSQL Flexible Server —
+  ACME's actual current deployment target.** The one real-world application of
+  this migration (`acme-v4.35.0.5`, verified end-to-end per the 2026-09-17/18
+  entry above) ran against the existing dev database, not a from-scratch one,
+  so it couldn't have hit this either way. Checked directly (Microsoft Learn,
+  "Server Concepts for Flexible Server"): the customer-created admin login
+  belongs to `azure_pg_admin`, which is explicitly **not** the bootstrap
+  superuser — `azure_superuser` is, and is inaccessible to the customer. The
+  disposable-instance test that caught the *other* bug (`6fcc72f06`) modeled
+  `azure_pg_admin`'s privileges specifically, so it didn't exercise this
+  restriction either. **Whether Azure Flexible Server would hit this exact
+  error on a genuinely fresh database has not been tested, in either
+  direction** — this entry does not claim the live dev/production path is
+  broken; it claims a failure mode exists and reproduces on demand, and that
+  nothing to date has ruled out or ruled in whether the real target hits it
+  too.
+
+**Blocks PR #94 (CHG-2026-034) from a fully green run — confirmed, not
+assumed.** CHG-2026-034's own scope (runner labels, three concurrency
+retunes, one Buildx-action swap) never touches `docker-compose.dev*.yml` or
+this migration, and CI's Postgres container has no workaround for this
+restriction today. Every job in `pipeline.yml` that runs `db:migrate` or boots
+an image whose entrypoint runs migrations hits this same error and fails or
+gets cancelled:
+`tests-web` (`-azure` confirmed failed; default and `-redis-cluster` legs
+cancelled by the matrix's fail-fast before reaching it, would hit the same
+step), all three `tests-worker` legs, `e2e-tests`, `e2e-server-tests`, and
+`test-docker-build (web)` (its container's own entrypoint runs
+`prisma migrate deploy` on boot and crash-loops on this exact error). **Neither
+condition that would clear these jobs exists yet: CI's database setup carries
+no non-bootstrap-role workaround, and this migration's fix has not shipped.**
+CHG-2026-034 cannot reach a fully green `pipeline.yml` run on its own — its own
+scope (runner infrastructure) is separately verified working by the jobs that
+don't touch the database, listed in its own PR.
+
+**Proposed fix, not implemented, needs owner review before anyone builds it.**
+The migration's own comments show its actual intent: reassign ownership of the
+~400 *application* tables in `public` so future migrations can `ALTER` them —
+not literally every object `postgres` owns. The blanket
+`REASSIGN OWNED BY postgres` statement sweeps in system-required objects it
+never needed to touch. A narrower reassignment (the real application objects
+specifically, not the role-level statement) is the shape proposed — not built,
+not claimed correct without review.
+
+**Why P0:** blocks the first `prisma migrate deploy` outright on any from-scratch
+database where the connecting role is the bootstrap superuser — every app
+container that hit it in today's run either crash-looped or hard-failed, not
+degraded. Directly on the "what runs can be rebuilt on a customer platform"
+theme already tracked P0 (N-26, N-27, N-38, ACME-Rayin#23). Forward-only by
+this migration's own 2026-09-17/18 changelog note, so no automatic recovery
+once a target hits it.
+
 ## 2026-09-23 — Guardrail hook Step 1: the verdict path (CHG-2026-014, ADR-0005)
 
 **What:** `apply_guardrail()` in `integrations/litellm/config/cairo_guardrail_hook.py`
