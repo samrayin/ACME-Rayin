@@ -12,6 +12,12 @@ azure_subscription_id = "00000000-0000-0000-0000-000000000000" # this customer's
 domain                 = "langfuse.customer-domain.com"          # this customer's own domain
 name                    = "langfuse"                              # resource name prefix; doesn't need to be globally unique
 
+# HTTPS certificate -- the customer's own publicly trusted certificate,
+# imported into their Key Vault BEFORE the first apply (README.md, "TLS
+# certificate"). Must be set unless tls_certificate_mode = "self_signed".
+tls_key_vault_id     = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-customer-certs/providers/Microsoft.KeyVault/vaults/kv-customer-certs"
+tls_certificate_name = "langfuse-customer-domain-com"
+
 # --- Everything below is optional -- only uncomment what this customer needs different ---
 
 # location = "westeurope"
@@ -29,6 +35,12 @@ name                    = "langfuse"                              # resource nam
 
 # postgres_sku_name   = "GP_Standard_D2s_v3"
 # postgres_storage_mb = 32768
+
+# Test environments ONLY -- a self-signed certificate no browser or SDK trusts:
+# tls_certificate_mode = "self_signed"
+
+# Anonymous usage statistics to Langfuse's servers (default false = off):
+# telemetry_enabled = false
 
 # redis_sku_name           = "Balanced_B3"
 # redis_high_availability = true

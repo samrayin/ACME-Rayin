@@ -289,3 +289,53 @@ variable "additional_env" {
     error_message = "Each environment variable must have either 'value' or 'valueFrom' specified, but not both."
   }
 }
+
+# --- ACME additions (TF-07 / N-26, TF-09 / N-27, TF-65 / N-32) ---
+
+variable "postgres_database_name" {
+  description = "Name of the Postgres database Langfuse uses. The same value names the azurerm_postgresql_flexible_server_database resource and is passed to the Helm chart (postgresql.auth.database -> DATABASE_NAME for web and worker), so the app always connects to the database this module created."
+  type        = string
+  default     = "langfuse"
+
+  validation {
+    # Unquoted in the Helm values YAML (langfuse.tf), so keep it a plain
+    # Postgres identifier that YAML cannot read as a bool/null/number.
+    condition     = can(regex("^[a-z_][a-z0-9_-]{0,62}$", var.postgres_database_name)) && !contains(["y", "n", "yes", "no", "on", "off", "true", "false", "null"], var.postgres_database_name)
+    error_message = "postgres_database_name must start with a lowercase letter or underscore, contain only lowercase letters, digits, '_' or '-', be at most 63 characters, and not be a YAML keyword (yes/no/on/off/true/false/null)."
+  }
+}
+
+variable "legacy_postgres_database_resource_name" {
+  description = "Do NOT set for new deployments. Only for a state that already manages a database under a different name than postgres_database_name (ACME dev: the naming-module-generated \"psqldb-langfuse\", while the app has always used \"langfuse\"). When set, the Terraform-managed database resource keeps this name so the existing state does not plan a replacement; the app still connects to postgres_database_name, which must then already exist on the server."
+  type        = string
+  default     = null
+}
+
+variable "tls_certificate_mode" {
+  description = "How the Application Gateway gets its HTTPS certificate. \"key_vault\" (default): a publicly trusted certificate the customer has imported into their own Key Vault (tls_key_vault_id + tls_certificate_name); the gateway's user-assigned identity is granted \"Key Vault Secrets User\" on that vault. \"self_signed\": the module issues a self-signed certificate in its own Key Vault -- browsers and SDKs will not trust it, so use it for test environments only."
+  type        = string
+  default     = "key_vault"
+
+  validation {
+    condition     = contains(["key_vault", "self_signed"], var.tls_certificate_mode)
+    error_message = "tls_certificate_mode must be \"key_vault\" or \"self_signed\"."
+  }
+}
+
+variable "tls_key_vault_id" {
+  description = "Resource ID of the Key Vault holding the customer's certificate (tls_certificate_mode = \"key_vault\"). The vault must use the Azure RBAC permission model. Example: /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.KeyVault/vaults/<name>."
+  type        = string
+  default     = null
+}
+
+variable "tls_certificate_name" {
+  description = "Name of the certificate object inside tls_key_vault_id (tls_certificate_mode = \"key_vault\"). Its subject or SANs must cover var.domain."
+  type        = string
+  default     = null
+}
+
+variable "telemetry_enabled" {
+  description = "Whether Langfuse reports anonymous usage statistics to Langfuse's own servers (TELEMETRY_ENABLED on web and worker). Off by default: a customer deployment sends nothing to a third party unless this is explicitly set to true."
+  type        = bool
+  default     = false
+}

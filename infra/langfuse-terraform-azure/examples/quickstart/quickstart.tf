@@ -61,6 +61,13 @@ module "langfuse" {
   # Optional: Configure Application Gateway
   app_gateway_capacity = 1
 
+  # TLS: by default the gateway serves your own publicly trusted certificate,
+  # imported beforehand into a Key Vault you control (RBAC permission model).
+  tls_key_vault_id     = "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.KeyVault/vaults/<vault>"
+  tls_certificate_name = "<certificate-name>"
+  # Test environments only -- browsers will not trust it:
+  # tls_certificate_mode = "self_signed"
+
   # Optional: Security features
   use_ddos_protection = true
 

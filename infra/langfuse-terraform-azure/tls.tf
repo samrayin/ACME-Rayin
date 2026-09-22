@@ -35,6 +35,7 @@ resource "time_sleep" "key_vault_rbac_propagation" {
   depends_on = [
     azurerm_role_assignment.keyvault_certificates_officer,
     azurerm_role_assignment.keyvault_secrets_user,
+    azurerm_role_assignment.appgw_customer_certificate,
   ]
 }
 
@@ -73,7 +74,14 @@ resource "azurerm_private_dns_a_record" "key_vault" {
   records             = [azurerm_private_endpoint.key_vault.private_service_connection[0].private_ip_address]
 }
 
+# ACME: the self-signed certificate is now an explicit opt-in for test
+# environments only (tls_certificate_mode = "self_signed"). The default
+# ("key_vault") uses a publicly trusted certificate the customer imports into
+# their own Key Vault -- see ingress.tf and deploy/customer-template/README.md
+# (TF-09 / N-27).
 resource "azurerm_key_vault_certificate" "this" {
+  count = var.tls_certificate_mode == "self_signed" ? 1 : 0
+
   name         = module.naming.key_vault_certificate.name
   key_vault_id = azurerm_key_vault.this.id
 
@@ -124,4 +132,41 @@ resource "azurerm_key_vault_certificate" "this" {
     time_sleep.key_vault_rbac_propagation,
     azurerm_dns_zone.this
   ]
+}
+
+# ACME: existing states (ACME dev) hold this certificate at the un-indexed
+# address from before it became conditional. Move it rather than plan a
+# destroy/create of the live certificate.
+moved {
+  from = azurerm_key_vault_certificate.this
+  to   = azurerm_key_vault_certificate.this[0]
+}
+
+# ACME: tls_certificate_mode = "key_vault" -- the customer's own publicly
+# trusted certificate, already imported into a Key Vault they control.
+# Reading it here fails the plan early (with a clear "not found") if the
+# one-time import step in deploy/customer-template/README.md was skipped,
+# instead of failing later inside the Application Gateway create call.
+data "azurerm_key_vault_certificate" "customer" {
+  count = var.tls_certificate_mode == "key_vault" ? 1 : 0
+
+  name         = var.tls_certificate_name
+  key_vault_id = var.tls_key_vault_id
+
+  lifecycle {
+    precondition {
+      condition     = var.tls_key_vault_id != null && var.tls_certificate_name != null
+      error_message = "tls_certificate_mode = \"key_vault\" (the default) needs tls_key_vault_id and tls_certificate_name: the customer's publicly trusted certificate, imported into their own Key Vault. Use tls_certificate_mode = \"self_signed\" only for test environments."
+    }
+  }
+}
+
+locals {
+  # Versionless, so the Application Gateway picks up a renewed certificate
+  # version from Key Vault on its own (it polls every 4 hours).
+  tls_key_vault_secret_id = (
+    var.tls_certificate_mode == "key_vault"
+    ? data.azurerm_key_vault_certificate.customer[0].versionless_secret_id
+    : azurerm_key_vault_certificate.this[0].versionless_secret_id
+  )
 }

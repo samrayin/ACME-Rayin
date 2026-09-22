@@ -3,6 +3,11 @@ locals {
 langfuse:
   image:
     tag: ${jsonencode(var.app_version)}
+  # ACME: third-party usage telemetry off unless explicitly opted in. The
+  # chart renders this as TELEMETRY_ENABLED for both web and worker
+  # (TF-65 / N-32).
+  features:
+    telemetryEnabled: ${var.telemetry_enabled}
   salt:
     secretKeyRef:
       name: langfuse
@@ -18,7 +23,7 @@ postgresql:
   host: ${azurerm_private_endpoint.postgres.private_service_connection[0].private_ip_address}:5432
   auth:
     username: ${azurerm_postgresql_flexible_server.this.administrator_login}
-    database: langfuse
+    database: ${var.postgres_database_name}
     existingSecret: langfuse
     secretKeys:
       userPasswordKey: postgres-password
@@ -101,7 +106,7 @@ EOT
 
   clickhouse_values = local.deploy_clickhouse ? local.clickhouse_internal_values : local.clickhouse_external_values
 
-  encryption_values     = var.use_encryption_key == false ? "" : <<EOT
+  encryption_values = var.use_encryption_key == false ? "" : <<EOT
 langfuse:
   encryptionKey:
     secretKeyRef:
@@ -164,7 +169,7 @@ langfuse:
 %{endif}
 %{endfor}
 EOT
-  image_values = (var.web_image_repository == null && var.web_image_tag == null && var.worker_image_repository == null && var.worker_image_tag == null) ? "" : <<EOT
+  image_values          = (var.web_image_repository == null && var.web_image_tag == null && var.worker_image_repository == null && var.worker_image_tag == null) ? "" : <<EOT
 langfuse:
 %{if var.web_image_repository != null || var.web_image_tag != null}
   web:

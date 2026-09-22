@@ -40,19 +40,29 @@ module "langfuse" {
   postgres_ha_mode        = var.postgres_ha_mode
   postgres_sku_name       = var.postgres_sku_name
   postgres_storage_mb     = var.postgres_storage_mb
+  postgres_database_name  = var.postgres_database_name
 
   redis_sku_name          = var.redis_sku_name
   redis_high_availability = var.redis_high_availability
 
   app_gateway_capacity = var.app_gateway_capacity
-  use_ddos_protection  = var.use_ddos_protection
+
+  # HTTPS certificate: the customer's own publicly trusted certificate from
+  # their Key Vault by default -- see README.md "TLS certificate".
+  tls_certificate_mode = var.tls_certificate_mode
+  tls_key_vault_id     = var.tls_key_vault_id
+  tls_certificate_name = var.tls_certificate_name
+
+  # Third-party usage telemetry to Langfuse's servers: off unless opted in.
+  telemetry_enabled   = var.telemetry_enabled
+  use_ddos_protection = var.use_ddos_protection
 
   langfuse_helm_chart_version = var.langfuse_helm_chart_version
 
   web_image_repository    = var.web_image_repository
-  web_image_tag            = var.web_image_tag
+  web_image_tag           = var.web_image_tag
   worker_image_repository = var.worker_image_repository
-  worker_image_tag         = var.worker_image_tag
+  worker_image_tag        = var.worker_image_tag
 
   # The Redis Cluster fix is applied by the module itself to every
   # deployment automatically -- not needed here. Only customer-specific

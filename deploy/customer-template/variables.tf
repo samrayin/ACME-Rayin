@@ -117,6 +117,13 @@ variable "postgres_storage_mb" {
   default = 32768
 }
 
+# One name for the database Terraform creates AND the one the app connects to
+# (the module passes it to the Helm chart too). Rarely worth changing.
+variable "postgres_database_name" {
+  type    = string
+  default = "langfuse"
+}
+
 variable "redis_sku_name" {
   type    = string
   default = "Balanced_B3"
@@ -130,6 +137,40 @@ variable "redis_high_availability" {
 variable "app_gateway_capacity" {
   type    = number
   default = 1
+}
+
+# HTTPS certificate. Default: a publicly trusted certificate the customer has
+# imported into a Key Vault they control (one-time step, see README.md "TLS
+# certificate") -- tls_key_vault_id and tls_certificate_name must then be set.
+# "self_signed" is for throwaway test environments only: browsers and SDKs
+# will not trust it.
+variable "tls_certificate_mode" {
+  type    = string
+  default = "key_vault"
+
+  validation {
+    condition     = contains(["key_vault", "self_signed"], var.tls_certificate_mode)
+    error_message = "tls_certificate_mode must be \"key_vault\" or \"self_signed\"."
+  }
+}
+
+variable "tls_key_vault_id" {
+  description = "Resource ID of the customer's Key Vault holding their certificate (RBAC permission model)."
+  type        = string
+  default     = null
+}
+
+variable "tls_certificate_name" {
+  description = "Name of the certificate object in tls_key_vault_id; must cover var.domain."
+  type        = string
+  default     = null
+}
+
+# Anonymous usage statistics to Langfuse's own servers. Off by default --
+# a customer deployment sends nothing to a third party unless this is set.
+variable "telemetry_enabled" {
+  type    = bool
+  default = false
 }
 
 variable "use_ddos_protection" {

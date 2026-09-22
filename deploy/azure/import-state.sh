@@ -228,10 +228,12 @@ import module.langfuse.azurerm_private_dns_a_record.key_vault \
 KV_CERT_NAME=$(az keyvault certificate list --vault-name kv-langfuse-bgqj --query "[0].name" -o tsv)
 if [ -n "$KV_CERT_NAME" ]; then
   KV_CERT_VERSION=$(az keyvault certificate show --vault-name kv-langfuse-bgqj --name "$KV_CERT_NAME" --query "id" -o tsv | awk -F/ '{print $NF}')
-  import module.langfuse.azurerm_key_vault_certificate.this \
+  # Indexed since 2026-09-18: the certificate only exists when
+  # tls_certificate_mode = "self_signed" (see the module's tls.tf).
+  import 'module.langfuse.azurerm_key_vault_certificate.this[0]' \
     "https://kv-langfuse-bgqj.vault.azure.net/certificates/${KV_CERT_NAME}/${KV_CERT_VERSION}"
 else
-  echo "  NOTE: no certificate found in kv-langfuse-bgqj -- skipped azurerm_key_vault_certificate.this, check manually"
+  echo "  NOTE: no certificate found in kv-langfuse-bgqj -- skipped azurerm_key_vault_certificate.this[0], check manually"
 fi
 
 echo "=== Kubernetes / Helm ==="

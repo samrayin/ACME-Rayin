@@ -64,8 +64,18 @@ resource "azurerm_postgresql_flexible_server" "this" {
   }
 }
 
+# ACME: the database name comes from var.postgres_database_name (default
+# "langfuse") -- the same variable feeds the Helm values' postgresql.auth.database
+# (langfuse.tf), which the chart turns into DATABASE_NAME for web and worker.
+# Upstream named this resource via the naming module ("psqldb-<name>") while
+# the Helm values hard-coded "langfuse", so a fresh deployment created one
+# database and pointed the app at another that did not exist (TF-07 / N-26).
+#
+# local.postgres_database_resource_name only differs from
+# var.postgres_database_name when var.legacy_postgres_database_resource_name is
+# set -- see that variable for the one deployment (ACME dev) that needs it.
 resource "azurerm_postgresql_flexible_server_database" "langfuse" {
-  name      = module.naming.postgresql_database.name
+  name      = local.postgres_database_resource_name
   server_id = azurerm_postgresql_flexible_server.this.id
   charset   = "UTF8"
   collation = "en_US.utf8"
