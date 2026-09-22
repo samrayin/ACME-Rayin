@@ -113,6 +113,51 @@ general_settings:
   database_url: os.environ/DATABASE_URL
   master_key: os.environ/LITELLM_MASTER_KEY
 
+# CAIRO guardrail hook (CHG-2026-014, ADR-0005 / ADR-0005-A). Step 1: the hook
+# now has a verdict path -- it calls rayin-guardrails /v1/guard and acts on the
+# answer. Record mode changes nothing about what the gateway returns; it writes
+# down what WOULD have happened.
+#
+# SHIPPED INERT, ON PURPOSE. `default_on: false` means no request reaches this
+# hook until a key opts in or this flag is flipped, which is ADR-0005-A layer 2's
+# zero-blast-radius property. Flipping it is an owner-gated step (a ConfigMap
+# change plus a gateway restart), and it MUST NOT happen before:
+#
+#   1. CAIRO_GUARDRAIL_SECRET exists in the litellm-provider-keys Secret. The
+#      guardrails service requires it on every /v1/guard call and fails closed
+#      without its own copy, so a gateway missing it gets 401s on every call.
+#      It is NOT in that Secret today. The hook degrades safely (record mode
+#      proceeds and logs) rather than failing requests, but it would be
+#      inspecting nothing while appearing to be on.
+#   2. The timeout question below is settled.
+#
+# OPEN DECISION, owner's call, NOT taken in this change: CAIRO_GUARDRAIL_TIMEOUT_S
+# defaults to 10 and the call is synchronous. A guardrails outage therefore adds
+# up to 10s to EVERY request even in record mode, where nothing is being blocked.
+# Lowering it or making the record-mode call fire-and-forget is a deviation from
+# ADR-0005 as approved, so it is decided before switch-on, not here.
+#
+# The judge key's own prerequisites ARE already met (CHG-2026-029, applied live
+# 2026-09-22): opted_out_global_guardrails: ["cairo-guardrail"], a model
+# allowlist, and rpm_limit 10. That is what stops the rail's judge call
+# re-entering this hook in a loop (ADR-0005 F10 / Step 0).
+#
+# UNVERIFIED, and the first thing to check on switch-on: that litellm resolves
+# `cairo_guardrail_hook.CairoGuardrail` from the ConfigMap mount at
+# /app/config. This is the documented `module.ClassName` form, but no hook in
+# this repository has ever been referenced from this config before (CHG-2026-028
+# shipped its hook deliberately without a ConfigMap edit), so there is no local
+# precedent confirming the import path resolves here. If it does not, the pod
+# fails to start rather than starting with the guardrail off -- which is why the
+# restart in the switch-on step is watched, not fire-and-forget, and why the
+# previous ConfigMap is worth keeping to hand for an immediate revert.
+guardrails:
+  - guardrail_name: "cairo-guardrail"
+    litellm_params:
+      guardrail: cairo_guardrail_hook.CairoGuardrail
+      mode: "pre_call"
+      default_on: false
+
 # Langfuse callback registration REMOVED 2026-09-21 (CHG-2026-024).
 #
 # It registered success_callback/failure_callback = ["langfuse"] while this pod

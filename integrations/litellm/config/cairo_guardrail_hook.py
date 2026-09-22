@@ -17,12 +17,34 @@ Design points that are load-bearing, not stylistic:
 * Every ambiguity in ``should_skip`` resolves to **inspect**. A false skip is a
   silent hole nothing would detect. A false inspect is a loud loop, bounded by the
   judge key's rate cap and caught by the layer 3 equality assertions.
+
+Step 1 (the verdict path) keeps the same shape, for the same reason: the parts
+that decide anything are **pure functions** — ``extract_text``,
+``build_guard_payload``, ``decide`` — so the whole decision table is provable on a
+bare Python with no network. Only ``_post_guard`` does I/O, and it is a thin,
+overridable seam; the tests substitute it rather than mocking a HTTP library.
+
+Where Step 1's ambiguities resolve, and why it is the mirror image of Step 0:
+
+* In **record** mode every failure resolves to **proceed** — an unreachable
+  guardrails service, a malformed verdict, a payload we could not build, a missing
+  secret, ``httpx`` absent from the image. Record mode's contract is "change
+  nothing, write down what would have happened"; a record-mode hook that can fail
+  a request has broken that contract, not enforced anything.
+* In **enforce** mode those same failures resolve to **refuse** (fail closed,
+  ADR-0005 §3b). Enforce is unreachable until every ADR-0005 §5 Step 4 gate holds.
+
+**Unconfirmed against a live gateway** (needs ADR-0005-A layer 2, and is why
+``extract_text`` is defensive rather than assertive): the exact shape LiteLLM
+hands to ``inputs`` for each ``input_type``. The documented shapes are handled;
+anything else returns None, which is a record-mode proceed, not a crash.
 """
 
 from __future__ import annotations
 
+import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, NamedTuple, Optional
 
 try:  # pragma: no cover - exercised only inside the gateway image
     from litellm.integrations.custom_guardrail import CustomGuardrail as _Base
@@ -32,6 +54,16 @@ except Exception:  # ImportError, or a litellm too old to carry the class
     _Base = object  # type: ignore[assignment,misc]
     _LITELLM_AVAILABLE = False
 
+try:  # pragma: no cover - same reason: absent on a bare Python, present in-image
+    import httpx
+
+    _HTTPX_AVAILABLE = True
+except Exception:
+    httpx = None  # type: ignore[assignment]
+    _HTTPX_AVAILABLE = False
+
+
+log = logging.getLogger("cairo.guardrail")
 
 GUARDRAIL_NAME = "cairo-guardrail"
 
@@ -48,6 +80,189 @@ _METADATA_CONTAINERS = ("metadata", "litellm_metadata")
 
 _KEY_METADATA_FIELD = "user_api_key_metadata"
 _TEAM_METADATA_FIELD = "user_api_key_team_metadata"
+
+#: Environment variable carrying the guardrails service's shared secret. The
+#: service requires it on EVERY /v1/guard call and fails closed when its own copy
+#: is unset ("reject every request", rayin-guardrails app/settings.py), so a
+#: gateway without this value gets 401s, not silent passes. It is NOT in the
+#: gateway's Secret today -- adding it is an owner-gated step before enabling.
+GUARD_SECRET_ENV = "CAIRO_GUARDRAIL_SECRET"
+
+#: Header the guardrails service reads the shared secret from.
+GUARD_SECRET_HEADER = "x-config-secret"
+
+#: LiteLLM's ``input_type`` -> the service's ``direction``. Anything unrecognised
+#: is treated as unknown rather than guessed at; see build_guard_payload.
+_DIRECTION_BY_INPUT_TYPE = {"request": "input", "response": "output"}
+
+#: Authenticated, proxy-injected fields that can identify the calling
+#: application, best first. Deliberately excludes anything caller-supplied: this
+#: lands in an audit record, so a forgeable value would poison the evidence.
+_AGENT_ID_FIELDS = (
+    "user_api_key_alias",
+    "user_api_key_team_alias",
+    "user_api_key_team_id",
+    "user_api_key_hash",
+)
+
+#: Used when no authenticated identifier is present. A constant, not a guess: the
+#: audit row should say "we do not know" rather than name the wrong application.
+UNKNOWN_AGENT_ID = "unknown-agent"
+
+
+class GuardOutcome(NamedTuple):
+    """What the caller should do, and what to write down about it.
+
+    ``text`` is None whenever the original input passes through untouched; it
+    carries a replacement only for an enforced redaction.
+    """
+
+    proceed: bool
+    text: Optional[str]
+    event: str
+
+
+def extract_text(inputs: Any) -> Optional[str]:
+    """Best-effort text of what is being checked, or None when unknown.
+
+    Handles the shapes LiteLLM is documented to pass: a plain string, a list of
+    message dicts (OpenAI style), or a single message dict. Content parts (a list
+    of ``{"type": "text", "text": ...}``) are flattened, because a multimodal
+    message would otherwise stringify into something the rails cannot read.
+
+    None means "could not read this", which is a record-mode proceed. It is
+    deliberately not an exception: an input shape we have not seen must not be
+    able to fail a request in the mode whose contract is to change nothing.
+    """
+    try:
+        if isinstance(inputs, str):
+            return inputs or None
+        if isinstance(inputs, dict):
+            return _text_of_message(inputs)
+        if isinstance(inputs, (list, tuple)):
+            parts = [_text_of_message(m) for m in inputs]
+            joined = "\n".join(p for p in parts if p)
+            return joined or None
+        return None
+    except Exception:
+        return None
+
+
+def _text_of_message(message: Any) -> Optional[str]:
+    """Text of one message, flattening OpenAI-style content parts."""
+    if isinstance(message, str):
+        return message or None
+    if not isinstance(message, dict):
+        return None
+    content = message.get("content")
+    if isinstance(content, str):
+        return content or None
+    if isinstance(content, (list, tuple)):
+        chunks = []
+        for part in content:
+            if isinstance(part, str):
+                chunks.append(part)
+            elif isinstance(part, dict):
+                value = part.get("text")
+                if isinstance(value, str):
+                    chunks.append(value)
+        joined = "\n".join(c for c in chunks if c)
+        return joined or None
+    return None
+
+
+def _authenticated_agent_id(request_data: Dict[str, Any]) -> str:
+    """Identify the calling application from proxy-injected metadata only."""
+    for container in _METADATA_CONTAINERS:
+        meta = request_data.get(container)
+        if not isinstance(meta, dict):
+            continue
+        for field in _AGENT_ID_FIELDS:
+            value = meta.get(field)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return UNKNOWN_AGENT_ID
+
+
+def build_guard_payload(
+    inputs: Any,
+    request_data: Any,
+    input_type: str,
+) -> Optional[Dict[str, Any]]:
+    """The /v1/guard request body, or None when one cannot honestly be built.
+
+    None is returned when the text is unreadable or the direction is unrecognised
+    -- never a payload with an invented field. The service requires non-empty
+    ``text`` and a valid ``direction``; sending a placeholder would produce an
+    audit row asserting something we did not check.
+    """
+    try:
+        direction = _DIRECTION_BY_INPUT_TYPE.get(input_type)
+        if direction is None:
+            return None
+        text = extract_text(inputs)
+        if not text:
+            return None
+        data = request_data if isinstance(request_data, dict) else {}
+        payload: Dict[str, Any] = {
+            "agent_id": _authenticated_agent_id(data),
+            "direction": direction,
+            "text": text,
+        }
+        # Correlation, when the proxy gives us one. Absent is fine; wrong is not.
+        for source, field in (("litellm_call_id", "trace_id"),):
+            value = data.get(source)
+            if isinstance(value, str) and value.strip():
+                payload[field] = value.strip()
+        return payload
+    except Exception:
+        return None
+
+
+def decide(verdict: Any, enforcing: bool) -> GuardOutcome:
+    """ADR-0005 §3b's table, as a pure function.
+
+    ====================  ==========================  =========================
+    guardrails says       record                      enforce
+    ====================  ==========================  =========================
+    allow                 proceed                     proceed
+    block                 proceed, would_block        refuse
+    redact                proceed, original text      return redacted text
+    unavailable/garbled   proceed, guard_unavailable  refuse (fail closed)
+    ====================  ==========================  =========================
+
+    ``verdict`` of None means the call did not produce a usable answer, for any
+    reason: timeout, connection refused, non-2xx, unparseable body, httpx absent,
+    secret missing. They collapse deliberately -- the hook's response to "I do not
+    know what the guardrails think" must not depend on why it does not know.
+    """
+    if not isinstance(verdict, dict):
+        return GuardOutcome(not enforcing, None, "guard_unavailable")
+
+    action = verdict.get("action")
+    if action == "allow":
+        return GuardOutcome(True, None, "allow")
+    if action == "block":
+        return GuardOutcome(not enforcing, None, "blocked" if enforcing else "would_block")
+    if action == "redact":
+        redacted = verdict.get("redacted_text")
+        if not isinstance(redacted, str) or not redacted:
+            # Claims a redaction but carries no text: unusable, not "allow".
+            return GuardOutcome(not enforcing, None, "guard_unavailable")
+        if enforcing:
+            return GuardOutcome(True, redacted, "redacted")
+        return GuardOutcome(True, None, "would_redact")
+    # An action this hook does not know. Newer service, older hook: do not guess.
+    return GuardOutcome(not enforcing, None, "guard_unavailable")
+
+
+class CairoGuardrailBlocked(Exception):
+    """Raised to refuse a request in enforce mode.
+
+    Defined here rather than reusing a litellm exception so the module keeps
+    importing on a bare Python, and so the refusal is attributable to this hook
+    in a gateway log rather than to the proxy's own machinery.
+    """
 
 
 def _key_level_opt_outs(request_data: Dict[str, Any]) -> Optional[List[Any]]:
@@ -152,7 +367,18 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
         # One explicit timeout on the gateway -> guardrails call. ADR-0005 F2: a
         # gateway-side timeout is necessary but not sufficient; guardrails needs
         # its own, shorter one so the inner call cannot outlive the outer.
+        #
+        # NOTE, open decision, deliberately NOT changed here: at this default a
+        # guardrails outage adds up to 10s to EVERY gateway request even in
+        # record mode, where nothing is being blocked. That is a
+        # production-impacting property of a mode whose contract is "change
+        # nothing". Lowering it (or making the record-mode call fire-and-forget)
+        # is a deviation from ADR-0005 as approved, so it is the owner's call
+        # before the hook is switched on, not this commit's.
         self.timeout_s = float(os.environ.get("CAIRO_GUARDRAIL_TIMEOUT_S", "10"))
+        # Read once at construction. Absent means every call 401s, so it is
+        # treated as unavailable rather than attempted -- see _post_guard.
+        self.guard_secret = os.environ.get(GUARD_SECRET_ENV, "").strip()
 
     def _is_enforcing(self) -> bool:
         return self.mode == "enforce"
@@ -177,12 +403,64 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
         if should_skip(data, self.guardrail_name):
             return inputs
 
-        # Deliberately unimplemented in this change. Shipping the exclusion and
-        # its tests is Step 0; calling /v1/guard is Step 1's next commit, and it
-        # does not land until layer 1 is green and the judge key carries its
-        # opt-out, allowlist and rate cap.
-        raise NotImplementedError(
-            "CairoGuardrail verdict path is not implemented yet: ADR-0005 Step 1. "
-            "This module currently ships the Step 0 exclusion and its unit tests "
-            "only, and is not referenced by any guardrails: block."
+        enforcing = self._is_enforcing()
+        payload = build_guard_payload(inputs, data, input_type)
+        if payload is None:
+            # Nothing honest to ask. Record: proceed. Enforce: fail closed.
+            return self._resolve(
+                GuardOutcome(not enforcing, None, "guard_unreadable"), inputs
+            )
+
+        verdict = await self._post_guard(payload)
+        return self._resolve(decide(verdict, enforcing), inputs)
+
+    def _resolve(self, outcome: GuardOutcome, inputs: Any) -> Any:
+        """Apply a decided outcome: log it, then proceed, replace, or refuse."""
+        log.info(
+            "cairo_guardrail decision",
+            extra={"event": outcome.event, "mode": self.mode},
         )
+        if not outcome.proceed:
+            raise CairoGuardrailBlocked(
+                f"Blocked by {self.guardrail_name} ({outcome.event})."
+            )
+        if outcome.text is not None:
+            return outcome.text
+        return inputs
+
+    async def _post_guard(self, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """POST to /v1/guard. Returns the verdict, or None if there isn't one.
+
+        The only I/O in this module, and the seam the unit tests replace. Every
+        failure returns None rather than raising: ``decide`` owns what "no usable
+        answer" means per mode, so this must not pre-empt that by throwing into
+        a record-mode request.
+        """
+        if not _HTTPX_AVAILABLE:
+            log.warning("cairo_guardrail: httpx unavailable; cannot reach guardrails")
+            return None
+        if not self.guard_secret:
+            # The service rejects a secret-less call anyway; saying so here makes
+            # a misconfigured deploy readable in the log instead of a wall of 401s.
+            log.error(
+                "cairo_guardrail: %s is unset; guardrails cannot be called",
+                GUARD_SECRET_ENV,
+            )
+            return None
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout_s) as client:
+                response = await client.post(
+                    self.guard_url,
+                    json=payload,
+                    headers={GUARD_SECRET_HEADER: self.guard_secret},
+                )
+            if response.status_code != 200:
+                log.warning(
+                    "cairo_guardrail: guardrails returned HTTP %s", response.status_code
+                )
+                return None
+            body = response.json()
+            return body if isinstance(body, dict) else None
+        except Exception as exc:  # timeout, connection refused, bad JSON
+            log.warning("cairo_guardrail: guardrails call failed: %s", exc)
+            return None
