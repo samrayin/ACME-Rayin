@@ -44,6 +44,20 @@ A Tier 1 change with no schema impact still needs 1, 4 (rollback = how to revert
 release) and 5. Artefacts 2–3 apply only when the database changes. A Tier 2 change
 needs only the changelog line (§0).
 
+**1a. Additional required step: any change that bumps the pinned LiteLLM digest**
+(`integrations/litellm/k8s/deployment.yaml`, the `ghcr.io/berriai/litellm@sha256:...`
+line). Re-run the metadata-pass-through audit method recorded in
+`acme-governance/adr/ADR-0006-gateway-tracing-into-cairo.md` §11: grep
+`litellm/integrations/langfuse/langfuse.py` in the new version for every read
+against `metadata`/`clean_metadata`/`allowlisted_metadata` and the header-merge
+path, trace each to a Langfuse SDK call, and diff the result against ADR-0006 §11's
+table. **A required artefact of the bump itself, in the same commit — not a
+changelog note**, because a note is easy to skip and this list silently going stale
+against a new upstream version is exactly the failure mode that produced ADR-0006's
+findings in the first place. Record the diff (nothing changed / new fields found /
+fields removed) as a dated addendum to ADR-0006 §11, and update the allowlist-shaped
+hook (once built) to match before the new digest reaches a gateway restart.
+
 **Change ID — standing convention (confirmed by the owner 2026-09-19):** every change
 gets a unique ID, `CHG-YYYY-NNN` — four-digit year, three-digit sequence restarting at
 `001` each year, never reused, including for abandoned changes. The first is
