@@ -60,6 +60,7 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | CHG-2026-037 | 2 | Adopts `CAIRO-Approval-Tiers-Standing-Rule.md` as a standing Tier 1 / Tier 2 / Tier 2.5 approval boundary for all CAIRO/ACME-Rayin work | Anees Ur Rahman | `docs/claim-chg-2026-037-approval-tiers-standing-rule` | Claimed |
 | CHG-2026-038 | 2 | Sets the gateway guardrail hook's request timeout and records the reasoning in ADR-0005; source and test only, nothing enabled | Anees Ur Rahman | `feat/chg-2026-038-guardrail-timeout` | Claimed |
 | CHG-2026-039 | — | **Finding, not yet a change.** Record mode's own measurement is not visible in CAIRO: the hook writes its outcome to gateway stdout only | Anees Ur Rahman | `docs/chg-2026-039-record-mode-observability` | Claimed |
+| CHG-2026-040 | 1 | Guardrail health events: a dedicated capability recording when the gateway→guardrails call fails or how long it took, so record mode measures reliability and cost as well as detection (closes CHG-2026-039). Designed in **ADR-0009**. Tier 1: new audit-adjacent table and migration, a new console-provisioned credential, and a web release. **Explicitly does not alter `AcmeGuardrailEventAction` or any existing query against the decision table** | Anees Ur Rahman | `docs/chg-2026-040-guardrail-health-events` | Claimed — design only |
 | CHG-2026-041 | 2 | Structured JSON logging of the guardrail hook's own outcome and round-trip duration to gateway stdout; the interim bridge that makes record mode measurable without waiting for ADR-0009. Source and tests only | Anees Ur Rahman | `feat/chg-2026-041-hook-structured-logging` | Claimed |
 
 ## ADR numbers
@@ -75,6 +76,7 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | ADR-0006 | CHG-2026-026 | Gateway tracing into CAIRO: what is written, where, what it costs in retention, and how it is turned off | Claimed — written, Gate A passed, still Proposed. Exhaustive audit (2026-09-22) found ~12 unredacted metadata fields/mechanisms, not 4 — a content leak (`metadata.prompt`) and an unbounded wildcard (`trace_`-prefixed keys). Mitigation shape decided (allowlist, scoped in ADR §11) — hook not yet built |
 | ADR-0007 | CHG-2026-030 | Key limits edit UI: where it lives, what it shows, how it avoids silently clearing budget/duration/token fields it doesn't expose | Claimed |
 | ADR-0008 | CHG-2026-033 | CI runner provisioning for the heavy `pipeline.yml` jobs (N-51): provision the Blacksmith GitHub App vs. move to `ubuntu-latest` | Accepted — owner picked path (b), implemented and merged (CHG-2026-034, #94) |
+| ADR-0009 | CHG-2026-040 | Guardrail health events: dedicated table, the three §3d metrics, the credential and its scope, and what production-grade completion actually costs | Claimed — design only |
 
 The rows above for CHG-2026-001 to -003 and ADR-0000 to -0002 were reconstructed
 on 2026-09-19 from `main` and every branch on the remote; they were not claimed
