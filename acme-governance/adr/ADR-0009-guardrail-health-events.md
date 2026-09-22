@@ -3,10 +3,11 @@
 | | |
 |---|---|
 | **Change** | CHG-2026-040 · Tier 1 · owner: Anees Ur Rahman |
-| **Status** | **Proposed — design only.** No migration, no endpoint, no credential, no release. Nothing in this document has been built. |
+| **Status** | **Proposed — design only, all four open questions answered 2026-09-23 (§10).** No migration, no endpoint, no credential, no release. Nothing in this document has been built. Build does not start until §10.1's prerequisite is met: a real record-mode window, with bridge data used to correct `failureClass`'s enum values before they are committed to a schema. |
 | **Closes** | CHG-2026-039 (record mode measures detection, not reliability or cost) |
 | **Related** | ADR-0005 §3d (the three metrics) · ADR-0005 F2 (timeouts on both sides, still open) · CHG-2026-038 (the 2s timeout this data is meant to validate) · CHG-2026-041 (the stdout bridge this supersedes) · Readiness Ledger **P0-11** (no deletion path in any store) · **P0-5** (append-only not enforced) |
-| **Blocked by** | Owner approval of this ADR. **And see §8 — this is not weekend-sized work, and §8 says why compressing it is the wrong trade.** |
+| **Blocked by** | Owner approval of this ADR, then §10.1's prerequisite (a real record-mode window). **See §8 — this is 6–10 working days, not weekend-sized, and §8 says why compressing it is the wrong trade.** |
+| **Sequencing** | **After** the guardrail switch-on, decided 2026-09-23 — so CHG-2026-041's bridge data corrects `failureClass` before it becomes a Postgres enum (§10.1). |
 
 ---
 
@@ -150,13 +151,31 @@ path at all (P0-11, open, P0)**. The 30-day retention job (PR #51) is written,
 unmerged, and gated behind the least-privilege cutover (ADR-0004) because it
 deletes from the append-only evidence table.
 
-So this design **adds unbounded growth to a system that cannot currently purge
-anything**. That is not a reason to abandon it — the data is needed — but it is
-a precondition to state rather than discover: either this table is added to the
-retention job's scope before it ships, or it ships knowing it grows without
-bound. Health rows carry **no prompt content**, which makes them far safer to
-purge aggressively than decision rows; a shorter retention (7–14 days) is
-defensible here and is not for the decision table.
+So this design would otherwise **add unbounded growth to a system that cannot
+currently purge anything**.
+
+**Decided, 2026-09-23: a firm 14-day retention target for this table,
+deliberately not tied to PR #51 or ADR-0004.** The reasoning, recorded because
+it is the opposite of how the decision table is treated:
+
+- **Health rows carry no prompt content.** None: no `text`, no `redacted_text`,
+  no `raw_content`. The tiered-content rules that make decision rows sensitive
+  (§1.1 of the compliance framework) have nothing to apply to here. P0-11's
+  sensitivity argument — that a store holding prompt text with no purge path is
+  a liability — does not transfer.
+- **Therefore this does not need to wait for the least-privilege cutover.** PR
+  #51 is gated behind ADR-0004 precisely because it deletes from the *evidence*
+  table and an admin-connected app deleting evidence is the problem P0-5
+  describes. Deleting 14-day-old latency measurements is not that.
+- **A firm target is more honest than an unbounded caveat.** "Grows without
+  bound, to be addressed later" is how a table becomes a problem nobody owns.
+  14 days is long enough to establish p50/p95 and spot a recurring outage
+  pattern, and short enough that the table's size is predictable from request
+  volume alone.
+
+This does not require PR #51's machinery. A simple age-based delete scoped to
+this one table is sufficient, and unlike PR #51 it needs no archive-and-verify
+step — there is nothing here worth archiving.
 
 ---
 
@@ -208,21 +227,38 @@ happened, and understate p95 by exactly the requests that cost nothing.
 Security Analyst role, which is already deny-by-default and already the role
 that reads guardrail evidence.
 
-**Alerting: does not exist, and this ADR does not create it.** There is no
-Alertmanager, no scheduled evaluator, and no notification path. Saying
-"`guardrail_unavailable_total` alerts at X" would be describing a system that
-is not there. Three honest options, none in this scope:
+**Alerting: does not exist, and this ADR deliberately does not create it.**
+There is no Alertmanager, no scheduled evaluator, and no notification path.
+Saying "`guardrail_unavailable_total` alerts at X" would describe a system that
+is not there.
 
-1. A worker job evaluating thresholds on a schedule and writing a finding —
-   smallest, reuses the existing worker.
-2. Export to the customer's own monitoring — already Horizon 1 on the roadmap
-   ("export to the customer's security monitoring"), and the right long-term
-   answer for a customer-operated deployment.
-3. Real Prometheus. Largest; buys little that (1) does not, for one cluster.
+**Decided, 2026-09-23: "reviewed, not monitored." No alerting is built by this
+change.** The alternatives were a worker job evaluating thresholds on a
+schedule, export to the customer's own monitoring, or real Prometheus. All
+three are rejected *for now*, on this reasoning:
 
-**Until one of those exists, this capability produces evidence that is looked
-at, not evidence that shouts.** That distinction should be explicit to anyone
-reading a readiness claim about it.
+- **Worker-evaluated thresholds are new logic with their own failure modes** —
+  a threshold evaluator that silently stops evaluating is worse than no
+  evaluator, because it looks like "no alerts, therefore fine". Building it
+  here also repeats the scope creep that turned "add a log line" into this ADR.
+- **Customer-monitoring export stays where it already is**, on the Horizon 1
+  roadmap, and remains the right long-term answer for a customer-operated
+  deployment. It is not brought forward into this change.
+- **Real Prometheus** buys little the first option does not, for a single
+  cluster, at the largest cost of the three.
+
+**The consequence, stated so it cannot be misread later: this capability
+produces evidence that is looked at, not evidence that shouts.** Any readiness
+claim resting on it must say **"reviewed"**, never "monitored". Nothing here
+will page anyone; a guardrails outage at 3am is discovered when someone next
+opens the view.
+
+That is an accepted limitation of this change, not an oversight in it — and it
+is acceptable precisely because the hook fails *open* in record mode. An
+unnoticed outage in record mode costs measurement data, not availability. **This
+reasoning does not survive the move to `enforce`,** where an unnoticed
+guardrails outage would fail requests closed: alerting becomes a hard
+prerequisite at that point, and ADR-0005 §5's Step 4 gates should say so.
 
 ---
 
@@ -408,24 +444,55 @@ its rehearsal intact.
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| Unbounded growth in a store with no purge path (P0-11) | **High** — it is the default | High | §3.5: add to the retention job's scope before shipping, or ship with a stated shorter retention. Health rows carry no prompt content, so aggressive purging is safe here. |
+| Unbounded growth in a store with no purge path (P0-11) | Low, now decided | High if unaddressed | **Resolved by decision (§3.5): a firm 14-day retention target, independent of PR #51/ADR-0004.** Health rows carry no prompt content, so a simple age-based delete suffices — no archive-and-verify step. |
 | The push path adds latency to every request | Medium if rushed | High | §5.4: detached, bounded buffer, never awaited. Tested for it explicitly. |
 | Credential scoped wider than intended | **Certain** — the auth model allows nothing tighter | Medium | §5.1: dedicated key, `expiresAt`, project scope, identifying note. Named as an open limitation, not presented as solved. |
 | Health rows treated as decision evidence | Low | Medium | Separate table, separate view, separate enum. §3.1 records why. |
-| Data produced but never looked at | **Medium** | Medium | §4.3 is explicit that there is no alerting. A readiness claim resting on this should say "reviewed", not "monitored". |
+| Data produced but never looked at | **Medium — accepted** | Medium | §4.3: decided as "reviewed, not monitored". Acceptable *only* because record mode fails open — an unnoticed outage costs measurement data, not availability. **Becomes a hard prerequisite before `enforce`,** where the same outage would fail requests closed. |
 | Migration rollback untested under time pressure | Low if §8 is respected | High | Do not compress §8. |
 
 ---
 
-## 10. Open questions for the owner
+## 10. Decisions taken — all four questions answered 2026-09-23
 
-1. **Retention for this table**: add to PR #51's scope (which is itself gated on
-   ADR-0004), or ship with a stated unbounded caveat and a shorter target?
-2. **Alerting (§4.3)**: worker-evaluated thresholds, export to customer
-   monitoring, or accept "reviewed not monitored" for now?
-3. **The narrower access level (§5.1)**: worth opening as its own change, or
-   accept project scope for the foreseeable future and record it as a known
-   limitation?
-4. **Sequencing**: does this start after the guardrail switch-on (so the bridge
-   data informs the schema), or in parallel? Starting after is cheaper and the
-   bridge is designed to make that viable.
+These were the ADR's open questions. All are now settled; recorded here with
+their reasoning so the answers are auditable rather than implicit in the text.
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | Retention | **14 days, firm, stated as the target. Not tied to PR #51 or ADR-0004.** Health rows carry no prompt content, so P0-11's sensitivity argument does not transfer; a firm short target is more honest than an unbounded caveat. See §3.5. |
+| 2 | Alerting | **"Reviewed, not monitored." No alerting built here.** Worker-evaluated thresholds rejected as new logic with its own failure modes, and as the same scope creep that turned "add a log line" into this ADR. Customer-monitoring export stays on Horizon 1. See §4.3 — including why this reasoning does not survive the move to `enforce`. |
+| 3 | Narrower access level | **Accepted as a named follow-on, tracked as issue #115.** Not solved in this ADR. See §5.1. |
+| 4 | Sequencing | **After the guardrail switch-on, not in parallel.** See below. |
+
+### 10.1 Sequencing, and why "after" is the substantive choice
+
+This is not only about cost. `failureClass` (§3.4) proposes seven values, and
+they are a **Postgres enum** — cheap to add to, awkward to remove from, and
+impossible to rename without a migration. Those seven are currently a
+*prediction* of how the gateway→guardrails call fails in practice.
+
+Running the switch-on first, with CHG-2026-041's bridge recording real outcomes,
+replaces that prediction with evidence before it is committed to a schema. Very
+likely findings: some values never occur and are noise; the distinction between
+`TRANSPORT` and `TIMEOUT` may not survive contact with what `httpx` actually
+raises; `HTTP_ERROR` may need splitting by class rather than carrying a bare
+`httpStatus`.
+
+**The bridge was built to make this order viable**, and it emits exactly the
+fields this table will hold. Starting in parallel would mean designing a durable
+enum against a guess while the data that would correct it is being produced a
+week later.
+
+**Prerequisite for starting the build:** at least one full record-mode window
+with bridge data collected, reviewed against §3.4's seven values, and the enum
+adjusted to what actually occurred.
+
+### 10.2 Still open, and not decided here
+
+- **The §5.4 push buffer's drop policy** — bounded queue size and what happens
+  at the bound. Needs the bridge's observed event rate to size sensibly, so it
+  is deliberately left until §10.1's prerequisite is met.
+- **ADR-0005 F2's guardrails-side inner timeout** remains open and is not in
+  this ADR's scope. A fired gateway timeout still abandons work the guardrails
+  pod keeps doing; this capability will *measure* that, not fix it.

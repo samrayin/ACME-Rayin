@@ -3954,3 +3954,37 @@ release, and let this proceed on its own timeline with its rehearsal intact.
 altered, `acme_guardrail_events` is not altered, and no existing query against
 either is affected. One deliberate read-only reuse —
 `AcmeGuardrailEventDirection` — with no value added to it.
+
+**Update, same day: all four open questions answered by the owner (§10), and
+the design revised to record them.**
+
+1. **Retention — 14 days, firm, and deliberately not tied to PR #51/ADR-0004.**
+   Health rows carry no prompt content at all, so P0-11's sensitivity argument
+   does not transfer, and this needs neither the least-privilege cutover nor an
+   archive-and-verify step — a simple age-based delete suffices. A firm target
+   was chosen over an unbounded caveat because "grows without bound, addressed
+   later" is how a table becomes a problem nobody owns.
+2. **Alerting — "reviewed, not monitored", and nothing built.** Worker-evaluated
+   thresholds were rejected as new logic with their own failure modes (an
+   evaluator that silently stops evaluating is worse than none, because it looks
+   like "no alerts, therefore fine") and as a repeat of the scope creep that
+   turned "add a log line" into this ADR. Customer-monitoring export stays on
+   Horizon 1. **Recorded with the limit of its own reasoning:** this is
+   acceptable only because record mode fails *open*, so an unnoticed outage
+   costs measurement data rather than availability — and it stops being
+   acceptable at `enforce`, where the same outage fails requests closed.
+3. **Credential scope — accepted as a named follow-on**, tracked as issue #115
+   and cross-referenced from §5.1 so it is not later read as an oversight.
+4. **Sequencing — after the guardrail switch-on, not in parallel.** The
+   substantive reason, beyond cost: `failureClass` proposes seven values as a
+   Postgres enum, and those seven are currently a *prediction* of how the call
+   fails in practice. The bridge (CHG-2026-041) emits exactly these fields, so
+   running the switch-on first replaces the prediction with evidence before it
+   is committed to a schema that is awkward to change. Build does not start
+   until that window has been collected and the enum corrected against it.
+
+**One ambiguity resolved rather than guessed:** the answer named "option 3",
+but §10's third choice was *accept reviewed-not-monitored* while §4.3's third
+option was *real Prometheus* — opposite meanings. The accompanying reasoning
+("don't build worker-evaluated thresholds now") made the intent unambiguous, so
+the decision is recorded by content and the colliding numbering removed.
