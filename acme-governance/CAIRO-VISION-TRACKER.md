@@ -1,7 +1,15 @@
 # CAIRO — Vision Tracker
 **Purpose:** single source of truth for "are we there yet," updated at every stage. Not a changelog — a status board. The changelog and ledger remain the detailed record; this file answers one question fast: what's done, what's next, what's blocking.
 
-**Last updated:** 2026-09-23. **The guardrail hook is ON in dev, in record mode, since 03:35Z. This is the first time a live prompt has been inspected.**
+**Last updated:** 2026-09-23 (late). **Gateway traces now land in CAIRO (metadata only), and 30-day retention is live for traces and raw bodies.** The guardrail hook remains on in record mode since 03:35Z.
+- **Tracing (CHG-2026-026):** live over OTLP since 08:50Z, into the project "Gateway traces". Tokens and cost are captured. Gate C passed: no prompt or response text in ClickHouse or blob. Residuals: caller `langfuse_*` headers and free metadata keys (follow-up proposed). The legacy SDK callback was rejected by v4 `events_only`.
+- **Retention, PD-0005 phase 1:**
+  - P0-8 evidence exported first (CHG-2026-050: 37,821 events and 22,680 raw bodies, manifest `468B7EAE…`);
+  - ClickHouse 30-day TTL applied (CHG-2026-051);
+  - blob lifecycle rule applied, covering current and previous versions (CHG-2026-052).
+  - **The purge proof is due 24–26 September.**
+- **Capability register (CHG-2026-053):** `acme-governance/CAIRO-CAPABILITIES.md`, plus an HTML view (private artifact).
+
 - **Guardrails v0.2.2 is live (05:05Z)** and needs no internet at runtime. It is v0.2.1 plus the embedding model pinned into the image (CHG-2026-049, N-58).
   - over-size prompts are blocked unscanned (9 ms);
   - PII prompts are now judged: a PII + jailbreak prompt is blocked;
@@ -78,6 +86,11 @@
 | **CHG-2026-046** | rayin-guardrails: admin secret split; the gateway's secret is `/v1/guard` only | 🟢 **Deployed as v0.2.0, verified both directions.** Guard secret gets 401 on config and events; console admin secret gets 200 there and 401 on `/v1/guard` |
 | **CHG-2026-048** | Guardrails startup warm-up: the PII model and rail engine load before the pod is Ready; a rail toggle rebuilds at once | 🟢 **Deployed as v0.2.1 (2026-09-23), verified live.** The warm-up took 6.1 s at startup, and the first gateway request after the restart was inspected in 369 ms (was `guard_unavailable` after 6.3 s). |
 | **CHG-2026-049** | Guardrails embedding model baked into the image at pinned revision `5f1b8cd7…`, runs offline (Ledger N-58) | 🟢 **Deployed as v0.2.2 (2026-09-23), verified live.** 0 Hugging Face requests at startup; warm-up 2.6 s (was 6.1 s); rails unchanged. **N-58 proposed for closure. The owner decides** |
+| **CHG-2026-026 / ADR-0006** | Gateway tracing into CAIRO, metadata only | 🟢 **Live 2026-09-23 over OTLP (#138, #143), Gate C passed.** Secret-key exposure during enablement was accepted by the owner for dev |
+| **CHG-2026-050** | P0-8 evidence export before retention | 🟢 **Done by the owner.** Evidence held privately, manifest recorded (ops #19) |
+| **CHG-2026-051** | ClickHouse 30-day retention TTL | 🟢 **Applied and verified** on 6 tables; nothing deleted at apply; expiry from 2026-09-24 (ops #20) |
+| **CHG-2026-052** | Blob lifecycle rule, 30 days, current and previous versions | 🟡 **Applied in dev by the owner** (intentional drift from Terraform, ops #21). First deletions and proof due 25–26 September |
+| **CHG-2026-053** | Capability register | 🟡 **#145 merged**, plus an HTML view |
 | **CI on `main`** | The CI/CD run for `main` @ `29a7fdae` | 🟡 **Pending for about 10 hours with no jobs started**, observed 2026-09-23. "Storybook Preview" and "Deploy to ECS" (an upstream Langfuse workflow) are queued behind it. Cause not yet diagnosed |
 
 ---
@@ -89,7 +102,7 @@
 | (unnamed, pending Ledger transcription) | Key config changes via raw LiteLLM API bypass CAIRO's audit trail entirely. Escalated 2026-09-22: the reconciliation UI (CHG-2026-030) is now deployed and was used to fix the drift it caused — but that closes CHG-2026-029, not this finding. | **P1** | **Still open**, unaffected by CHG-2026-030 shipping or CHG-2026-029 closing. Nothing stops a future raw `/key/update` call from bypassing the audit trail again — only the separate, not-yet-scoped "operator-accessible audited path for LiteLLM key mutations" backlog item closes this. Becomes P0 at first customer deployment with external cluster access. |
 | N-56 | Guardrail false-block defect | P1 | **Root cause fixed & measured**, not yet formally closed (needs 2nd corpus run + judge data-use terms confirmed) |
 | P0-5 | Append-only not enforced at DB level | P0 | Open |
-| P0-11 | No deletion path in any data store | P0 | Open — blocks Langfuse tracing re-enablement (ADR-0006) |
+| P0-11 | No deletion path in any data store | P0 | **Partly addressed 2026-09-23.** 30-day expiry is live for ClickHouse traces (CHG-2026-051) and raw blob bodies (CHG-2026-052); proof is due 24–26 September. Still open: ACME Postgres tables (PR #51, after the P0-5 cutover), per-project retention and delete-on-request (PD-0005 phase 2). Rating is the owner's |
 | N-20 | Inert Langfuse tracing callback | — | Closed (removed 2026-09-21) |
 | N-51 | Heavy CI (`pipeline.yml`) has never run for any change in this fork's history — all test evidence to date is local, not CI-verified | — | **Fixed and merged, 2026-09-22** (CHG-2026-034, PR #94, `d6d55b4c`). No longer true as stated: CI now dispatches and produces real pass/fail on every PR. That real dispatch is exactly what surfaced CHG-2026-035 (P0, open) and CHG-2026-036 item 2 (P1, open) below, plus issues #96/#97 — the predicted effect of fixing N-51, not a new problem |
 | CHG-2026-036 (2) | `layout.clienttest.ts`'s timeline-layout algorithm does not terminate on a zero-width box — proven in both real CI runs, every attempt, jsdom | **P1** | Owner-confirmed 2026-09-22. Not a live production hang: checked directly, `TraceTimelineCompact.tsx`'s `box.width > 0 && box.height > 0` guard is the sole gate on the sole production caller of `layout()`, so the degenerate input is structurally unreachable today. Real bug, worth fixing; not urgent by exposure |
@@ -102,7 +115,7 @@
 
 | Item | Why parked |
 |---|---|
-| **Langfuse gateway tracing (ADR-0006)** | ADR written, Gate A passed, still Proposed. Blocked on two things: the metadata allowlist hook (CHG-2026-028, built with tests in open PR #84, not merged) and P0-11 (no deletion path). Confirmed 2026-09-22: not the right time. |
+| **Content tracing (prompt and response text)** | Metadata-only tracing is live (CHG-2026-026). Content is deferred until the deletion path is proven, with a review by 2026-10-23 (issue #139) |
 | **Enforce mode (Step 3)** | No latency budget exists yet; single-node cluster makes fail-closed a single point of failure. |
 
 ---
