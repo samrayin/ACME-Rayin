@@ -4300,3 +4300,25 @@ dependency.
 register's own ADR table and the ADR files that actually exist in `acme-governance/adr/`.
 
 **Deployment status:** nothing to deploy — doc-only.
+
+## 2026-09-23 — Gateway tracing into CAIRO, metadata only (CHG-2026-026, ADR-0006 accepted)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-026 · Tier 1 · owner: Anees Ur Rahman |
+| **ADR** | [ADR-0006](acme-governance/adr/ADR-0006-gateway-tracing-into-cairo.md), accepted 2026-09-23 for metadata only (§12) |
+| **Approval** | Owner, 2026-09-23. Metadata only; P0-11 accepted until 2026-10-23; the deletion path to be built internally |
+| **Dates** | Dev: after merge, gated on Gate C live · Prod: none exists |
+| **Impact** | Every gateway request becomes a trace in CAIRO's "Gateway traces" project: model, tokens, cost, latency, status, key. **No prompt or completion text.** |
+| **Schema change** | None. Writes to existing ClickHouse and blob stores, which cannot be purged today (P0-11) |
+| **Rollback** | Remove `success_callback`/`failure_callback` and restart, or restore the previous ConfigMap. Written traces remain |
+| **Feature flag** | `litellm_settings.success_callback` / `failure_callback` |
+
+**What:**
+- **`litellm-config.yaml`:** the Langfuse callback plus `turn_off_message_logging: true`, plus the trace-metadata allowlist hook, together. This replaces CHG-2026-024's "removed" note, and meets its three re-enablement conditions: a named credential owner, an approval gate, and message logging off in the same change.
+- **`cairo_trace_metadata_hook.py`:** a module-level `proxy_handler_instance`, because LiteLLM loads a callback path as an object and needs an instance. The strip also covers `requester_metadata`, which LiteLLM nests whole into the generation and may copy before the hook runs.
+- **Tests:** 4 new; 105 pass in `integrations/litellm/tests`.
+
+**Why metadata only:** traces cannot be deleted on this OSS build (P0-11). Content tracing waits for the internal deletion path; the review is due 2026-10-23.
+
+**Known-incomplete:** Gate C runs after merge, live, with rollback armed. The trace `user_id` is stripped (`user_api_key_end_user_id`, per ADR-0006 §11), so per-user attribution in traces waits for verified identity (N-34).

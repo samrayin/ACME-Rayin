@@ -201,6 +201,25 @@ class TestPassThrough(unittest.TestCase):
                 strip_untrusted_trace_metadata(d)  # must not raise
 
 
+class TestRequesterMetadataCopy(unittest.TestCase):
+    """CHG-2026-026: LiteLLM nests ``requester_metadata`` into the generation."""
+
+    def test_prompt_inside_requester_metadata_is_stripped(self):
+        data = {"metadata": {"requester_metadata": {"prompt": "SECRET TEXT", "app": "erp"}}}
+        strip_untrusted_trace_metadata(data)
+        self.assertEqual(data["metadata"]["requester_metadata"], {"app": "erp"})
+
+    def test_trace_keys_inside_requester_metadata_are_stripped(self):
+        data = {"litellm_metadata": {"requester_metadata": {"trace_name": "x", "debug_langfuse": True}}}
+        strip_untrusted_trace_metadata(data)
+        self.assertEqual(data["litellm_metadata"]["requester_metadata"], {})
+
+    def test_non_dict_requester_metadata_does_not_raise(self):
+        data = {"metadata": {"requester_metadata": "not a dict"}}
+        strip_untrusted_trace_metadata(data)
+        self.assertEqual(data["metadata"]["requester_metadata"], "not a dict")
+
+
 class TestModuleContract(unittest.TestCase):
     def test_module_imports_without_litellm(self):
         import cairo_trace_metadata_hook as m
@@ -221,6 +240,13 @@ class TestModuleContract(unittest.TestCase):
         self.assertNotIn("prompt", out["metadata"])
         self.assertNotIn("trace_x", out["metadata"])
         self.assertNotIn("langfuse_trace_id", out["proxy_server_request"]["headers"])
+
+
+class TestRegistrationInstance(unittest.TestCase):
+    def test_config_references_an_instance_not_the_class(self):
+        import cairo_trace_metadata_hook as m
+
+        self.assertIsInstance(m.proxy_handler_instance, m.CairoTraceMetadataAllowlistHook)
 
 
 if __name__ == "__main__":
