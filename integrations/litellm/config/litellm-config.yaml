@@ -112,6 +112,10 @@ general_settings:
   # litellm-provider-keys Secret.
   database_url: os.environ/DATABASE_URL
   master_key: os.environ/LITELLM_MASTER_KEY
+  # ADR-0010 (CHG-2026-056): models added from the CAIRO console are stored in
+  # the gateway database, their provider keys encrypted with LITELLM_SALT_KEY
+  # (litellm-provider-keys Secret; must never change once a key is stored).
+  store_model_in_db: true
 
 # CAIRO guardrail hook (CHG-2026-014, ADR-0005 / ADR-0005-A). Step 1: the hook
 # now has a verdict path -- it calls rayin-guardrails /v1/guard and acts on the
