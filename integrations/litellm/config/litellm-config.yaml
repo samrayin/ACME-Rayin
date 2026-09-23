@@ -170,12 +170,12 @@ guardrails:
 #
 # Credentials: LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY and LANGFUSE_HOST in the
 # litellm-provider-keys Secret, owned by Anees Ur Rahman.
-# To switch off: delete success_callback and failure_callback, then restart.
+# Delivery is OTLP (langfuse_otel), not the legacy "langfuse" SDK callback: this
+# Langfuse v4 CAIRO runs in events_only mode and rejects /api/public/ingestion.
+# To switch off: remove "langfuse_otel" from callbacks, then restart.
 # Already-written traces remain (P0-11).
 litellm_settings:
-  callbacks: ["cairo_trace_metadata_hook.proxy_handler_instance"]
-  success_callback: ["langfuse"]
-  failure_callback: ["langfuse"]
+  callbacks: ["cairo_trace_metadata_hook.proxy_handler_instance", "langfuse_otel"]
   turn_off_message_logging: true
 
 # Starter virtual keys — one per team/use case, per README.md "Open
