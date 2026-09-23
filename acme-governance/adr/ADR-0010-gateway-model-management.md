@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Change** | CHG-2026-056 · Tier 1 · owner: Anees Ur Rahman |
-| **Status** | **Proposed: design only.** No build, no gateway configuration change and no restart before the owner accepts this ADR (§12) |
+| **Status** | **Accepted by the owner, 2026-09-23** (decisions in §12). The build is next (Gate B). No gateway configuration change or restart until Gate C, which is owner-gated |
 | **Related** | ADR-0003 (CAIRO as the LiteLLM control plane) · ADR-0005 / ADR-0005-A (guardrail hook and judge exclusion) · ADR-0007 (key limits edit UI) · Readiness Ledger P0-3 (no Key Vault integration), P0-4 (credential rotation) |
 
 ## 1. The problem
@@ -95,7 +95,12 @@ A new endpoint usually needs a new provider key. There are two ways to supply it
 LiteLLM does not restrict `api_base`. An admin could point a "model" at an internal address and have the gateway call it, for example the cluster's services, the Azure metadata endpoint `169.254.169.254`, or the guardrails service. CAIRO therefore validates before calling `/model/new` or `/model/update`:
 1. **Scheme** must be `https`.
 2. **The host must not be an IP literal or `localhost`,** and must not resolve to a private, loopback, link-local, carrier-grade NAT or cluster range. Examples: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `127.0.0.0/8`, `169.254.0.0/16`, `100.64.0.0/10`, IPv6 equivalents, and the AKS service and pod CIDRs.
-3. **An optional hostname allowlist** of known provider hosts. It is off by default, and the owner decides whether to turn it on (§12).
+3. **A hostname allowlist, on (owner decision: strict).** `api_base`, when given, must match an allowed host. When it is empty, the provider's default endpoint is used. The allowlist:
+   - lives in CAIRO's configuration (`CAIRO_LITELLM_MODEL_ENDPOINT_ALLOWLIST`, exact hosts or `*.suffix` patterns), so widening it is a deliberate, recorded change, not a form edit;
+   - starts with the providers the gateway already uses, plus the two the config anticipates:
+     - `api.anthropic.com`, `openrouter.ai`, `api.groq.com`, `generativelanguage.googleapis.com`;
+     - `api.openai.com`, `*.openai.azure.com`.
+   - Checks 1 and 2 still apply to allowed hosts, so a spoofed DNS answer pointing at a private address is still refused.
 
 **Limit, stated plainly:** a save-time check can't stop DNS rebinding, because the gateway resolves the name again at request time. The durable control is **a Kubernetes NetworkPolicy on the gateway's egress** that denies the private ranges except its own dependencies (Postgres, guardrails, CAIRO ingest). That is proposed as a follow-up change. It is not bundled here because it affects every request the gateway makes.
 
@@ -164,7 +169,19 @@ LiteLLM does not restrict `api_base`. An admin could point a "model" at an inter
 | Config and database models get confused | Source labels in the UI; config models are read-only |
 | Upstream changes the router's config shape | Pinned LiteLLM version; the configuration is validated through the gateway's own endpoint before saving |
 
-## 12. Decisions for the owner
+## 12. Owner decisions (2026-09-23)
+
+| # | Decision | Answer |
+|---|---|---|
+| 1 | Credentials | **Both A and B.** Console entry for the new admin scope, and Secret references |
+| 2 | Salt key | **Yes.** The owner adds `LITELLM_SALT_KEY` before the first model is saved and keeps an escrowed copy |
+| 3 | Endpoints | **Strict:** "not lenient, since it is easier to relax later than to discover a gap after the fact." Private ranges blocked **and** the hostname allowlist on (§6) |
+| 4 | Router classifier | **Heuristic only** |
+| 5 | Permission | **`llmGatewayModels:CUD`**, owner and admin roles only |
+| 6 | Egress NetworkPolicy | **Accepted as a follow-up change** with its own ID |
+
+### Questions as asked
+
 
 1. **Credentials:** Option B with Option A also allowed (recommended), A only, or B only?
 2. **Salt key:** will you add `LITELLM_SALT_KEY` and keep an escrowed copy? It is required for B and recommended for A.
