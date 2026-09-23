@@ -4394,3 +4394,19 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 - **Recommended:** make the hook a full allowlist.
 
 **Incident, accepted by the owner:** during enablement the session called `/get/config/callbacks`, which returned and printed the "Gateway traces" secret key. The owner accepted it for dev ("ignore and proceed, this is dev setup"). **Never call that endpoint:** it returns credential values.
+
+## 2026-09-23 — Trace hook: full allowlist on caller-supplied `requester_metadata` (CHG-2026-054)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-054 · Tier 1 · owner: Anees Ur Rahman |
+| **ADR** | [ADR-0006](acme-governance/adr/ADR-0006-gateway-tracing-into-cairo.md) §13 |
+| **Dates** | Dev: after merge, through a watched ConfigMap redeploy and the live marker test · Prod: none exists |
+| **Impact** | Traces no longer carry any caller-supplied metadata or caller request headers. Gateway-written fields (key alias, team, spend, route) are unchanged |
+| **Rollback** | Redeploy the previous hook file. It is a config-only change |
+
+**Why:** Gate C (CHG-2026-026) found two residual free-text channels on the OTLP path: `langfuse_*` header values and arbitrary metadata keys. Reading the trace showed **both inside `requester_metadata`**, which is LiteLLM's copy of what the caller sent, including its request headers. The OTLP logger writes that whole object into every trace.
+
+**What:** `requester_metadata` keeps only `REQUESTER_METADATA_ALLOWLIST` keys, which starts empty. This is a full allowlist rather than a strip list, because the caller controls every key there. The earlier CHG-2026-026 tests are updated to the stricter expectation.
+
+**Tests:** 111 pass, 6 new. Control: the new tests against the current `main` hook gave 4 failures and 2 errors.

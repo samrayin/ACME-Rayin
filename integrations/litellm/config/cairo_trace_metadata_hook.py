@@ -86,6 +86,14 @@ UNCONDITIONAL_STRIP_KEYS: frozenset[str] = frozenset(
     }
 )
 
+#: Keys kept in ``requester_metadata``, LiteLLM's copy of what the CALLER sent
+#: (body metadata plus its request headers under ``headers``). The Langfuse OTLP
+#: logger writes that whole sub-object into every trace, so any key a caller adds
+#: there is caller free text in the trace (ADR-0006 §13 residuals). Starts empty:
+#: permit a key only on demonstrated need (CHG-2026-054). Gateway-written fields
+#: (key alias, team, spend) live elsewhere in metadata and are untouched.
+REQUESTER_METADATA_ALLOWLIST: frozenset[str] = frozenset()
+
 #: Containers the proxy may put request metadata into, depending on endpoint.
 #: Both are checked — same reasoning as ``cairo_guardrail_hook.py``'s
 #: ``_METADATA_CONTAINERS``.
@@ -119,6 +127,19 @@ def _strip_metadata_dict(meta: Any) -> None:
         return
     for key in [k for k in list(meta.keys()) if _is_stripped_key(k)]:
         meta.pop(key, None)
+
+
+def _allowlist_requester_metadata(requester_metadata: Any) -> None:
+    """Keep only ``REQUESTER_METADATA_ALLOWLIST`` keys, in place (CHG-2026-054).
+
+    A full allowlist, not a strip list: the caller controls every key here,
+    including request headers under ``headers``, so anything not named is removed.
+    No-op if not a dict.
+    """
+    if not isinstance(requester_metadata, dict):
+        return
+    for key in [k for k in list(requester_metadata.keys()) if k not in REQUESTER_METADATA_ALLOWLIST]:
+        requester_metadata.pop(key, None)
 
 
 def _strip_langfuse_headers(headers: Any) -> None:
@@ -168,7 +189,7 @@ def strip_untrusted_trace_metadata(request_data: Any) -> Any:
         # copy was taken before this hook ran, a stripped key (``prompt``) would
         # survive inside it, so strip there too (CHG-2026-026).
         if isinstance(meta, dict):
-            _strip_metadata_dict(meta.get("requester_metadata"))
+            _allowlist_requester_metadata(meta.get("requester_metadata"))
 
     proxy_server_request = request_data.get("proxy_server_request")
     if isinstance(proxy_server_request, dict):
