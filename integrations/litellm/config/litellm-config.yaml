@@ -118,17 +118,17 @@ general_settings:
 # answer. Record mode changes nothing about what the gateway returns; it writes
 # down what WOULD have happened.
 #
-# SHIPPED INERT, ON PURPOSE. `default_on: false` means no request reaches this
-# hook until a key opts in or this flag is flipped, which is ADR-0005-A layer 2's
-# zero-blast-radius property. Flipping it is an owner-gated step (a ConfigMap
-# change plus a gateway restart), and it MUST NOT happen before:
+# ON IN RECORD MODE since 2026-09-23 03:35Z (owner-gated switch-on B1-B5, record
+# in acme-rayin-ops). `default_on: true` sends every request through the hook;
+# CAIRO_GUARDRAIL_MODE is unset, so the mode is record and nothing is refused.
+# Each request waits for one guard call (measured median ~360 ms, max 1.6 s, cap
+# 2 s). To switch off: set `default_on: false` and restart, or restore the
+# previous ConfigMap. Keep this file matching live: applying it with `false`
+# would silently switch the hook off.
 #
-#   1. CAIRO_GUARDRAIL_SECRET exists in the litellm-provider-keys Secret. The
-#      guardrails service requires it on every /v1/guard call and fails closed
-#      without its own copy, so a gateway missing it gets 401s on every call.
-#      It is NOT in that Secret today. The hook degrades safely (record mode
-#      proceeds and logs) rather than failing requests, but it would be
-#      inspecting nothing while appearing to be on.
+# Requires CAIRO_GUARDRAIL_SECRET in the litellm-provider-keys Secret (present
+# since 2026-09-23). Without it every call is guard_unavailable while the hook
+# looks healthy.
 # SETTLED 2026-09-23 (CHG-2026-038, ADR-0005 §3c addendum): CAIRO_GUARDRAIL_TIMEOUT_S
 # now defaults to 2s, and the record-mode call stays synchronous. Fire-and-forget
 # was rejected: it would drop the would_block signal precisely on slow responses,
@@ -154,7 +154,7 @@ guardrails:
     litellm_params:
       guardrail: cairo_guardrail_hook.CairoGuardrail
       mode: "pre_call"
-      default_on: false
+      default_on: true
 
 # Langfuse callback registration REMOVED 2026-09-21 (CHG-2026-024).
 #

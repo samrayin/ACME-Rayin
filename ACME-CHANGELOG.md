@@ -4231,3 +4231,40 @@ deployed. Rollback: revert the commit.
 
 The ID was claimed on `main` (#66) on 2026-09-21, ahead of this content commit, per this repository's own
 claim-before-use rule; the gap between claim and content is this PR.
+
+## 2026-09-23 — Gateway guardrail hook switched on in record mode (CHG-2026-014)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-014 · Tier 1 · owner: Anees Ur Rahman |
+| **ADR** | [ADR-0005](acme-governance/adr/ADR-0005-gateway-guardrail-hook.md), [ADR-0005-A](acme-governance/adr/ADR-0005-A-step0-exclusion-design.md) |
+| **Approval** | Owner gated each step in session: B1 (owner-executed), B2 to B5, and acceptance of three security-review risks for record mode in dev |
+| **Dates** | Dev: **live since 2026-09-23 03:35Z**, record mode. The first attempt at 03:16Z was reverted (CHG-2026-044) · Prod: none exists |
+| **Impact** | Every gateway request waits for one guard call: measured median about 360 ms, max 1.6 s, capped at 2 s. Nothing is refused. Image unchanged |
+| **Schema change** | None |
+| **Rollback** | Set `default_on: false` (or restore the previous ConfigMap), then a watched `rollout restart` |
+| **Feature flag** | `default_on` in the gateway `guardrails:` block; mode `CAIRO_GUARDRAIL_MODE` (unset = record) |
+
+**What this commit does.** It makes the repo match live: `default_on: true`, and the config comment now
+describes the hook as on. Without it, the next ConfigMap apply from this repo would silently switch the
+hook off.
+
+**Switch-on evidence** (deployment record in acme-rayin-ops):
+- **B3:** the hook loaded from the ConfigMap; the gateway lists `cairo-guardrail` with `default_on: true`.
+- **B4:**
+  - Normal requests were inspected: guardrails logged `/v1/guard`, and the events reached CAIRO.
+  - A request with a **forged opt-out in body metadata was still inspected**.
+  - The judge's `/v1/completions` calls were skipped. A control proved that route is otherwise inspected.
+  - No loop.
+- **B5:** 11 guard calls, median about 360 ms, max 1,599 ms, 0 unavailable. Outcomes: 10 `allow`, 1 `would_redact`.
+
+**Accepted for record mode in dev** (owner, 2026-09-23 security review):
+- one large prompt can stall single-replica guardrails;
+- PII-bearing prompts skip the jailbreak rail, so would-block counts are low for those prompts;
+- the shared secret also authorises guardrails config changes.
+
+**Found and not yet fixed (minor):**
+- **What happens:** LiteLLM applies the key's opt-out itself, before the hook runs.
+- **Consequence:** the hook's `excluded` health record never fires, so the Step 0 exclusion shows only as missing records.
+
+**Not durable yet:** health records are gateway stdout only, until ADR-0009 is built.
