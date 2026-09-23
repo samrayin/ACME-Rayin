@@ -68,7 +68,7 @@
 | Capability | Status | What it does | Evidence |
 |---|---|---|---|
 | Trace retention, 30 days | 🟢 | ClickHouse removes trace rows after 30 days; applied 2026-09-23, expiry from 2026-09-24. A check proves it survives upgrades | CHG-2026-051 |
-| Raw event body retention, 30 days | 🟡 | A blob rule deletes current and previous versions. Built; the dev apply is pending | CHG-2026-052 |
+| Raw event body retention, 30 days | 🟡 | A blob rule deletes current and previous versions. **Applied in dev 2026-09-23**; first deletions and the proof are due 25–26 September | CHG-2026-052 |
 | Audit and request-log table retention | 🔵 | A purge job under a code-level safety guard; waits for the least-privilege cutover | PR #51, PD-0004 |
 | Proof of deletion | ⬜ | A purge test across every store | PD-0005 phase 1 |
 | Per-customer retention and delete-on-request | ⬜ | Retention per project; delete one user's or trace's data, audited | PD-0005 phase 2 |
@@ -113,3 +113,57 @@ These are tracked in the Readiness Ledger. They're listed here so this register 
 - **Data residency:** dev runs in Sweden Central, and each bank's region is to be decided (P0-7).
 - Secrets aren't yet held in Key Vault (P0-3). Network isolation and a WAF aren't in place: see the 2026-09-23 security review.
 - Single-node cluster; no tested backup and restore; no monitoring or alerting.
+
+## 10. Best practices in this setup
+
+The design choices behind CAIRO, what we did and why. "Partly" or "designed" says so where a practice isn't finished. The HTML view of this register shows the same list.
+
+### Data architecture
+
+| Practice | State | What we did | Why | Evidence |
+|---|---|---|---|---|
+| **Three separate data layers, never one pooled store** | 🟨 Partly | Evidence (the audit trail) in Postgres; operational traces in ClickHouse; analytics in a separate ClickHouse database with a minimised copy. Evidence and traces are in place today; the analytics layer is designed. | Banks judge a platform by how little it keeps and how well it proves what happened. Separate layers give each one purpose, one retention rule and one owner. Evidence stays immutable while analytics can be rebuilt, and a mistaken query exposes aggregates, not conversations. | PD-0006 |
+| **A dedicated project for gateway traces** | ✅ Implemented | Gateway traces go to their own CAIRO project, "Gateway traces", with their own key pair. | This keeps them apart from incident data, evaluator runs and the console's own traces. A project key can reach every project-level route, so a dedicated key limits the damage if the gateway is compromised. It also allows per-project retention and access, and a clean evidence trail. | CHG-2026-026, Issue #115 |
+| **One isolated deployment per bank** | 🔵 Designed | Each customer gets its own deployment and data stores. No bank's data goes into a central ACME store; any fleet metrics are anonymised aggregates only. | Data ownership, residency and blast radius stay per customer, which is the model regulated buyers expect. | PD-0006 |
+
+### Privacy and data minimisation
+
+| Practice | State | What we did | Why | Evidence |
+|---|---|---|---|---|
+| **Metadata by default; content only by decision** | ✅ Implemented | Traces carry model, tokens, cost, latency and status. Prompt and response text is removed before any trace is written. | Keep only what the purpose needs (Bahrain PDPL, data minimisation). Content tracing waits until deletion is proven, with a dated review, so it is never switched on by default. | ADR-0006, Issue #139 |
+| **Defence in depth on trace content, proven with markers** | ✅ Implemented | Three layers: message logging off at the gateway, an allowlist hook that strips caller-supplied trace fields, and a full allowlist on the caller's metadata copy (in review). A marker test planted text in every channel and searched both stores for it. | One control can fail silently. Layered controls, verified by a test that looks for the data in storage rather than trusting configuration, give evidence a reviewer can accept. | CHG-2026-026, CHG-2026-028, CHG-2026-054 |
+| **Personal data redacted before any AI judge sees it** | ✅ Implemented | Guardrails redacts personal data first, then runs its checks on the redacted text. | The judge model's provider never receives raw personal data, and a prompt that mixes personal data with an attack is still judged. | CHG-2026-045 |
+
+### Retention and deletion
+
+| Practice | State | What we did | Why | Evidence |
+|---|---|---|---|---|
+| **Preserve first, then delete** | ✅ Implemented | The P0-8 incident evidence was exported, with a SHA-256 manifest, before any retention rule could age it out. The owner ran the export. | Retention must never destroy evidence an investigation needs. In a bank deployment the same step is a server-side copy into immutable storage inside the bank's own environment. | CHG-2026-050 |
+| **Deletion that is real, not nominal** | ✅ Implemented | Blob deletion covers previous versions as well as current blobs, because versioning is on. The ClickHouse TTL has a 30-day floor in code, and a check proves it survives upgrades. | With versioning, deleting only the current blob keeps every old copy. An upgrade that recreates a table silently drops its TTL, so the check exists to catch that. | CHG-2026-051, CHG-2026-052 |
+| **Our own deletion path, no licence bypass** | 🟨 Partly | Retention uses standard ClickHouse and Azure features that ACME owns. The vendor's Enterprise retention code stays unused, and its gate is never bypassed. | The licence is respected, and the mechanism is ours to explain, test and support. The proof of deletion is due 24–26 September. | PD-0005 |
+
+### Security and credentials
+
+| Practice | State | What we did | Why | Evidence |
+|---|---|---|---|---|
+| **Least privilege between services** | ✅ Implemented | The gateway can only ask guardrails for verdicts. Changing guardrail settings needs a separate admin secret held only by the console, and equal secrets refuse to start. | A compromised gateway must not be able to switch the protections off. | CHG-2026-046 |
+| **Secrets are never displayed or handled by AI sessions** | 🟨 Partly | Secret writes are run by the owner, as Secret-to-Secret copies checked by length and never shown. AI sessions never read Secret contents. Exposures are recorded as incidents, including our own. | Every exposure so far came from a session or tool output, not an attacker. The rule removes that path. "Partly", because one exposure happened during enablement and was accepted for dev. | INC-2026-09-20-01, CHG-2026-026 |
+| **Tamper-resistant exclusion for the guardrail judge** | ✅ Implemented | The judge's own calls skip inspection based only on authenticated, admin-set key metadata. Forged metadata in a request is still inspected, proven live. | An exclusion that a caller could claim would be a bypass. | ADR-0005-A, CHG-2026-029 |
+| **Minimal network exposure** | 🟨 Partly | The gateway, guardrails and ClickHouse are not reachable from the internet. Storage accepts only the cluster network. External access is designed for model paths only. | Every exposed surface must be justified. "Partly", because network policies inside the cluster are not yet enforced. | Security review 23 Sep |
+
+### Reliability and safe change
+
+| Practice | State | What we did | Why | Evidence |
+|---|---|---|---|---|
+| **Observe before enforcing** | ✅ Implemented | The guardrail hook runs in record mode: every request is checked and recorded, nothing is blocked. Enforce mode is gated on alerting and availability. | Real traffic shows the false-positive rate and the latency before anything can refuse a request. | CHG-2026-014, ADR-0009 |
+| **Rollback anchor before every live change** | ✅ Implemented | Each change captures the previous configuration and image digest first, uses a watched restart, and has a written rollback. | The first guardrail switch-on failed its checks and was reverted in minutes, byte-identical to the anchor, with no caller affected. | CHG-2026-044 |
+| **Check inside the real system, not only in unit tests** | ✅ Implemented | An in-image check runs the hook inside the live gateway before switch-on. New tests are shown to fail on the old code. | 70 passing unit tests once encoded the same wrong assumption as the code. The in-image check caught it. | CHG-2026-044 |
+
+### Traceability and governance
+
+| Practice | State | What we did | Why | Evidence |
+|---|---|---|---|---|
+| **Every running image traces to a commit** | ✅ Implemented | Releases build, tag, then deploy the exact digest. A check proves what runs. Third-party images are pinned by digest, and the embedding model is baked into the image. | What runs is known and reproducible, with no silent upstream changes and no runtime downloads. | release.sh, CHG-2026-006, CHG-2026-049 |
+| **Change control with evidence** | ✅ Implemented | Every change carries an ID claimed first, a risk tier, an ADR where needed, a rollback plan and a changelog entry. Tier 1 changes need the owner's approval. | Auditable change history is a regulated-buyer requirement, and it is how this register can cite evidence for every row. | CHG-2026-001, CHG-2026-037 |
+| **Honest status** | ✅ Implemented | A capability shows as live only on verified evidence. What is not yet true is published beside what is. Ratings of findings are the owner's. | Due-diligence credibility depends on never overstating readiness. | Readiness Ledger |
+| **Product and environment kept apart** | 🟨 Partly | Product code and product-level docs are in the public repository; environment specifics are in a private operations repository. | "Partly", because some older environment identifiers remain in the public repository and are being scrubbed. | N-39, Security review 23 Sep |
