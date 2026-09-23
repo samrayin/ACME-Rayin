@@ -1,7 +1,18 @@
 # CAIRO — Vision Tracker
 **Purpose:** single source of truth for "are we there yet," updated at every stage. Not a changelog — a status board. The changelog and ledger remain the detailed record; this file answers one question fast: what's done, what's next, what's blocking.
 
-**Last updated:** 2026-09-23. **The guardrail hook is built and merged, switched off, and not deployed** — verified against the cluster, not assumed: the `litellm` pod has not restarted, the live ConfigMap holds only `litellm-config.yaml` (no `guardrails` block, no hook file), and `rayin-guardrails` received zero `/v1/guard` calls. CHG-2026-014 Step 1 (verdict path, #106), CHG-2026-038 (2s timeout, #108) and CHG-2026-041 (structured health record, #113) are merged; 70 unit tests pass; `default_on: false`. **The next gate is B1 — the shared secret — and it is the owner's to action.** ADR-0009 / CHG-2026-040 is designed and open at #114 pending final review, on a stated 6–10 working-day timeline rather than a compressed one. **2026-09-22:** CHG-2026-030 deployed as `acme-v4.38.0.6`, CHG-2026-029 closed, N-51 fixed (CHG-2026-034), CHG-2026-037 approval tiers adopted.
+**Last updated:** 2026-09-23 (reassessment pass, re-checked live). **Nothing has changed in dev since the hook merged, and B1 is still not done.** Re-checked 2026-09-23, not carried forward:
+- `verify-deployed.sh` reports all three components **TRACED**: console `acme-v4.38.0.6`, worker `worker-acme-v4.38.0.2`, guardrails `v0.1.0`. The guardrails image shows UNTRACED only when checked from this repo; from its own repo it traces to `v0.1.0`.
+- The gateway still runs LiteLLM 1.100.1 pinned by digest. It has not restarted, and its live config has no `guardrails` block and no callbacks.
+- The gateway Secret has **no `CAIRO_GUARDRAIL_SECRET` key**. Checked by key name only.
+
+**Also true today:**
+- The guardrail hook is built and merged, switched off, and not deployed: CHG-2026-014 Step 1 (#106), CHG-2026-038 (#108) and CHG-2026-041 (#113), with `default_on: false`.
+- ADR-0009 / CHG-2026-040 is **merged as a design** (#114). Building it is not started and waits on a real record-mode window.
+- The CHG-2026-035 "P0" is **closed as invalidated** (#119, merged 2026-09-23). CI's Postgres is being made to model Azure (#121, awaiting the owner's merge).
+- A full security and vulnerability check is **in progress**, covering the cluster and Azure, code and dependencies, and GitHub and CI. Results go to the owner before the switch-on order proceeds.
+
+**2026-09-22:** CHG-2026-030 deployed as `acme-v4.38.0.6`, CHG-2026-029 closed, N-51 fixed (CHG-2026-034), CHG-2026-037 approval tiers adopted.
 **Update rule:** Claude Code updates this file at the end of every work session or major milestone, before reporting back. If it hasn't been touched in a session where status changed, that's a process miss — flag it.
 
 ---
@@ -24,8 +35,8 @@
 
 | Step | What it is | Status | Blocking? |
 |---|---|---|---|
-| **Step 0** | Guardrail's judge model excluded from its own inspection (stop the gateway calling itself in a loop) | 🟡 Designed (ADR-0005-A), unit-tested 25/25 green. **Live key's prerequisite data now correct** (opt-out metadata, model allowlist, rpm cap all applied 2026-09-22, part of CHG-2026-029) — the exclusion **hook itself** is still not wired into the gateway | Blocks Step 1 |
-| **Step 1** | The hook itself, wired into the gateway, **record mode only** (logs decisions, blocks nothing) | ⬜ Not started | Blocks Step 2/3 |
+| **Step 0** | Guardrail's judge model excluded from its own inspection (stop the gateway calling itself in a loop) | 🟡 **Built and merged** in the hook (#106). The live key's prerequisite data is correct: the opt-out metadata, model allowlist and rpm cap were applied on 2026-09-22 under CHG-2026-029. It is **not verified live yet**; that is switch-on step B4 | Blocks Step 1 |
+| **Step 1** | The hook itself, wired into the gateway, **record mode only** (logs decisions, blocks nothing) | 🟡 **Code built and merged, switched off, not deployed.** Switch-on is B1 to B5, all Tier 1 and owner-gated: B1 secret → B2 ConfigMap with both files plus a watched restart → B3 the hook loads → B4 the Step 0 exclusion fires live → B5 real added latency measured | Blocks Step 2/3 |
 | **Step 2** | Make the audit trail durable / tamper-resistant | ⬜ Not started | Blocks Step 3 |
 | **Step 3** | Flip to **enforce** mode (actually blocks bad prompts) | ⬜ Not started, no date | Needs latency budget + multi-node infra |
 
@@ -46,8 +57,10 @@
 | **CHG-2026-014 / ADR-0005** | The gateway guardrail hook: Step 0 judge exclusion + Step 1 verdict path | 🟡 **Built and merged, switched off** (#106). `default_on: false`, not in the live ConfigMap, gateway not restarted. Built is not running |
 | **CHG-2026-038** | Guardrail call timeout set to 2s; the record-mode call stays synchronous | 🟢 Merged (#108). Fire-and-forget rejected — it would drop the would-block signal on exactly the slow responses record mode exists to measure |
 | **CHG-2026-041** | Structured health record (outcome + round-trip duration) to gateway stdout — the interim bridge | 🟢 **Merged (#113), shipped as this weekend's scope.** Yields both figures CHG-2026-039 found otherwise unrecoverable, with no schema, credential or release. Not durable: stdout is lost on restart unless collected |
-| **CHG-2026-040 / ADR-0009** | Durable guardrail health events: dedicated table, the three §3d metrics, credential, console view | 🟡 **Designed; #114 open pending final owner review.** Four open questions answered 2026-09-23. **6–10 working days, not weekend work** — §8 says so plainly rather than compressing it. Build gated on §10.1: collect a real record-mode window first, so the bridge's data corrects `failureClass` before it becomes a Postgres enum. ADR-0005 Step 4 amended with gate (10): alerting before `enforce` |
-| **B1 — shared secret** | `CAIRO_GUARDRAIL_SECRET` in the gateway Secret, matching the guardrails service's `config_shared_secret` | 🔴 **The next gate, owner's to action.** Without it every `/v1/guard` call 401s and the hook records `guard_unavailable` on everything while looking healthy. Credential-adjacent: the command is handed over, not run by Claude |
+| **CHG-2026-040 / ADR-0009** | Durable guardrail health events: dedicated table, the three §3d metrics, credential, console view | 🟡 **Design merged (#114, 2026-09-23); build not started.** Four open questions answered 2026-09-23. **6–10 working days, not weekend work** — §8 says so plainly rather than compressing it. Build gated on §10.1: collect a real record-mode window first, so the bridge's data corrects `failureClass` before it becomes a Postgres enum. ADR-0005 Step 4 amended with gate (10): alerting before `enforce` |
+| **B1 — shared secret** | `CAIRO_GUARDRAIL_SECRET` in the gateway Secret, matching the guardrails service's `config_shared_secret` | 🔴 **The next gate, owner's to action. Still not done: re-checked 2026-09-23 by key name, and the gateway Secret has no such key.** Without it every `/v1/guard` call gets a 401, and the hook records `guard_unavailable` on everything while looking healthy. Credential-adjacent: the command is handed over, not run by Claude |
+| **Security and vulnerability check** | Read-only review of the cluster and Azure, the code and its dependencies, and GitHub and CI, ahead of the B1–B5 switch-on | 🟡 **In progress, 2026-09-23.** Findings go to the owner with proposed severities; the ratings are the owner's |
+| **CI on `main`** | The CI/CD run for `main` @ `29a7fdae` | 🟡 **Pending for about 10 hours with no jobs started**, observed 2026-09-23. "Storybook Preview" and "Deploy to ECS" (an upstream Langfuse workflow) are queued behind it. Cause not yet diagnosed |
 
 ---
 
@@ -71,8 +84,7 @@
 
 | Item | Why parked |
 |---|---|
-| **Langfuse gateway tracing (ADR-0006)** | Blocked on metadata-stripping hook (design done, not built) + P0-11 (no deletion path). Confirmed 2026-09-22: not the right time. |
-| **Guardrail hook build (Step 1)** | Blocked on Step 0's hook being wired in — the live key's own data is ready, the hook code is not. |
+| **Langfuse gateway tracing (ADR-0006)** | ADR written, Gate A passed, still Proposed. Blocked on two things: the metadata allowlist hook (CHG-2026-028, built with tests in open PR #84, not merged) and P0-11 (no deletion path). Confirmed 2026-09-22: not the right time. |
 | **Enforce mode (Step 3)** | No latency budget exists yet; single-node cluster makes fail-closed a single point of failure. |
 
 ---
@@ -84,4 +96,9 @@
 - 🔴 Blocked or a known active gap
 - ⬜ Not started
 
-**Next update trigger:** when CHG-2026-036 item 2 (P1, `layout.clienttest.ts` non-termination) is fixed, when the guardrail hook is switched on (B1 → B5), or at the next milestone on the ADR-0009 build. CHG-2026-035 is closed as invalidated and is no longer a trigger.
+**Next update trigger:** any of these:
+- the security check's results;
+- B1 done;
+- the owner's merge of #121;
+- a B2–B5 switch-on step;
+- a fix for CHG-2026-036 item 2 (P1, `layout.clienttest.ts`) or the P1 audit-bypass backlog item.
