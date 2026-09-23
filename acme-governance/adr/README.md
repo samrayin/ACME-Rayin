@@ -16,3 +16,4 @@ are marked as such and never claim approvals that were not recorded at the time.
 | [ADR-0005](ADR-0005-gateway-guardrail-hook.md) | Enforcing the guardrail on the gateway path: hook, timeout, latency budget, record-only before fail-closed (CHG-2026-014, revised by -018 and -022) | Forward | Proposed — design only | 2026-09-20 |
 | [ADR-0005-A](ADR-0005-A-step0-exclusion-design.md) | Step 0: excluding the judge path from the guardrail hook, and proving it (CHG-2026-023) | Forward | Approved design — nothing built | 2026-09-21 |
 | ADR-0006 | Gateway tracing into CAIRO: what is written, where, what it costs in retention, and how it is turned off (CHG-2026-026) | Forward | Claimed in the register — not yet written | — |
+| [ADR-0010](ADR-0010-gateway-model-management.md) | Gateway model management and the complexity auto router: credentials, salt key, endpoint safety, audit, permission and flag (CHG-2026-056) | Forward | Proposed — design only | 2026-09-23 |
