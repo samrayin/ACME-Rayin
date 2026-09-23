@@ -58,7 +58,7 @@
 
 | Capability | Status | What it does | Evidence |
 |---|---|---|---|
-| Gateway tracing into CAIRO, metadata only | 🟢 | Every gateway request is a trace: model, tokens, cost, latency, status. **No prompt or response text**, verified live. Over OTLP | CHG-2026-026, -028, ADR-0006 |
+| Gateway tracing into CAIRO, metadata only | 🟢 | Every gateway request is a trace: model, tokens, cost, latency, status. **No prompt or response text, and no caller-supplied metadata or headers**, verified live with markers in every channel. Over OTLP | CHG-2026-026, -028, -054, ADR-0006 |
 | Token and cost per application, key, model and user | 🟢 | From traces and the request-log mirror | CHG-2026-008, CHG-2026-026 |
 | Content tracing (prompt and response text) | ⬜ | Deferred until deletion is proven; review 2026-10-23 | Issue #139 |
 | Analytics and "talk to your data" | 🔵 | A curated, minimised analytics layer; a governed natural-language question interface | PD-0006 |
