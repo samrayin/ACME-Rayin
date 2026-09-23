@@ -14,6 +14,7 @@
   - one guardrail inspection per routed request;
   - a console-added model served a real call.
   - Follow-ups: an egress NetworkPolicy, and keeping guardrails models out of router tiers.
+- **Trace hook full allowlist (CHG-2026-054):** redeployed in dev at 14:39Z, hook file only, watched restart. A live marker test found no caller headers or free metadata in ClickHouse or blob. Only the `user` field remains, by design (N-34), so ADR-0006's residuals are closed.
 - **Capability register (CHG-2026-053):** `acme-governance/CAIRO-CAPABILITIES.md`, plus an HTML view (private artifact).
 - **Claude Code traces re-enabled into a dev project (CHG-2026-055, owner decision).** This includes a backfill of past sessions, with credential-bearing sessions held back. It reopens the P0-2 export path by decision; the rating is unchanged. Details are in the acme-rayin-ops record.
 - **PD-0007 (proposed):** CAIRO's first engagement is an observe-only AI usage assessment, built on record mode.
