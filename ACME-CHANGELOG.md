@@ -4277,3 +4277,26 @@ security or compliance control — follow `CRITICAL-FINDING-RESOLUTION-STANDARD.
 (CHG-2026-019) before they reach the four standing records, and that the standard is
 not itself a fifth record. Documentation only; nothing built or deployed. Rollback:
 revert the commit.
+
+---
+
+## 2026-09-22 — Doc-only fixes: Codespell typo and stale ADR index (CHG-2026-027)
+
+**What:** two `codespell`-failing "unparseable" → "unparsable" typos fixed in
+`acme-governance/adr/ADR-0005-gateway-guardrail-hook.md` (lines 56 and 232), and
+`acme-governance/adr/README.md`'s ADR index brought in line with
+`CHANGE-ID-REGISTER.md`'s ADR table — it was missing rows for ADR-0002, -0004,
+-0005, -0005-A and -0006, three of which are register-only claims with no written
+document yet, stated as such rather than implied done.
+
+**Why:** the typo has been failing `Codespell` on every push to `main` since
+2026-09-21 (commit 3a3e39c6). The stale index was tracked as issue #76.
+
+**Risk:** none — documentation only, no product code, no config, no cluster
+dependency.
+
+**Verified:** both corrected strings match `codespell`'s expected spelling
+(`unparsable`); the new ADR index rows were cross-checked word-for-word against the
+register's own ADR table and the ADR files that actually exist in `acme-governance/adr/`.
+
+**Deployment status:** nothing to deploy — doc-only.
