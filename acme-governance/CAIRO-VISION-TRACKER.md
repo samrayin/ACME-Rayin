@@ -2,7 +2,7 @@
 **Purpose:** single source of truth for "are we there yet," updated at every stage. Not a changelog — a status board. The changelog and ledger remain the detailed record; this file answers one question fast: what's done, what's next, what's blocking.
 
 **Last updated:** 2026-09-23. **The guardrail hook is ON in dev, in record mode, since 03:35Z. This is the first time a live prompt has been inspected.**
-- **Guardrails v0.2.1 is live (04:44Z).** It is v0.2.0's three resolved risks plus the startup warm-up (CHG-2026-048), so the first request after a restart is inspected.
+- **Guardrails v0.2.2 is live (05:05Z)** and needs no internet at runtime. It is v0.2.1 plus the embedding model pinned into the image (CHG-2026-049, N-58).
   - over-size prompts are blocked unscanned (9 ms);
   - PII prompts are now judged: a PII + jailbreak prompt is blocked;
   - the gateway's secret gets 401 on config and events, while the console uses a separate admin secret. See CHG-2026-045/046.
@@ -76,7 +76,8 @@
 | **CHG-2026-044** | Guardrail hook reads LiteLLM 1.100.1's real `{"texts": [...]}` input, prints its health record, and returns redactions in the right shape | 🟢 **Merged (#125) and proven live** by the second switch-on. 79 unit tests, controlled against the old hook. `in_image_check.py` passes inside the live gateway pod: guardrails answered `allow` in 621 ms. Found by the reverted switch-on of 2026-09-23 |
 | **CHG-2026-045** | rayin-guardrails: size limit, PII scan off the event loop, rails on redacted text | 🟢 **Deployed as v0.2.0 (2026-09-23), verified live.** Rail cost: PII prompts now make a judge call (judge key capped at 10 rpm) |
 | **CHG-2026-046** | rayin-guardrails: admin secret split; the gateway's secret is `/v1/guard` only | 🟢 **Deployed as v0.2.0, verified both directions.** Guard secret gets 401 on config and events; console admin secret gets 200 there and 401 on `/v1/guard` |
-| **CHG-2026-048** | Guardrails startup warm-up: the PII model and rail engine load before the pod is Ready; a rail toggle rebuilds at once | 🟢 **Deployed as v0.2.1 (2026-09-23), verified live.** The warm-up took 6.1 s at startup, and the first gateway request after the restart was inspected in 369 ms (was `guard_unavailable` after 6.3 s). The embedding model is still fetched unpinned at start (N-58) |
+| **CHG-2026-048** | Guardrails startup warm-up: the PII model and rail engine load before the pod is Ready; a rail toggle rebuilds at once | 🟢 **Deployed as v0.2.1 (2026-09-23), verified live.** The warm-up took 6.1 s at startup, and the first gateway request after the restart was inspected in 369 ms (was `guard_unavailable` after 6.3 s). |
+| **CHG-2026-049** | Guardrails embedding model baked into the image at pinned revision `5f1b8cd7…`, runs offline (Ledger N-58) | 🟢 **Deployed as v0.2.2 (2026-09-23), verified live.** 0 Hugging Face requests at startup; warm-up 2.6 s (was 6.1 s); rails unchanged. **N-58 proposed for closure. The owner decides** |
 | **CI on `main`** | The CI/CD run for `main` @ `29a7fdae` | 🟡 **Pending for about 10 hours with no jobs started**, observed 2026-09-23. "Storybook Preview" and "Deploy to ECS" (an upstream Langfuse workflow) are queued behind it. Cause not yet diagnosed |
 
 ---
