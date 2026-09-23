@@ -68,6 +68,7 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | CHG-2026-044 | 1 | Guardrail hook reads nothing on LiteLLM 1.100.1: the unified guardrail layer passes `{"texts": [...]}`, which `extract_text` does not recognise, so every request records `guard_unreadable` and `/v1/guard` is never called; and the `cairo.guardrail` health record never reaches gateway stdout. Found on the first live switch-on (B2–B4, 2026-09-23), which was reverted. Fix: read the real input shape, give the logger its own stdout handler, test against LiteLLM's real input type and in-image | Anees Ur Rahman | `fix/chg-2026-044-hook-input-shape` | Claimed |
 | CHG-2026-045 | 1 | rayin-guardrails request-path hardening: input size limit, PII scan off the event loop, rails run on redacted text | Anees Ur Rahman | `fix/chg-2026-045-guard-request-hardening` (rayin-guardrails) | Claimed |
 | CHG-2026-046 | 1 | rayin-guardrails admin secret split: `/v1/guard` keeps the gateway's secret; config, events and status endpoints require a separate admin secret | Anees Ur Rahman | `fix/chg-2026-046-admin-secret-split` (rayin-guardrails) | Claimed |
+| CHG-2026-047 | 2 | One-line pointer in `CHANGE-PROCEDURE.md` §6, noting that critical findings (P0/P1, or any finding gating enforcement of a security or compliance control) follow `CRITICAL-FINDING-RESOLUTION-STANDARD.md` (CHG-2026-019) — the standard governs the write-up, it is not a fifth record. Documentation only | Anees Ur Rahman | `docs/claim-chg-2026-047-procedure-pointer` | Claimed |
 
 ## ADR numbers
 
