@@ -4268,3 +4268,12 @@ hook off.
 - **Consequence:** the hook's `excluded` health record never fires, so the Step 0 exclusion shows only as missing records.
 
 **Not durable yet:** health records are gateway stdout only, until ADR-0009 is built.
+
+## 2026-09-23 — Pointer to the Critical Finding Resolution Standard in the change procedure (CHG-2026-047)
+
+CHG-2026-047 · Tier 2 · owner: Anees Ur Rahman. One paragraph in `CHANGE-PROCEDURE.md`
+§6, noting that critical findings — P0/P1, and anything that gates enforcement of a
+security or compliance control — follow `CRITICAL-FINDING-RESOLUTION-STANDARD.md`
+(CHG-2026-019) before they reach the four standing records, and that the standard is
+not itself a fifth record. Documentation only; nothing built or deployed. Rollback:
+revert the commit.
