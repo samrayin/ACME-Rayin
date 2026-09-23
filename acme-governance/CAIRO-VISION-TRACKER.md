@@ -8,6 +8,12 @@
   - ClickHouse 30-day TTL applied (CHG-2026-051);
   - blob lifecycle rule applied, covering current and previous versions (CHG-2026-052).
   - **The purge proof is due 24–26 September.**
+- **Gateway models from the console (CHG-2026-056, ADR-0010):** live in dev since 13:55Z. Admins add, edit and remove models and endpoints, and create a smart router that picks a model per request by complexity, scored locally. Console `acme-v4.38.0.7`; the gateway stores console models encrypted with a dedicated salt key. Gate C passed:
+  - 9 of 9 unsafe endpoints, providers and names were refused;
+  - a test key appeared in no response, log, audit row or trace store;
+  - one guardrail inspection per routed request;
+  - a console-added model served a real call.
+  - Follow-ups: an egress NetworkPolicy, and keeping guardrails models out of router tiers.
 - **Capability register (CHG-2026-053):** `acme-governance/CAIRO-CAPABILITIES.md`, plus an HTML view (private artifact).
 - **Claude Code traces re-enabled into a dev project (CHG-2026-055, owner decision).** This includes a backfill of past sessions, with credential-bearing sessions held back. It reopens the P0-2 export path by decision; the rating is unchanged. Details are in the acme-rayin-ops record.
 - **PD-0007 (proposed):** CAIRO's first engagement is an observe-only AI usage assessment, built on record mode.
