@@ -207,7 +207,7 @@ class TestRequesterMetadataCopy(unittest.TestCase):
     def test_prompt_inside_requester_metadata_is_stripped(self):
         data = {"metadata": {"requester_metadata": {"prompt": "SECRET TEXT", "app": "erp"}}}
         strip_untrusted_trace_metadata(data)
-        self.assertEqual(data["metadata"]["requester_metadata"], {"app": "erp"})
+        self.assertEqual(data["metadata"]["requester_metadata"], {})
 
     def test_trace_keys_inside_requester_metadata_are_stripped(self):
         data = {"litellm_metadata": {"requester_metadata": {"trace_name": "x", "debug_langfuse": True}}}
@@ -240,6 +240,48 @@ class TestModuleContract(unittest.TestCase):
         self.assertNotIn("prompt", out["metadata"])
         self.assertNotIn("trace_x", out["metadata"])
         self.assertNotIn("langfuse_trace_id", out["proxy_server_request"]["headers"])
+
+
+class TestRequesterMetadataAllowlist(unittest.TestCase):
+    """CHG-2026-054: caller free text in requester_metadata never reaches a trace."""
+
+    def test_arbitrary_caller_key_is_removed(self):
+        data = {"metadata": {"requester_metadata": {"residual_note": "free text"}}}
+        strip_untrusted_trace_metadata(data)
+        self.assertEqual(data["metadata"]["requester_metadata"], {})
+
+    def test_caller_headers_copy_is_removed(self):
+        data = {"metadata": {"requester_metadata": {"headers": {"langfuse_trace_name": "x", "user-agent": "y"}}}}
+        strip_untrusted_trace_metadata(data)
+        self.assertNotIn("headers", data["metadata"]["requester_metadata"])
+
+    def test_litellm_metadata_container_is_covered(self):
+        data = {"litellm_metadata": {"requester_metadata": {"note": "x"}}}
+        strip_untrusted_trace_metadata(data)
+        self.assertEqual(data["litellm_metadata"]["requester_metadata"], {})
+
+    def test_gateway_written_fields_are_untouched(self):
+        data = {"metadata": {"user_api_key_alias": "app-key", "user_api_key_team_id": "t1", "requester_metadata": {"note": "x"}}}
+        strip_untrusted_trace_metadata(data)
+        self.assertEqual(data["metadata"]["user_api_key_alias"], "app-key")
+        self.assertEqual(data["metadata"]["user_api_key_team_id"], "t1")
+
+    def test_allowlisted_key_survives(self):
+        import cairo_trace_metadata_hook as m
+
+        original = m.REQUESTER_METADATA_ALLOWLIST
+        m.REQUESTER_METADATA_ALLOWLIST = frozenset({"app"})
+        try:
+            data = {"metadata": {"requester_metadata": {"app": "erp", "note": "x"}}}
+            strip_untrusted_trace_metadata(data)
+            self.assertEqual(data["metadata"]["requester_metadata"], {"app": "erp"})
+        finally:
+            m.REQUESTER_METADATA_ALLOWLIST = original
+
+    def test_allowlist_is_empty_by_default(self):
+        import cairo_trace_metadata_hook as m
+
+        self.assertEqual(m.REQUESTER_METADATA_ALLOWLIST, frozenset())
 
 
 class TestRegistrationInstance(unittest.TestCase):
