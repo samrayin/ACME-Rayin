@@ -4322,3 +4322,27 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 **Why metadata only:** traces cannot be deleted on this OSS build (P0-11). Content tracing waits for the internal deletion path; the review is due 2026-10-23.
 
 **Known-incomplete:** Gate C runs after merge, live, with rollback armed. The trace `user_id` is stripped (`user_api_key_end_user_id`, per ADR-0006 §11), so per-user attribution in traces waits for verified identity (N-34).
+
+## 2026-09-23 — ClickHouse trace tables get a 30-day retention TTL (CHG-2026-051)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-051 · Tier 1 · owner: Anees Ur Rahman |
+| **Design** | PD-0005 phase 1: the internal deletion path for P0-11. No Enterprise licence; Langfuse's `ee/` retention stays unused |
+| **Approval** | Owner, 2026-09-23 (retention first; evidence export before any TTL) |
+| **Dates** | Dev: **not applied**. Waits for CHG-2026-050 (P0-8 evidence export) and the owner's go · Prod: none exists |
+| **Impact** | Rows older than 30 days are deleted by ClickHouse: `events_core`, `events_full`, `observations`, `traces`, `scores`, `blob_storage_file_log`. The first apply deletes anything already past 30 days |
+| **Schema change** | Table TTL setting only. No columns, no migration |
+| **Rollback** | [plan](acme-governance/rollback/chg-2026-051-clickhouse-retention-ttl/ROLLBACK.md): `clickhouse-retention-ttl.sh remove`. Already-deleted rows cannot be restored |
+| **Feature flag** | None. Apply or remove |
+
+**What:** `scripts/retention/clickhouse-retention-ttl.sh` with three modes:
+- `apply --days N`, with a floor of 30 enforced in the script;
+- `verify`, which exits 1 if any table lacks the TTL. **Run it after every Langfuse upgrade**, because a migration that recreates a table drops its TTL silently;
+- `remove`, the rollback.
+
+**Why:** P0-11. Nothing in ClickHouse could be deleted. The period matches the compliance framework's 30 days, and the blob lifecycle rule (CHG-2026-052) uses the same period, so raw bodies and their rows age out together.
+
+**Tested:** syntax and rendering on a throwaway table (created and dropped). `verify` run read-only against dev: every table reports no TTL, as expected before apply. The floor refuses `--days 7`.
+
+**Known-incomplete:** `verify` is not yet wired into `release.sh` or `verify-deployed.sh`. Until it is, run it by hand after upgrades.
