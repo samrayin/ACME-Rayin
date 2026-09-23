@@ -4217,3 +4217,17 @@ the running image, not inferred:
 now a required step before the next switch-on, alongside B4's forged-metadata test.
 
 **Deployment status:** source only. Switching on again is B2–B5, owner-gated.
+
+## 2026-09-23 — Critical Finding Resolution Standard adopted as standing procedure (no release)
+
+CHG-2026-019 · Tier 2 · owner: Anees Ur Rahman. New `acme-governance/CRITICAL-FINDING-RESOLUTION-STANDARD.md`:
+every P0 or P1 finding, and every finding that gates enforcement of a security or compliance control, is
+diagnosed, fixed and closed against a five-question test (root cause or symptom; what the fix newly
+exposes; verified against the running system; tested in isolation; independent reviewer) and written up
+in five sections (Resolution, What it might newly expose, Verification plan, Sequencing and ownership,
+What "done" looks like). A question that cannot be answered yet is stated as unanswered and treated as
+the blocker. Ratings and closure decisions remain the owner's. Documentation only; nothing is built or
+deployed. Rollback: revert the commit.
+
+The ID was claimed on `main` (#66) on 2026-09-21, ahead of this content commit, per this repository's own
+claim-before-use rule; the gap between claim and content is this PR.
