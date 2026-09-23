@@ -78,6 +78,7 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | CHG-2026-028 | 2 | Implementation of ADR-0006 §11's allowlist-shaped `async_pre_call_hook`: strips the unbounded `trace_` metadata namespace (permit-none allowlist), `metadata.prompt`, `debug_langfuse`, and four identifier fields, across both `metadata`/`litellm_metadata` containers and `langfuse_*`-prefixed HTTP headers. **Hook and tests only — no ConfigMap edit, no gateway restart, no callback enablement.** ADR-0006 stays Proposed until this is built AND verified | Anees Ur Rahman | `feat/chg-2026-028-cairo-trace-metadata-hook` | Claimed |
 | CHG-2026-053 | 2 | CAIRO capability register | Anees Ur Rahman | `docs/chg-2026-053-capability-register` | Claimed |
 | CHG-2026-054 | 1 | Trace-metadata hook: full allowlist on caller-supplied `requester_metadata` (closes ADR-0006 §13 residuals) | Anees Ur Rahman | `fix/chg-2026-054-requester-metadata-allowlist` | Claimed |
+| CHG-2026-056 | 1 | LLM Gateway: add, edit and delete models and endpoints from the console (database-stored models, `store_model_in_db`), and a complexity auto router (`auto_router/complexity_router`, local heuristic scoring only). Touches provider credentials and gateway configuration, so Tier 1. Design first in ADR-0010; no build, config change or restart before the owner accepts it | Anees Ur Rahman | `docs/adr-0010-gateway-model-management` | Claimed |
 | CHG-2026-055 | 1 | Claude Code observability plugin export re-enabled into a dev CAIRO project, with a backfill of past sessions (owner decision, 2026-09-23). Environment details are in the private operations record. **Claimed after the change was made**: the owner decided and the work ran in one session; recorded here so the change is traceable. Reopens the P0-2 export path by decision; rating unchanged | Anees Ur Rahman | records in `acme-rayin-ops` | Claimed (retrospective) |
 
 ## ADR numbers
@@ -94,6 +95,7 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | ADR-0007 | CHG-2026-030 | Key limits edit UI: where it lives, what it shows, how it avoids silently clearing budget/duration/token fields it doesn't expose | Claimed |
 | ADR-0008 | CHG-2026-033 | CI runner provisioning for the heavy `pipeline.yml` jobs (N-51): provision the Blacksmith GitHub App vs. move to `ubuntu-latest` | Accepted — owner picked path (b), implemented and merged (CHG-2026-034, #94) |
 | ADR-0009 | CHG-2026-040 | Guardrail health events: dedicated table, the three §3d metrics, the credential and its scope, and what production-grade completion actually costs | Claimed — design only |
+| ADR-0010 | CHG-2026-056 | Gateway model management and the complexity auto router: where models and provider credentials are stored, encryption key (salt) handling, endpoint restrictions, audit, permissions, and how it is turned off | Claimed |
 
 The rows above for CHG-2026-001 to -003 and ADR-0000 to -0002 were reconstructed
 on 2026-09-19 from `main` and every branch on the remote; they were not claimed
