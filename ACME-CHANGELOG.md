@@ -4160,3 +4160,60 @@ filed on its own and cross-referencing ACME-Rayin#23.
 invocations and 5 in `test-docker-build`, whose web image runs
 `prisma migrate deploy` on boot and hit the same failure). No upstream compose
 or `.env` file changed.
+
+## 2026-09-23 — Guardrail hook reads LiteLLM's real input shape, and its health record prints (CHG-2026-044)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-044 · Tier 1 · owner: Anees Ur Rahman |
+| **ADR** | [ADR-0005](acme-governance/adr/ADR-0005-gateway-guardrail-hook.md) (no ADR change: this corrects the implementation, not the design) |
+| **Approval** | Owner approved the fix 2026-09-23. Merge is the owner's. |
+| **Dates** | Dev: source only, not applied. The switch-on attempt that found this ran 03:16–03:21 UTC and was reverted |
+| **Impact** | None until the hook is switched on again. Hook file and tests only |
+| **Schema change** | None |
+| **Rollback** | Revert the commit. Nothing live depends on it |
+| **Feature flag** | The `guardrails:` block in the gateway ConfigMap (`default_on`), unchanged |
+
+**What happened.** The first switch-on (B2, owner-approved) applied the ConfigMap with both files and
+restarted the gateway. B3 passed: LiteLLM loaded `cairo_guardrail_hook.CairoGuardrail` from the
+ConfigMap mount, with `default_on: true`, record mode and the shared secret present. **B4 failed.**
+Two test requests returned 200, but rayin-guardrails received no `/v1/guard` call and the gateway log
+held no health record. The ConfigMap was restored from the captured anchor and the gateway restarted;
+the restored config was verified identical to the anchor, and the gateway lists no guardrails. No
+caller saw an error at any point.
+
+**Three defects, all the same kind: the hook assumed shapes LiteLLM 1.100.1 does not use.** Read from
+the running image, not inferred:
+
+1. **Input.** LiteLLM's unified guardrail layer calls `apply_guardrail` with
+   `GenericGuardrailAPIInputs`, a dict `{"texts": [...]}`
+   (`llms/openai/chat/guardrail_translation/handler.py`). `extract_text` read a dict as a single
+   chat message, looked for `content`, found none, and returned None. So every request recorded
+   `guard_unreadable`, `called: false`, and nothing was inspected.
+2. **Health record.** The `cairo.guardrail` logger emits at INFO, which the gateway does not print, so
+   CHG-2026-041's record was silently dropped. The unit tests set the logger's level themselves, which
+   is why they passed.
+3. **Return value (enforce only).** LiteLLM reads `.get("texts")` from what the hook returns. An
+   enforced redaction returned a bare string, which would have crashed the request rather than
+   redacting it. Not reachable today; fixed because it is the same mismatch.
+
+**Fix.**
+- `extract_text` reads `{"texts": [...]}` and still reads the older shapes.
+- The logger gets its own stdout handler at INFO, with propagation off, and is re-enabled if the host
+  disabled it. It is set up at import and again at construction.
+- A redaction is returned as `{"texts": [redacted]}`. Several texts are checked as one joined string,
+  so a redaction across several cannot be mapped back onto them; that refuses rather than guesses.
+
+**Verification.**
+- `python -m unittest discover -s integrations/litellm/tests`: 79 pass (70 before, 9 new).
+- Control: the new tests run against the old hook gave 5 failures and 2 errors, so they detect the
+  defects.
+- New `integrations/litellm/tests/in_image_check.py`, run inside the live gateway pod with the hook
+  piped in and nothing written to the pod: **PASS**. LiteLLM's own input type was read, guardrails was
+  called and answered `allow` in 621 ms, the input came back unchanged, and the health record printed.
+  That also proves the B1 secret matches: a mismatch would have been a 401 and `guard_unavailable`.
+
+**Lesson.** 70 passing unit tests encoded the same wrong assumption as the code. The in-image check is
+now a required step before the next switch-on, alongside B4's forged-metadata test.
+
+**Deployment status:** source only. Switching on again is B2–B5, owner-gated.

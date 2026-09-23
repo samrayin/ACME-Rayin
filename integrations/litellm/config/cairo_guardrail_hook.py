@@ -34,10 +34,12 @@ Where Step 1's ambiguities resolve, and why it is the mirror image of Step 0:
 * In **enforce** mode those same failures resolve to **refuse** (fail closed,
   ADR-0005 §3b). Enforce is unreachable until every ADR-0005 §5 Step 4 gate holds.
 
-**Unconfirmed against a live gateway** (needs ADR-0005-A layer 2, and is why
-``extract_text`` is defensive rather than assertive): the exact shape LiteLLM
-hands to ``inputs`` for each ``input_type``. The documented shapes are handled;
-anything else returns None, which is a record-mode proceed, not a crash.
+**Input shape, confirmed live 2026-09-23 (CHG-2026-044).** LiteLLM 1.100.1 does
+not pass messages. Its unified guardrail layer passes ``GenericGuardrailAPIInputs``,
+a dict ``{"texts": [...]}``, and expects the same shape back. The first switch-on
+proved the earlier assumption wrong: every request recorded ``guard_unreadable``
+and nothing was inspected. ``extract_text`` still reads the older shapes and still
+returns None for anything unrecognised, which is a record-mode proceed.
 """
 
 from __future__ import annotations
@@ -45,6 +47,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, NamedTuple, Optional
@@ -67,6 +70,27 @@ except Exception:
 
 
 log = logging.getLogger("cairo.guardrail")
+
+
+def _ensure_health_output(logger: logging.Logger) -> None:
+    """Make INFO lines on ``logger`` reach stdout whatever the host configured.
+
+    The gateway does not print INFO from third-party loggers, so on the first
+    switch-on the health record (CHG-2026-041) was silently dropped (CHG-2026-044).
+    Idempotent: called at import and again at construction, because the proxy may
+    reconfigure logging in between.
+    """
+    if not any(getattr(h, "_cairo_health", False) for h in logger.handlers):
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        handler._cairo_health = True  # type: ignore[attr-defined]
+        logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    logger.disabled = False
+
+
+_ensure_health_output(log)
 
 GUARDRAIL_NAME = "cairo-guardrail"
 
@@ -140,6 +164,12 @@ def extract_text(inputs: Any) -> Optional[str]:
     try:
         if isinstance(inputs, str):
             return inputs or None
+        if isinstance(inputs, dict) and "texts" in inputs:
+            texts = inputs.get("texts")
+            if not isinstance(texts, (list, tuple)):
+                return None
+            joined = "\n".join(t for t in texts if isinstance(t, str) and t)
+            return joined or None
         if isinstance(inputs, dict):
             return _text_of_message(inputs)
         if isinstance(inputs, (list, tuple)):
@@ -449,6 +479,7 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
         # Read once at construction. Absent means every call 401s, so it is
         # treated as unavailable rather than attempted -- see _post_guard.
         self.guard_secret = os.environ.get(GUARD_SECRET_ENV, "").strip()
+        _ensure_health_output(log)
 
     def _is_enforcing(self) -> bool:
         return self.mode == "enforce"
@@ -544,8 +575,26 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
                 f"Blocked by {self.guardrail_name} ({outcome.event})."
             )
         if outcome.text is not None:
-            return outcome.text
+            return self._replace_text(inputs, outcome.text)
         return inputs
+
+    def _replace_text(self, inputs: Any, text: str) -> Any:
+        """Put a redaction back in the shape the caller handed us.
+
+        LiteLLM reads ``.get("texts")`` from the return value, so a bare string
+        would crash the request instead of redacting it. Several texts are
+        checked as one joined string, so a single redacted string cannot be
+        mapped back onto them: refuse rather than guess which part was redacted.
+        Only reachable in enforce mode, where refusing is the fail-closed answer.
+        """
+        if isinstance(inputs, dict) and "texts" in inputs:
+            texts = inputs.get("texts")
+            if isinstance(texts, (list, tuple)) and len(texts) == 1:
+                return {**inputs, "texts": [text]}
+            raise CairoGuardrailBlocked(
+                f"Blocked by {self.guardrail_name} (redact_unmappable)."
+            )
+        return text
 
     async def _post_guard(self, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """POST to /v1/guard. Returns the verdict, or None if there isn't one.
