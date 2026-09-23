@@ -4103,3 +4103,60 @@ re-discovered.**
 register Rule 4. The two follow-ons it surfaced remain real and are tracked
 elsewhere: the CI environment correction, and the unchanged observation that
 CI's first genuine run is what surfaced all of this.
+
+## 2026-09-23 — CI's Postgres now models Azure Flexible Server (CHG-2026-043)
+
+**A test-environment correction. No migration, no schema, no product code, and
+no change to what any developer runs locally.**
+
+**Why.** CI ran stock `docker.io/postgres:17` with `POSTGRES_USER=postgres`,
+making `postgres` the *bootstrap* superuser — the role that owns every catalog
+object initdb created. Postgres refuses `REASSIGN OWNED BY <bootstrap role>`
+unconditionally (`2BP01`), because those objects are pinned; no grant works
+around it. Azure Flexible Server is not shaped that way: the customer admin
+login belongs to `azure_pg_admin` and is explicitly **not** the bootstrap
+superuser, so it owns no pinned objects and the statement succeeds.
+
+CI was therefore running the one database shape migration `20260917090000` is
+documented not to survive, and reporting a production defect that does not
+exist. That is exactly what happened — raised, rated **P0**, and closed as
+invalidated (CHG-2026-035). This change stops CI producing that class of false
+finding.
+
+**What it does.** A CI-only overlay, `docker-compose.ci-azure-like.yml`, layered
+onto the dev compose files in CI only. It renames the container's bootstrap
+superuser to `pgboot`, which frees the name `postgres` to be an ordinary admin
+role, and mounts `scripts/ci/postgres-azure-like-init.sql` to create that role
+(`NOSUPERUSER CREATEDB CREATEROLE`, mirroring the Azure admin login) and give it
+ownership of the database and public schema it uses. Since Postgres 15 the
+public schema no longer grants `CREATE` to `PUBLIC`, so without that ownership
+the application could connect but not create its tables.
+
+This is the same shape `acme-governance/scripts/rehearsal-db.sh` already builds
+for migration rehearsals — whose header recorded this finding on 2026-09-19.
+
+**An overlay rather than editing the dev compose files, deliberately.**
+Changing `POSTGRES_USER`'s default in `docker-compose.dev*.yml` would reach
+every developer and would not even work there: `initdb` runs only on an empty
+data directory, so an existing local volume would keep `postgres` as its
+bootstrap superuser while the compose file started asking for `pgboot`.
+Everyone would have to `docker compose down -v` and lose local data to adopt a
+change that exists purely to make CI honest. Those files are also upstream
+Langfuse's, so each edit is merge friction on the next sync. The overlay keeps
+the change where the problem is; local `docker compose up` is untouched.
+
+**KNOWN AND DELIBERATE LIMITATION — CI's database naming still does not match
+Azure.** The migration issues four `GRANT ... ON DATABASE langfuse` statements
+with the name hardcoded, while CI connects to a database named `postgres`. That
+is a *second, independent* mismatch from the bootstrap-superuser one, and it is
+**not** addressed here. The init script creates `langfuse` as an **empty**
+database purely so those grants resolve; nothing connects to it and nothing is
+migrated into it. So: **CI's role structure now matches Azure; CI's database
+naming does not.** Whether that hardcoded name is portable to a customer
+deployment whose database is named differently is a separate, unproven question
+filed on its own and cross-referencing ACME-Rayin#23.
+
+**Scope:** two new ACME-owned files, plus `pipeline.yml` wiring (7 dev-compose
+invocations and 5 in `test-docker-build`, whose web image runs
+`prisma migrate deploy` on boot and hit the same failure). No upstream compose
+or `.env` file changed.

@@ -622,6 +622,11 @@ jobs:
     if: ${{ !cancelled() && (github.event_name != 'push' || needs.pre-job.outputs.should_skip != 'true') }}
     env:
       DOCKER_COMPOSE_FILE: docker-compose.build.yml
+      # CHG-2026-043: the web image runs `prisma migrate deploy` on boot,
+      # so this job needs the same Azure-like database shape as the test
+      # jobs. Without it the container crash-loops on migration
+      # 20260917090000 -- a stock-image-only failure, not a real defect.
+      CI_DB_OVERLAY: docker-compose.ci-azure-like.yml
     strategy:
       fail-fast: false
       matrix:
@@ -661,11 +666,11 @@ jobs:
         # Independent of the image build, so let the build overlap it. The
         # healthcheck step below surfaces its output and re-validates health.
         run: |
-          (set +e; docker compose -f "$DOCKER_COMPOSE_FILE" up -d --wait --wait-timeout 180 postgres redis minio clickhouse > /tmp/deps-up.log 2>&1; echo $? > /tmp/deps-up.exit) &
+          (set +e; docker compose -f "$DOCKER_COMPOSE_FILE" -f "$CI_DB_OVERLAY" up -d --wait --wait-timeout 180 postgres redis minio clickhouse > /tmp/deps-up.log 2>&1; echo $? > /tmp/deps-up.exit) &
       - name: Build images
         # Type-checking runs in the lint job; release builds retain it.
         run: |
-          docker compose -f "$DOCKER_COMPOSE_FILE" build --print > /tmp/bake.json
+          docker compose -f "$DOCKER_COMPOSE_FILE" -f "$CI_DB_OVERLAY" build --print > /tmp/bake.json
           if [ "${{ matrix.component }}" = "web" ]; then
             docker buildx bake -f /tmp/bake.json \
               --set "langfuse-web.args.NEXT_IGNORE_BUILD_ERRORS=true" \
@@ -677,7 +682,7 @@ jobs:
         run: |
           timeout 300 bash -c 'until [ -f /tmp/deps-up.exit ]; do sleep 1; done' || true
           cat /tmp/deps-up.log
-          docker compose -f "$DOCKER_COMPOSE_FILE" up -d --wait --wait-timeout 180 "${{ matrix.service }}"
+          docker compose -f "$DOCKER_COMPOSE_FILE" -f "$CI_DB_OVERLAY" up -d --wait --wait-timeout 180 "${{ matrix.service }}"
       - name: Check service health
         run: |
           curl --retry 10 --retry-delay 2 --retry-all-errors --silent --show-error --fail \
@@ -687,7 +692,7 @@ jobs:
         run: |
           mkdir -p /tmp/docker-diagnostics
 
-          docker compose -f "$DOCKER_COMPOSE_FILE" ps -a \
+          docker compose -f "$DOCKER_COMPOSE_FILE" -f "$CI_DB_OVERLAY" ps -a \
             | tee /tmp/docker-diagnostics/compose-state.txt || true
 
           timeout 15 docker events --since 20m --until "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
@@ -696,7 +701,7 @@ jobs:
           ss -ltnp | tee /tmp/docker-diagnostics/host-listeners.txt || true
 
           for service in langfuse-web langfuse-worker postgres redis minio clickhouse; do
-            container_id="$(docker compose -f "$DOCKER_COMPOSE_FILE" ps -q "$service" || true)"
+            container_id="$(docker compose -f "$DOCKER_COMPOSE_FILE" -f "$CI_DB_OVERLAY" ps -q "$service" || true)"
             if [ -z "$container_id" ]; then
               echo "No container found for ${service}" | tee -a /tmp/docker-diagnostics/missing-containers.txt
               continue
@@ -814,7 +819,7 @@ jobs:
         # Independent of the build, so let the build overlap the ~15-20s
         # container startup. "Wait for dev containers" collects the result.
         run: |
-          (set +e; docker compose --env-file .env.runtime -f docker-compose.dev${{ matrix.deploy-mode }}.yml up -d --wait --wait-timeout 180 > /tmp/compose-up.log 2>&1; echo $? > /tmp/compose-up.exit) &
+          (set +e; docker compose --env-file .env.runtime -f docker-compose.dev${{ matrix.deploy-mode }}.yml -f docker-compose.ci-azure-like.yml up -d --wait --wait-timeout 180 > /tmp/compose-up.log 2>&1; echo $? > /tmp/compose-up.exit) &
         env:
           POSTGRES_VERSION: ${{ matrix.postgres-version }}
       - name: Build
@@ -838,7 +843,7 @@ jobs:
           timeout 300 bash -c 'until [ -f /tmp/compose-up.exit ]; do sleep 1; done' \
             || { echo "Timed out waiting for background docker compose up"; cat /tmp/compose-up.log; exit 1; }
           cat /tmp/compose-up.log
-          docker compose --env-file .env.runtime -f docker-compose.dev${{ matrix.deploy-mode }}.yml ps
+          docker compose --env-file .env.runtime -f docker-compose.dev${{ matrix.deploy-mode }}.yml -f docker-compose.ci-azure-like.yml ps
           exit "$(cat /tmp/compose-up.exit)"
       - name: Migrate DB
         run: |
@@ -998,7 +1003,7 @@ jobs:
           cp .env.dev${{ matrix.deploy-mode }}.example worker/.env
       - name: Run + migrate
         run: |
-          docker compose -f docker-compose.dev${{ matrix.deploy-mode }}.yml up -d --wait --wait-timeout 180
+          docker compose -f docker-compose.dev${{ matrix.deploy-mode }}.yml -f docker-compose.ci-azure-like.yml up -d --wait --wait-timeout 180
           docker compose ps
         env:
           # Only start the extra floci container for default worker tests to avoid overhead elsewhere.
@@ -1085,7 +1090,7 @@ jobs:
           cp .env.dev.example worker/.env
       - name: Run + migrate
         run: |
-          docker compose -f docker-compose.dev.yml up -d --wait --wait-timeout 180
+          docker compose -f docker-compose.dev.yml -f docker-compose.ci-azure-like.yml up -d --wait --wait-timeout 180
           docker compose ps
         env:
           POSTGRES_VERSION: 15
@@ -1199,7 +1204,7 @@ jobs:
           ) > /tmp/migrate-install.log 2>&1 &
       - name: Start dev containers in background
         run: |
-          (set +e; docker compose -f docker-compose.dev.yml up -d --wait --wait-timeout 180 > /tmp/compose-up.log 2>&1; echo $? > /tmp/compose-up.exit) &
+          (set +e; docker compose -f docker-compose.dev.yml -f docker-compose.ci-azure-like.yml up -d --wait --wait-timeout 180 > /tmp/compose-up.log 2>&1; echo $? > /tmp/compose-up.exit) &
       - name: Install playwright in background
         run: |
           (set +e; bash scripts/ci/install-playwright.sh > /tmp/playwright-install.log 2>&1; echo $? > /tmp/playwright-install.exit) &
@@ -1312,7 +1317,7 @@ jobs:
           ) > /tmp/migrate-install.log 2>&1 &
       - name: Start dev containers in background
         run: |
-          (set +e; docker compose -f docker-compose.dev.yml up -d --wait --wait-timeout 180 > /tmp/compose-up.log 2>&1; echo $? > /tmp/compose-up.exit) &
+          (set +e; docker compose -f docker-compose.dev.yml -f docker-compose.ci-azure-like.yml up -d --wait --wait-timeout 180 > /tmp/compose-up.log 2>&1; echo $? > /tmp/compose-up.exit) &
       - name: Build
         run: pnpm run build --filter=!ai-gateway
         env:
@@ -1407,7 +1412,7 @@ jobs:
           sudo mv migrate /usr/bin/migrate
       - name: Start dev containers
         run: |
-          docker compose -f docker-compose.dev.yml up -d --wait --wait-timeout 180
+          docker compose -f docker-compose.dev.yml -f docker-compose.ci-azure-like.yml up -d --wait --wait-timeout 180
           docker compose ps
         env:
           POSTGRES_VERSION: 15
