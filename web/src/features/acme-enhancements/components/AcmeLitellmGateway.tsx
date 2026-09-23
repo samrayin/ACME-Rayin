@@ -63,6 +63,7 @@ import { api, type RouterOutputs } from "@/src/utils/api";
 import { useHasProjectAccess } from "@/src/features/rbac";
 import { showErrorToast, showSuccessToast } from "@/src/features/notifications";
 import { AcmeLitellmRequestLogs } from "@/src/features/acme-enhancements/components/AcmeLitellmRequestLogs";
+import { GatewayModelsCard } from "@/src/features/acme-enhancements/components/AcmeLitellmModelManager";
 
 export type KeyRow = RouterOutputs["acmeLitellm"]["keys"]["keys"][number];
 
@@ -447,7 +448,9 @@ export function EditLimitsDialog({
     const sourceModels = liveUnavailable ? row.models : (row.liveModels ?? []);
     const sourceRpm = liveUnavailable ? row.rpmLimit : row.liveRpmLimit;
     setModels(sourceModels);
-    setRpmLimit(sourceRpm === null || sourceRpm === undefined ? "" : String(sourceRpm));
+    setRpmLimit(
+      sourceRpm === null || sourceRpm === undefined ? "" : String(sourceRpm),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [row?.id]);
 
@@ -456,12 +459,16 @@ export function EditLimitsDialog({
     const n = Number(rpmLimit);
     if (!Number.isFinite(n) || n <= 0)
       return "Requests per minute must be a positive number, or empty for no limit.";
-    if (!Number.isInteger(n)) return "Requests per minute must be a whole number.";
+    if (!Number.isInteger(n))
+      return "Requests per minute must be a whole number.";
     return null;
   })();
 
   return (
-    <Dialog open={row !== null} onOpenChange={(open) => (!open ? onClose() : undefined)}>
+    <Dialog
+      open={row !== null}
+      onOpenChange={(open) => (!open ? onClose() : undefined)}
+    >
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Edit limits: {row?.displayName}</DialogTitle>
@@ -473,9 +480,9 @@ export function EditLimitsDialog({
         <DialogBody>
           {liveUnavailable ? (
             <Banner tone="warning" title="Gateway state unavailable">
-              Could not read this key&apos;s current state from the gateway.
-              The fields below start from CAIRO&apos;s own record, which may
-              not match the gateway.
+              Could not read this key&apos;s current state from the gateway. The
+              fields below start from CAIRO&apos;s own record, which may not
+              match the gateway.
             </Banner>
           ) : (
             <p className="text-muted-foreground text-xs">
@@ -537,10 +544,17 @@ export function EditLimitsDialog({
               onChange={(e) => setRpmLimit(e.target.value)}
             />
           </div>
-          {rpmError ? <p className="text-dark-red text-xs mt-2">{rpmError}</p> : null}
+          {rpmError ? (
+            <p className="text-dark-red mt-2 text-xs">{rpmError}</p>
+          ) : null}
         </DialogBody>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            disabled={busy}
+          >
             Cancel
           </Button>
           <Button
@@ -679,8 +693,14 @@ function KeysTab({
     resolve.isPending ||
     updateLimits.isPending;
 
-  const submitEditLimits = (row: KeyRow, newModels: string[], newRpmLimit: string) => {
-    updateLimits.mutate(buildUpdateKeyLimitsInput(projectId, row, newModels, newRpmLimit));
+  const submitEditLimits = (
+    row: KeyRow,
+    newModels: string[],
+    newRpmLimit: string,
+  ) => {
+    updateLimits.mutate(
+      buildUpdateKeyLimitsInput(projectId, row, newModels, newRpmLimit),
+    );
   };
 
   const confirmCopy: Record<
@@ -1284,103 +1304,116 @@ function StaleNote({
 function ModelsTab({
   projectId,
   canManage,
+  canManageModels,
+  modelManagementEnabled,
+  writable,
 }: {
   projectId: string;
   canManage: boolean;
+  canManageModels: boolean;
+  modelManagementEnabled: boolean;
+  writable: boolean;
 }) {
   const [refresh, setRefresh] = useState(false);
   const catalogue = api.acmeLitellm.catalogue.useQuery({ projectId, refresh });
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-sm">Model catalogue</CardTitle>
-        <p className="text-muted-foreground text-xs">
-          The models configured in the gateway and whether each provider
-          answered its last health check. A health check makes a real call to
-          every provider, so the result is kept for 5 minutes. Models are
-          configured in the gateway&apos;s own configuration, not here.
-        </p>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3 pt-0">
-        {catalogue.isLoading ? (
-          <p className="text-muted-foreground text-sm">Checking providers…</p>
-        ) : catalogue.error ? (
-          <Banner tone="error" title="Could not load the catalogue">
-            {catalogue.error.message}
-          </Banner>
-        ) : (
-          <>
-            <div className="flex items-center justify-between gap-3">
-              <StaleNote
-                fetchedAt={catalogue.data!.fetchedAt}
-                stale={catalogue.data!.stale}
-                reason={catalogue.data!.staleReason}
-              />
-              {canManage ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={catalogue.isFetching}
-                  onClick={() =>
-                    refresh ? catalogue.refetch() : setRefresh(true)
-                  }
-                >
-                  {catalogue.isFetching ? "Checking…" : "Check health now"}
-                </Button>
-              ) : null}
-            </div>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Model</TableHead>
-                  <TableHead>Provider</TableHead>
-                  <TableHead>Health</TableHead>
-                  <TableHead>Context</TableHead>
-                  <TableHead>Price per 1M tokens (in / out)</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(catalogue.data!.data ?? []).map((m) => (
-                  <TableRow key={m.modelName}>
-                    <TableCell className="font-bold">{m.modelName}</TableCell>
-                    <TableCell className="text-xs">
-                      {m.providers.join(", ") || "—"}
-                    </TableCell>
-                    <TableCell>
-                      {m.health === "healthy" ? (
-                        <Badge variant="success">Healthy</Badge>
-                      ) : m.health === "unhealthy" ? (
-                        <>
-                          <Badge variant="error">Unhealthy</Badge>
-                          <div className="text-muted-foreground mt-1 max-w-md text-xs break-words">
-                            {m.healthError}
-                          </div>
-                        </>
-                      ) : (
-                        <Badge variant="outline">Unknown</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {count(m.maxInputTokens)} in / {count(m.maxOutputTokens)}{" "}
-                      out
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {m.inputCostPerToken === null
-                        ? "—"
-                        : money(m.inputCostPerToken * 1_000_000)}{" "}
-                      /{" "}
-                      {m.outputCostPerToken === null
-                        ? "—"
-                        : money(m.outputCostPerToken * 1_000_000)}
-                    </TableCell>
+    <div className="flex flex-col gap-4">
+      <GatewayModelsCard
+        projectId={projectId}
+        canManageModels={canManageModels}
+        managementEnabled={modelManagementEnabled}
+        writable={writable}
+      />
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Model catalogue</CardTitle>
+          <p className="text-muted-foreground text-xs">
+            Whether each model&apos;s provider answered its last health check. A
+            health check makes a real call to every provider, so the result is
+            kept for 5 minutes.
+          </p>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3 pt-0">
+          {catalogue.isLoading ? (
+            <p className="text-muted-foreground text-sm">Checking providers…</p>
+          ) : catalogue.error ? (
+            <Banner tone="error" title="Could not load the catalogue">
+              {catalogue.error.message}
+            </Banner>
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-3">
+                <StaleNote
+                  fetchedAt={catalogue.data!.fetchedAt}
+                  stale={catalogue.data!.stale}
+                  reason={catalogue.data!.staleReason}
+                />
+                {canManage ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={catalogue.isFetching}
+                    onClick={() =>
+                      refresh ? catalogue.refetch() : setRefresh(true)
+                    }
+                  >
+                    {catalogue.isFetching ? "Checking…" : "Check health now"}
+                  </Button>
+                ) : null}
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Model</TableHead>
+                    <TableHead>Provider</TableHead>
+                    <TableHead>Health</TableHead>
+                    <TableHead>Context</TableHead>
+                    <TableHead>Price per 1M tokens (in / out)</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </>
-        )}
-      </CardContent>
-    </Card>
+                </TableHeader>
+                <TableBody>
+                  {(catalogue.data!.data ?? []).map((m) => (
+                    <TableRow key={m.modelName}>
+                      <TableCell className="font-bold">{m.modelName}</TableCell>
+                      <TableCell className="text-xs">
+                        {m.providers.join(", ") || "—"}
+                      </TableCell>
+                      <TableCell>
+                        {m.health === "healthy" ? (
+                          <Badge variant="success">Healthy</Badge>
+                        ) : m.health === "unhealthy" ? (
+                          <>
+                            <Badge variant="error">Unhealthy</Badge>
+                            <div className="text-muted-foreground mt-1 max-w-md text-xs break-words">
+                              {m.healthError}
+                            </div>
+                          </>
+                        ) : (
+                          <Badge variant="outline">Unknown</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {count(m.maxInputTokens)} in /{" "}
+                        {count(m.maxOutputTokens)} out
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {m.inputCostPerToken === null
+                          ? "—"
+                          : money(m.inputCostPerToken * 1_000_000)}{" "}
+                        /{" "}
+                        {m.outputCostPerToken === null
+                          ? "—"
+                          : money(m.outputCostPerToken * 1_000_000)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -1706,6 +1739,10 @@ export function AcmeLitellmGateway({ projectId }: { projectId: string }) {
   const status = api.acmeLitellm.status.useQuery({ projectId });
   const canRead = useHasProjectAccess({ projectId, scope: "llmGateway:read" });
   const canManage = useHasProjectAccess({ projectId, scope: "llmGateway:CUD" });
+  const canManageModels = useHasProjectAccess({
+    projectId,
+    scope: "llmGatewayModels:CUD",
+  });
   const canReadLogs = useHasProjectAccess({
     projectId,
     scope: "llmGatewayLogs:read",
@@ -1821,7 +1858,13 @@ export function AcmeLitellmGateway({ projectId }: { projectId: string }) {
               />
             </TabsBarContent>
             <TabsBarContent value="models" className="mt-6">
-              <ModelsTab projectId={projectId} canManage={canManage} />
+              <ModelsTab
+                projectId={projectId}
+                canManage={canManage}
+                canManageModels={canManageModels}
+                modelManagementEnabled={s.modelManagementEnabled}
+                writable={writable}
+              />
             </TabsBarContent>
             <TabsBarContent value="spend" className="mt-6">
               <SpendTab projectId={projectId} />

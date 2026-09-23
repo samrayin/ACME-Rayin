@@ -4410,3 +4410,38 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 **What:** `requester_metadata` keeps only `REQUESTER_METADATA_ALLOWLIST` keys, which starts empty. This is a full allowlist rather than a strip list, because the caller controls every key there. The earlier CHG-2026-026 tests are updated to the stricter expectation.
 
 **Tests:** 111 pass, 6 new. Control: the new tests against the current `main` hook gave 4 failures and 2 errors.
+
+## 2026-09-23 — LLM Gateway: add models and endpoints, and a smart router (CHG-2026-056)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-056 · Tier 1 · owner: Anees Ur Rahman |
+| **ADR** | [ADR-0010](acme-governance/adr/ADR-0010-gateway-model-management.md), accepted by the owner 2026-09-23 |
+| **Dates** | Built and tested locally. Dev: not deployed. It needs `LITELLM_SALT_KEY` in the gateway Secret and `store_model_in_db: true` with a watched restart (Gate C, owner-gated) · Prod: none exists |
+| **Impact** | None until `CAIRO_LITELLM_MODEL_MANAGEMENT_ENABLED=true`. With it off, the Models tab lists models read-only as before |
+| **Rollback** | Turn the flag off. Stored models are removed with Remove or `/model/delete` |
+
+**Why:** Adding a model or provider endpoint needed a repo change, a ConfigMap edit and a gateway restart. The owner asked for self-service models and endpoints, and for LiteLLM's auto router.
+
+**What:**
+- **Models tab:** a "Gateway models" card lists every deployment with its source. Config-file models are read-only; console models can be added, edited and removed.
+- **Provider key:** either typed into a write-only field, or referenced as a `*_API_KEY` already in the gateway Secret.
+- **Smart router:** LiteLLM's complexity router with the heuristic classifier only, so no prompt text leaves the gateway to choose a route. It maps four tiers to existing models and includes a "Test routing" box.
+- **Endpoint guard** (`acmeLitellmEndpointGuard.ts`, strict per the owner):
+  - fixed providers only;
+  - https, no port, credentials or query string, and not an IP literal;
+  - host on `CAIRO_LITELLM_MODEL_ENDPOINT_ALLOWLIST`;
+  - every resolved address public.
+- **Protections:**
+  - guardrails models (`nvidia-nemotron`, `groq-judge`, `groq-safeguard`, `gemini-judge`) can't be changed;
+  - no new deployment may reuse an existing name;
+  - a model a router points at can't be removed or renamed.
+- **Key handling:**
+  - credential-bearing procedures are untraced (`protectedProjectProcedureWithoutTracing`);
+  - the audit records `provided | unchanged | reference NAME`;
+  - the client redacts the submitted key from gateway errors;
+  - `/model/info` credential fields are never parsed.
+- **Access:** a new scope, `llmGatewayModels:CUD` (owner and admin), and a new flag, `CAIRO_LITELLM_MODEL_MANAGEMENT_ENABLED` (default off).
+- **Audit actions:** `model.*` and `router.*`, through `auditedMutation`.
+
+**Tests:** 52 new server tests, and the existing gateway suites still pass (100 server tests, 6 client tests). Typecheck and lint are clean. The `acmeLitellmRouter` suite fails on `main` without this change (71 of 73, test-harness headers) and is being fixed separately. **Controls:** each guard was broken in turn, and the tests caught every one. The results were: key redaction in gateway errors 1 failure; host allowlist 1; public-address check 11; config models read-only 1; heuristic-only router 2; audit never records the key 2; no reuse of an existing name 1. The tests also caught a real defect before these controls ran: a `::ffff:0:0/96` rule in Node's `BlockList` blocked every IPv4 address.

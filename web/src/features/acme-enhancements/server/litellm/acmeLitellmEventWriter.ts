@@ -56,7 +56,14 @@ export type LitellmEventAction =
   | "key.rotate.compensate"
   | "team.create"
   | "team.update"
-  | "team.delete";
+  | "team.delete"
+  // ADR-0010 (CHG-2026-056): console-managed models and the smart router.
+  | "model.create"
+  | "model.update"
+  | "model.delete"
+  | "router.create"
+  | "router.update"
+  | "router.delete";
 
 export type LitellmEventActor = {
   userId: string;
@@ -69,7 +76,7 @@ export type LitellmEventInput = {
   phase: "INTENT" | "OUTCOME";
   outcome?: "SUCCESS" | "FAILURE" | "PARTIAL";
   action: LitellmEventAction;
-  resourceType: "litellmKey" | "litellmTeam";
+  resourceType: "litellmKey" | "litellmTeam" | "litellmModel";
   resourceId: string;
   orgId: string;
   projectId: string;

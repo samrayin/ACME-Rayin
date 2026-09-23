@@ -20,6 +20,7 @@ import { TRPCError } from "@trpc/server";
 import {
   createTRPCRouter,
   protectedProjectProcedure,
+  protectedProjectProcedureWithoutTracing,
 } from "@/src/server/api/trpc";
 import { throwIfNoProjectAccess } from "@/src/features/rbac/utils/checkProjectAccess";
 import { env } from "@/src/env.mjs";
@@ -59,6 +60,20 @@ import {
   updateTeamLimits,
   type LitellmServiceDeps,
 } from "./acmeLitellmService";
+import {
+  EndpointRejectedError,
+  parseAllowlist,
+} from "./acmeLitellmEndpointGuard";
+import {
+  createModel,
+  createRouter,
+  deleteModel,
+  listModels,
+  testRouting,
+  updateModel,
+  updateRouter,
+  type ModelsDeps,
+} from "./acmeLitellmModels";
 
 const limitsInput = {
   models: z.array(z.string().min(1).max(200)).max(100).default([]),
@@ -108,6 +123,66 @@ function assertRequestLogsEnabled() {
   }
 }
 
+// ADR-0010 (CHG-2026-056). Separate from CAIRO_LITELLM_MANAGEMENT_ENABLED:
+// keys and teams can be managed while models stay read-only.
+function isModelManagementEnabled(): boolean {
+  return env.CAIRO_LITELLM_MODEL_MANAGEMENT_ENABLED === "true";
+}
+
+function assertModelManagementEnabled() {
+  assertEnabled();
+  if (!isModelManagementEnabled()) {
+    throw new TRPCError({
+      code: "PRECONDITION_FAILED",
+      message:
+        "Model management is switched off on this deployment (CAIRO_LITELLM_MODEL_MANAGEMENT_ENABLED).",
+    });
+  }
+}
+
+function modelsDeps(): ModelsDeps {
+  return {
+    ...deps(),
+    allowlist: parseAllowlist(env.CAIRO_LITELLM_MODEL_ENDPOINT_ALLOWLIST),
+  };
+}
+
+const modelNameInput = z.string().min(1).max(100);
+
+// The provider key is length-checked only. No pattern: a failed pattern
+// check must never be a reason to echo the value back.
+const credentialInput = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("keep") }),
+  z.object({ kind: z.literal("none") }),
+  z.object({ kind: z.literal("reference"), name: z.string().min(1).max(64) }),
+  z.object({ kind: z.literal("secret"), value: z.string().min(1).max(4096) }),
+]);
+
+const modelInput = z.object({
+  projectId: z.string(),
+  modelName: modelNameInput,
+  providerModel: z.string().min(3).max(220),
+  apiBase: z.string().max(500).nullable().default(null),
+  apiVersion: z.string().max(40).nullable().default(null),
+  rpm: z.number().int().positive().max(10_000_000).nullable().default(null),
+  tpm: z.number().int().positive().max(1_000_000_000).nullable().default(null),
+  credential: credentialInput,
+});
+
+const tiersInput = z.object({
+  SIMPLE: modelNameInput,
+  MEDIUM: modelNameInput,
+  COMPLEX: modelNameInput,
+  REASONING: modelNameInput,
+});
+
+const routerInput = z.object({
+  projectId: z.string(),
+  modelName: modelNameInput,
+  tiers: tiersInput,
+  defaultModel: modelNameInput,
+});
+
 function deps(): LitellmServiceDeps {
   return { client: getLitellmClient(), db: prisma, write: writeLitellmEvent };
 }
@@ -137,6 +212,8 @@ async function guarded<T>(what: string, run: () => Promise<T>): Promise<T> {
       throw new TRPCError({ code: "NOT_FOUND", message: e.message });
     if (e instanceof LitellmInvalidStateError)
       throw new TRPCError({ code: "CONFLICT", message: e.message });
+    if (e instanceof EndpointRejectedError)
+      throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
     if (e instanceof LitellmNotConfiguredError)
       throw new TRPCError({ code: "PRECONDITION_FAILED", message: e.message });
     if (e instanceof LitellmUnreachableError) {
@@ -202,6 +279,7 @@ export const acmeLitellmRouter = createTRPCRouter({
         auditConfigured,
         reachable,
         requestLogsEnabled,
+        modelManagementEnabled: enabled && isModelManagementEnabled(),
       };
     }),
 
@@ -444,6 +522,147 @@ export const acmeLitellmRouter = createTRPCRouter({
           actorOf(ctx.session),
           input.teamId,
         ),
+      );
+    }),
+
+  // ----- models and smart router (ADR-0010) ------------------------------
+  models: protectedProjectProcedure
+    .input(z.object({ projectId: z.string() }))
+    .query(({ ctx, input }) => {
+      throwIfNoProjectAccess({
+        session: ctx.session,
+        projectId: input.projectId,
+        scope: "llmGateway:read",
+      });
+      assertEnabled();
+      return guarded("models", () => listModels(modelsDeps()));
+    }),
+
+  // Untraced: the input can carry a provider key (ADR-0010 §4).
+  createModel: protectedProjectProcedureWithoutTracing
+    .input(modelInput)
+    .mutation(({ ctx, input }) => {
+      throwIfNoProjectAccess({
+        session: ctx.session,
+        projectId: input.projectId,
+        scope: "llmGatewayModels:CUD",
+      });
+      assertModelManagementEnabled();
+      const { projectId, ...model } = input;
+      return guarded("createModel", () =>
+        createModel(
+          modelsDeps(),
+          { orgId: ctx.session.orgId, projectId },
+          actorOf(ctx.session),
+          model,
+        ),
+      );
+    }),
+
+  // Untraced: the input can carry a provider key (ADR-0010 §4).
+  updateModel: protectedProjectProcedureWithoutTracing
+    .input(modelInput.extend({ modelId: z.string().min(1).max(200) }))
+    .mutation(({ ctx, input }) => {
+      throwIfNoProjectAccess({
+        session: ctx.session,
+        projectId: input.projectId,
+        scope: "llmGatewayModels:CUD",
+      });
+      assertModelManagementEnabled();
+      const { projectId, modelId, ...model } = input;
+      return guarded("updateModel", () =>
+        updateModel(
+          modelsDeps(),
+          { orgId: ctx.session.orgId, projectId },
+          actorOf(ctx.session),
+          modelId,
+          model,
+        ),
+      );
+    }),
+
+  deleteModel: protectedProjectProcedure
+    .input(
+      z.object({ projectId: z.string(), modelId: z.string().min(1).max(200) }),
+    )
+    .mutation(({ ctx, input }) => {
+      throwIfNoProjectAccess({
+        session: ctx.session,
+        projectId: input.projectId,
+        scope: "llmGatewayModels:CUD",
+      });
+      assertModelManagementEnabled();
+      return guarded("deleteModel", () =>
+        deleteModel(
+          modelsDeps(),
+          { orgId: ctx.session.orgId, projectId: input.projectId },
+          actorOf(ctx.session),
+          input.modelId,
+        ),
+      );
+    }),
+
+  createRouter: protectedProjectProcedure
+    .input(routerInput)
+    .mutation(({ ctx, input }) => {
+      throwIfNoProjectAccess({
+        session: ctx.session,
+        projectId: input.projectId,
+        scope: "llmGatewayModels:CUD",
+      });
+      assertModelManagementEnabled();
+      const { projectId, ...router } = input;
+      return guarded("createRouter", () =>
+        createRouter(
+          modelsDeps(),
+          { orgId: ctx.session.orgId, projectId },
+          actorOf(ctx.session),
+          router,
+        ),
+      );
+    }),
+
+  updateRouter: protectedProjectProcedure
+    .input(routerInput.extend({ modelId: z.string().min(1).max(200) }))
+    .mutation(({ ctx, input }) => {
+      throwIfNoProjectAccess({
+        session: ctx.session,
+        projectId: input.projectId,
+        scope: "llmGatewayModels:CUD",
+      });
+      assertModelManagementEnabled();
+      const { projectId, modelId, ...router } = input;
+      return guarded("updateRouter", () =>
+        updateRouter(
+          modelsDeps(),
+          { orgId: ctx.session.orgId, projectId },
+          actorOf(ctx.session),
+          modelId,
+          router,
+        ),
+      );
+    }),
+
+  // Untraced: the sample prompt is content. Nothing is stored or routed.
+  testRouting: protectedProjectProcedureWithoutTracing
+    .input(
+      z.object({
+        projectId: z.string(),
+        tiers: tiersInput,
+        defaultModel: modelNameInput,
+        prompt: z.string().min(1).max(4000),
+      }),
+    )
+    .mutation(({ ctx, input }) => {
+      throwIfNoProjectAccess({
+        session: ctx.session,
+        projectId: input.projectId,
+        scope: "llmGatewayModels:CUD",
+      });
+      assertModelManagementEnabled();
+      const { tiers, defaultModel, prompt } = input;
+      return guarded("testRouting", () =>
+        testRouting(modelsDeps(), { tiers, defaultModel, prompt }),
       );
     }),
 
