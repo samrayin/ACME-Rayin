@@ -136,6 +136,17 @@ export const env = createEnv({
     // every project. At least 32 characters or every request is refused. It
     // can only append well-formed rows: no read, no update.
     CAIRO_LITELLM_INGEST_SECRET: z.string().optional(),
+    // ADR-0010 (CHG-2026-056): console management of gateway models and the
+    // smart router. Default off: the Models tab stays read-only. Needs
+    // CAIRO_LITELLM_MANAGEMENT_ENABLED as well.
+    CAIRO_LITELLM_MODEL_MANAGEMENT_ENABLED: z
+      .enum(["true", "false"])
+      .optional()
+      .default("false"),
+    // Hosts a console-added model's endpoint may use: comma-separated exact
+    // hosts or "*.suffix" patterns. Unset = the built-in provider list
+    // (acmeLitellmEndpointGuard.ts). Widening it is a deliberate config change.
+    CAIRO_LITELLM_MODEL_ENDPOINT_ALLOWLIST: z.string().optional(),
     NEXTAUTH_SECRET:
       process.env.NODE_ENV === "production"
         ? z.string().min(1)
@@ -872,6 +883,10 @@ export const env = createEnv({
     CAIRO_LITELLM_REQUEST_LOG_INGEST_ENABLED:
       process.env.CAIRO_LITELLM_REQUEST_LOG_INGEST_ENABLED,
     CAIRO_LITELLM_INGEST_SECRET: process.env.CAIRO_LITELLM_INGEST_SECRET,
+    CAIRO_LITELLM_MODEL_MANAGEMENT_ENABLED:
+      process.env.CAIRO_LITELLM_MODEL_MANAGEMENT_ENABLED,
+    CAIRO_LITELLM_MODEL_ENDPOINT_ALLOWLIST:
+      process.env.CAIRO_LITELLM_MODEL_ENDPOINT_ALLOWLIST,
     SEED_SECRET_KEY: process.env.SEED_SECRET_KEY,
     NEXT_PUBLIC_DEMO_PROJECT_ID: process.env.NEXT_PUBLIC_DEMO_PROJECT_ID,
     NEXT_PUBLIC_DEMO_ORG_ID: process.env.NEXT_PUBLIC_DEMO_ORG_ID,

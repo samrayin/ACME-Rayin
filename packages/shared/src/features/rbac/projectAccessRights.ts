@@ -84,6 +84,10 @@ export const projectScopes = [
   // revoke keys and teams -- owner/admin only: a key spends money.
   "llmGateway:read",
   "llmGateway:CUD",
+  // ACME addition (ADR-0010, CHG-2026-056): add, change and remove gateway
+  // models and endpoints, and the smart router. Owner/admin only: it can
+  // hand the gateway a provider credential and point it at an endpoint.
+  "llmGatewayModels:CUD",
   // The append-only record of gateway management actions (and, with
   // CHG-2026-008, of gateway requests: who, which key, source address).
   // Audit-log sensitivity: owner, admin and the Security Analyst.
@@ -141,6 +145,7 @@ export const projectRoleAccessRights: Record<Role, ProjectScope[]> = {
   OWNER: [
     "llmGateway:read",
     "llmGateway:CUD",
+    "llmGatewayModels:CUD",
     "llmGatewayLogs:read",
     "project:read",
     "projectData:read",
@@ -205,6 +210,7 @@ export const projectRoleAccessRights: Record<Role, ProjectScope[]> = {
   ADMIN: [
     "llmGateway:read",
     "llmGateway:CUD",
+    "llmGatewayModels:CUD",
     "llmGatewayLogs:read",
     "project:read",
     "projectData:read",

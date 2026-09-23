@@ -81,10 +81,16 @@ const KEY_LIKE = /\bsk-[A-Za-z0-9_-]{6,}/g;
  * Removes the master key and anything shaped like a LiteLLM key from a
  * string before it can reach a log line, an error message or a client.
  */
-export function redact(text: string, masterKey: string | undefined): string {
+export function redact(
+  text: string,
+  masterKey: string | undefined,
+  extraSecrets: readonly string[] = [],
+): string {
   let out = text;
-  if (masterKey && masterKey.length > 0) {
-    out = out.split(masterKey).join("[REDACTED]");
+  for (const secret of [masterKey, ...extraSecrets]) {
+    if (secret && secret.length > 0) {
+      out = out.split(secret).join("[REDACTED]");
+    }
   }
   return out.replace(KEY_LIKE, "[REDACTED]");
 }
@@ -191,6 +197,58 @@ const modelInfoSchema = z.object({
   ),
 });
 
+// ADR-0010: the fields CAIRO reads from each deployment. Deliberately NOT
+// api_key or any other credential field: they are never parsed, so they can
+// never reach a response, a log line or the audit record.
+export const litellmDeploymentSchema = z.object({
+  model_name: z.string(),
+  litellm_params: z
+    .object({
+      model: z.string().nullish(),
+      api_base: z.string().nullish(),
+      api_version: z.string().nullish(),
+      rpm: z.number().nullish(),
+      tpm: z.number().nullish(),
+      complexity_router_config: z
+        .object({
+          classifier_type: z.string().nullish(),
+          tiers: z
+            .record(z.string(), z.union([z.string(), z.array(z.unknown())]))
+            .nullish(),
+        })
+        .loose()
+        .nullish(),
+      complexity_router_default_model: z.string().nullish(),
+    })
+    .nullish(),
+  model_info: z
+    .object({ id: z.string().nullish(), db_model: z.boolean().nullish() })
+    .nullish(),
+});
+export type LitellmDeployment = z.infer<typeof litellmDeploymentSchema>;
+
+const deploymentListSchema = z.object({
+  data: z.array(litellmDeploymentSchema),
+});
+
+const newModelResponseSchema = z
+  .object({ model_id: z.string().nullish() })
+  .loose();
+
+const routerValidationSchema = z.object({
+  valid: z.boolean(),
+  error: z.string().nullish(),
+});
+
+const routingTestSchema = z.object({
+  routed_model: z.string(),
+  routed_model_configured: z.boolean().nullish(),
+  routing_decision: z
+    .object({ tier: z.string().nullish() })
+    .loose()
+    .nullish(),
+});
+
 const healthEndpointSchema = z.object({
   model: z.string().nullish(),
   error: z.unknown().optional(),
@@ -266,6 +324,27 @@ export type LitellmKeySettings = {
   metadata?: Record<string, unknown>;
 };
 
+/**
+ * What CAIRO sends to /model/new and /model/{id}/update (ADR-0010). Built
+ * only by acmeLitellmModels.ts from validated fields, never passed through
+ * from a request.
+ */
+export type LitellmDeploymentWrite = {
+  model_name?: string;
+  litellm_params?: {
+    model?: string;
+    api_base?: string | null;
+    api_version?: string | null;
+    /** A provider key, or "os.environ/NAME". Never logged or returned. */
+    api_key?: string;
+    rpm?: number | null;
+    tpm?: number | null;
+    complexity_router_config?: Record<string, unknown>;
+    complexity_router_default_model?: string;
+  };
+  model_info?: Record<string, unknown>;
+};
+
 export type LitellmTeamSettings = {
   team_id?: string;
   team_alias?: string;
@@ -294,13 +373,15 @@ export type LitellmClientOptions = {
 };
 
 type RequestOptions = {
-  method: "GET" | "POST";
+  method: "GET" | "POST" | "PATCH";
   path: string;
   query?: Record<string, string | number | boolean | undefined | null>;
   body?: unknown;
   /** CAIRO user id, sent as litellm-changed-by on mutations. */
   changedBy?: string;
   timeoutMs?: number;
+  /** Values to strip from any error text, e.g. a provider key being sent. */
+  secrets?: readonly string[];
 };
 
 export function createLitellmClient(options: LitellmClientOptions) {
@@ -315,7 +396,8 @@ export function createLitellmClient(options: LitellmClientOptions) {
   const healthTimeoutMs = options.healthTimeoutMs ?? 60_000;
   const readRetryDelaysMs = options.readRetryDelaysMs ?? [200, 800];
 
-  const safe = (text: string) => redact(text, masterKey);
+  const safe = (text: string, secrets: readonly string[] = []) =>
+    redact(text, masterKey, secrets);
 
   async function once(req: RequestOptions): Promise<unknown> {
     const url = new URL(baseUrl + req.path);
@@ -341,7 +423,7 @@ export function createLitellmClient(options: LitellmClientOptions) {
       });
     } catch (e) {
       const detail = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
-      throw new LitellmUnreachableError(req.path, safe(detail));
+      throw new LitellmUnreachableError(req.path, safe(detail, req.secrets));
     }
 
     const text = await res.text();
@@ -349,7 +431,7 @@ export function createLitellmClient(options: LitellmClientOptions) {
       throw new LitellmHttpError(
         req.path,
         res.status,
-        safe(extractErrorMessage(text)).slice(0, 500),
+        safe(extractErrorMessage(text), req.secrets).slice(0, 500),
       );
     }
     try {
@@ -551,6 +633,91 @@ export function createLitellmClient(options: LitellmClientOptions) {
         healthResponseSchema,
         path,
         await request({ method: "GET", path, timeoutMs: healthTimeoutMs }),
+      );
+    },
+
+    /** Every deployment, config-file and database-stored (ADR-0010). */
+    async deployments(): Promise<LitellmDeployment[]> {
+      const path = "/model/info";
+      return parse(
+        deploymentListSchema,
+        path,
+        await request({ method: "GET", path }),
+      ).data;
+    },
+
+    /** ADR-0010. Needs store_model_in_db on the gateway. Never retried. */
+    async newModel(body: LitellmDeploymentWrite, changedBy: string) {
+      const path = "/model/new";
+      const secret = body.litellm_params?.api_key;
+      const res = await request({
+        method: "POST",
+        path,
+        body,
+        changedBy,
+        secrets: secret ? [secret] : [],
+      });
+      return parse(newModelResponseSchema, path, res ?? {});
+    },
+
+    /** Partial update: only the fields given change. */
+    async updateModel(
+      modelId: string,
+      body: LitellmDeploymentWrite,
+      changedBy: string,
+    ) {
+      const path = `/model/${encodeURIComponent(modelId)}/update`;
+      const secret = body.litellm_params?.api_key;
+      await request({
+        method: "PATCH",
+        path,
+        body,
+        changedBy,
+        secrets: secret ? [secret] : [],
+      });
+    },
+
+    async deleteModel(modelId: string, changedBy: string) {
+      const path = "/model/delete";
+      await request({ method: "POST", path, body: { id: modelId }, changedBy });
+    },
+
+    /** The gateway's own verdict on a complexity-router config. Saves nothing. */
+    async validateComplexityRouterConfig(config: Record<string, unknown>) {
+      const path = "/auto_router/validate_complexity_router_config";
+      return parse(
+        routerValidationSchema,
+        path,
+        await request({
+          method: "POST",
+          path,
+          body: { complexity_router_config: config },
+        }),
+      );
+    },
+
+    /**
+     * Where one prompt would route under a config. Nothing is sent to the
+     * routed model; a heuristic config makes no outbound call at all.
+     */
+    async testRouting(
+      config: Record<string, unknown>,
+      defaultModel: string,
+      prompt: string,
+    ) {
+      const path = "/auto_router/test_routing";
+      return parse(
+        routingTestSchema,
+        path,
+        await request({
+          method: "POST",
+          path,
+          body: {
+            prompt,
+            complexity_router_config: config,
+            default_model: defaultModel,
+          },
+        }),
       );
     },
 
