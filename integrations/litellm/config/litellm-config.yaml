@@ -143,15 +143,12 @@ general_settings:
 # allowlist, and rpm_limit 10. That is what stops the rail's judge call
 # re-entering this hook in a loop (ADR-0005 F10 / Step 0).
 #
-# UNVERIFIED, and the first thing to check on switch-on: that litellm resolves
-# `cairo_guardrail_hook.CairoGuardrail` from the ConfigMap mount at
-# /app/config. This is the documented `module.ClassName` form, but no hook in
-# this repository has ever been referenced from this config before (CHG-2026-028
-# shipped its hook deliberately without a ConfigMap edit), so there is no local
-# precedent confirming the import path resolves here. If it does not, the pod
-# fails to start rather than starting with the guardrail off -- which is why the
-# restart in the switch-on step is watched, not fire-and-forget, and why the
-# previous ConfigMap is worth keeping to hand for an immediate revert.
+# CONFIRMED 2026-09-23 on the first switch-on: litellm resolves
+# `cairo_guardrail_hook.CairoGuardrail` from the ConfigMap mount at /app/config.
+# That attempt was reverted because the hook read no text (CHG-2026-044). Before
+# the next switch-on, run integrations/litellm/tests/in_image_check.py inside the
+# gateway pod; it must PASS. Keep the restart watched and the previous ConfigMap
+# to hand: a failed import stops the new pod becoming ready.
 guardrails:
   - guardrail_name: "cairo-guardrail"
     litellm_params:
