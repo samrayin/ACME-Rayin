@@ -156,17 +156,27 @@ guardrails:
       mode: "pre_call"
       default_on: true
 
-# Langfuse callback registration REMOVED 2026-09-21 (CHG-2026-024).
+# Gateway tracing into CAIRO: METADATA ONLY (CHG-2026-026, ADR-0006).
 #
-# It registered success_callback/failure_callback = ["langfuse"] while this pod
-# carries no LANGFUSE_* variables, so it delivered nothing and failed silently
-# for its entire life. Readiness Ledger N-20, readiness audit H-26.
+# Every request becomes a trace in CAIRO's "Gateway traces" project: model,
+# tokens, cost, latency, status and the calling key. NO prompt or completion text:
+#   - turn_off_message_logging removes messages and responses before any callback;
+#   - cairo_trace_metadata_hook strips caller-supplied metadata that would
+#     otherwise reach the trace (metadata.prompt, trace_* keys, identifiers,
+#     debug_langfuse), in the body, requester_metadata and langfuse_* headers.
+# Both lines must stay together. Removing either lets content into a store that
+# cannot be purged (Readiness Ledger P0-11). Content tracing is deferred until an
+# internal deletion path exists (review by 2026-10-23).
 #
-# Removed rather than enabled, deliberately. Enabling is three environment
-# variables away and would write full prompt and completion text into a store
-# with no reachable purge path -- retention requires an entitlement this OSS
-# instance does not have (P0-11). Re-add ONLY with a named credential owner, an
-# approval gate, and CHG-2026-009 turn_off_message_logging in the same change.
+# Credentials: LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY and LANGFUSE_HOST in the
+# litellm-provider-keys Secret, owned by Anees Ur Rahman.
+# To switch off: delete success_callback and failure_callback, then restart.
+# Already-written traces remain (P0-11).
+litellm_settings:
+  callbacks: ["cairo_trace_metadata_hook.proxy_handler_instance"]
+  success_callback: ["langfuse"]
+  failure_callback: ["langfuse"]
+  turn_off_message_logging: true
 
 # Starter virtual keys — one per team/use case, per README.md "Open
 # decisions" #3 (2026-09-12: $50/key, confirmed -- per-key, not a shared

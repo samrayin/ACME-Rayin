@@ -3,10 +3,10 @@
 | | |
 |---|---|
 | **Change** | CHG-2026-026 · Tier 1 · owner: Anees Ur Rahman |
-| **Status** | **Proposed — design only, blocked from Accepted.** No ConfigMap edit, no Secret change, no gateway restart. Gate A (§9) passed 2026-09-22: `turn_off_message_logging` confirmed, by source read, to redact before the Langfuse callback receives data — and the digest it was verified against confirmed, by registry lookup, to be the deployed version. **Gate A passing does not close this ADR's disqualifying finding. An initial 4-field pass was superseded the same day, 2026-09-22, by an exhaustive audit (§11): roughly a dozen fields/mechanisms reach the trace unredacted, including a genuine content leak (`metadata.prompt`, not a label) and an unbounded wildcard (`trace_`-prefixed keys). Mitigation shape decided the same day — allowlist, fully scoped in §11 (permit-none `trace_` namespace, unconditional strip of `metadata.prompt`/`debug_langfuse`, four identifier fields checked and confirmed not load-bearing, both input channels covered). The hook itself is not built. Still Proposed, not Accepted.** |
+| **Status** | **Accepted 2026-09-23 by the owner: metadata-only tracing. Content tracing deferred.** Takes effect only after Gate C (§10) passes live, with rollback armed. The owner accepted P0-11 for metadata-only traces, time-boxed to **2026-10-23**, and decided to build the deletion path internally, not to buy the Enterprise licence (§12). History: Proposed 2026-09-22, blocked by the metadata pass-through finding (§3, §11); the allowlist hook was built in CHG-2026-028 (#84) and extended here to `requester_metadata`. |
 | **Reverses** | The re-enablement conditions recorded in CHG-2026-024 (Readiness Ledger N-20) when this same callback was removed. This document is that reversal's required justification — see §7. |
 | **Related** | CHG-2026-024 (removed the inert callback) · CHG-2026-009 / ADR-0003 (the *other* gateway logging path — CAIRO's own Postgres request-log mirror, a separate destination from this one) · Readiness Ledger P0-11 (no deletion path in any store) · P0-5 / CHG-2026-010 (least-privilege cutover, still not built) |
-| **Blocked by** | Owner approval of this ADR. No implementation exists yet — this is the ADR, not the change. |
+| **Blocked by** | Nothing for metadata-only. Content tracing is blocked by P0-11 (no deletion path) until the internal build lands. |
 
 ## 1. The problem, verified not assumed
 
@@ -206,7 +206,7 @@ sharpest argument for not enabling casually: off is fast, but off does not undo.
 |---|---|---|
 | **A — confirm `turn_off_message_logging` behaviour against pinned LiteLLM 1.100.1** | **Passed, 2026-09-22** | Source read of `litellm_core_utils/litellm_logging.py` and `redact_messages.py` at tag `v1.100.1` (commit `1dba17b10`): redaction runs before the Langfuse callback dispatch in all three call paths, mutating the shared `model_call_details` in place before Langfuse's handler copies it. See §3 |
 | **A2 — confirm the digest↔`v1.100.1` mapping** | **Passed, 2026-09-22** | `GET ghcr.io/v2/berriai/litellm/manifests/v1.100.1` → `docker-content-digest` matches `deployment.yaml`'s pinned digest exactly |
-| **A3 — metadata pass-through check** | **Failed, 2026-09-22 — blocks Accepted** | Initial pass found 4 fields; exhaustive re-check the same day found ~12, including a content leak (`metadata.prompt`) and an unbounded wildcard (`trace_`-prefixed keys). **Mitigation shape decided same day: allowlist, scoped in §11 — not yet built.** See §3, §6, §9, §11 |
+| **A3 — metadata pass-through check** | **Failed 2026-09-22; mitigated 2026-09-23** (allowlist hook built in #84, extended to `requester_metadata`; registered in config) | Original finding kept below for the record. | Initial pass found 4 fields; exhaustive re-check the same day found ~12, including a content leak (`metadata.prompt`) and an unbounded wildcard (`trace_`-prefixed keys). **Mitigation shape decided same day: allowlist, scoped in §11 — not yet built.** See §3, §6, §9, §11 |
 | B — staging | Not available | Same standing note as ADR-0003/ADR-0005: no staging environment exists yet |
 | C — post-deploy | Pending | Once enabled: pull one real trace from CAIRO's Observability view and confirm no `messages`/completion content is present, only metadata |
 
@@ -362,3 +362,16 @@ sharpest argument for not enabling casually: off is fast, but off does not undo.
 - Whether the recurring release-verification check in §5 should live alongside
   ADR-0005-A's existing three-layer test family or as its own standalone check —
   implementation detail, deferred to whoever builds this once accepted.
+
+## 12. Owner decision, 2026-09-23
+
+- **Enable metadata-only tracing now.** `turn_off_message_logging: true` and `cairo_trace_metadata_hook.proxy_handler_instance` ship in the same config change as the Langfuse callback. Neither can be removed without the other being reconsidered.
+- **Content tracing is deferred.** Prompt and completion text is useful for debugging and quality evaluation. It is not captured until P0-11 has a deletion path. A dated review is tracked for **2026-10-23**.
+- **P0-11 accepted for metadata only, time-boxed to 2026-10-23.** What lands: model, tokens, cost, latency, status, key alias, guardrail outcome. That is written permanently until the deletion path exists.
+- **No Enterprise licence.** The deletion path is built internally, as a clean implementation that does not copy upstream `ee/` code. Options are compared in `product-decisions/PD-0005`.
+- **Credentials:** a dedicated CAIRO project, "Gateway traces". Its key pair and host are written to the gateway Secret by the owner (named credential owner, §6.2).
+- **Gate C is the acceptance test, run live before this is reported done:**
+  - send marker text in the messages, in `metadata.prompt`, in a `trace_*` key, in `requester_metadata` and in a `langfuse_trace_name` header;
+  - confirm a trace exists with tokens and cost;
+  - confirm every marker is **absent** from ClickHouse and the blob event store.
+  - Any marker found means immediate rollback.

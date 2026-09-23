@@ -161,7 +161,14 @@ def strip_untrusted_trace_metadata(request_data: Any) -> Any:
         return request_data
 
     for container in _METADATA_CONTAINERS:
-        _strip_metadata_dict(request_data.get(container))
+        meta = request_data.get(container)
+        _strip_metadata_dict(meta)
+        # LiteLLM copies the caller's metadata into ``requester_metadata`` and the
+        # Langfuse logger nests that whole sub-object into the generation. If the
+        # copy was taken before this hook ran, a stripped key (``prompt``) would
+        # survive inside it, so strip there too (CHG-2026-026).
+        if isinstance(meta, dict):
+            _strip_metadata_dict(meta.get("requester_metadata"))
 
     proxy_server_request = request_data.get("proxy_server_request")
     if isinstance(proxy_server_request, dict):
@@ -188,3 +195,9 @@ class CairoTraceMetadataAllowlistHook(_Base):  # type: ignore[misc,valid-type]
         call_type: Any,
     ) -> Dict[str, Any]:
         return strip_untrusted_trace_metadata(data)
+
+
+#: What ``litellm_settings.callbacks`` references (``cairo_trace_metadata_hook.proxy_handler_instance``).
+#: LiteLLM resolves a callback path to an object and uses it as-is, so it must be an
+#: instance, not the class (CHG-2026-026).
+proxy_handler_instance = CairoTraceMetadataAllowlistHook()
