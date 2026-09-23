@@ -4346,3 +4346,30 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 **Tested:** syntax and rendering on a throwaway table (created and dropped). `verify` run read-only against dev: every table reports no TTL, as expected before apply. The floor refuses `--days 7`.
 
 **Known-incomplete:** `verify` is not yet wired into `release.sh` or `verify-deployed.sh`. Until it is, run it by hand after upgrades.
+
+## 2026-09-23 — Blob lifecycle rule: raw event bodies deleted after 30 days (CHG-2026-052)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-052 · Tier 1 · owner: Anees Ur Rahman |
+| **Design** | PD-0005 phase 1: the internal deletion path for P0-11 |
+| **Approval** | Owner, 2026-09-23 (retention first; evidence export before any deletion) |
+| **Dates** | Dev: **not applied**. Waits for CHG-2026-050 (P0-8 evidence export), then applied by the owner with `az`, recorded as intentional drift: Terraform must not be applied against dev while state reconciliation is paused · Prod: none exists |
+| **Impact** | Blobs under `<container>/events/` whose current version is older than 30 days are deleted, **and their previous versions too**. Media under `media/` is not in scope (owner decision pending) |
+| **Schema change** | None |
+| **Rollback** | Delete the management policy (`az storage account management-policy delete`, or remove the resource). Already-deleted blobs cannot be restored: blob soft-delete is off |
+| **Feature flag** | `event_retention_days` (Terraform variable, default 30, minimum 30) |
+
+**What:**
+- `infra/langfuse-terraform-azure/storage.tf` adds `azurerm_storage_management_policy.event_retention`, filtered to block blobs under `events/`.
+- `variables.tf` adds `event_retention_days`, validated at 30 or more.
+
+**Why:** P0-11. Raw event bodies were written to blob before ClickHouse and never deleted. The storage account has **versioning on**, so a rule deleting only current blobs would leave every body in a previous version. Deletion covers both. The period matches the ClickHouse TTL (CHG-2026-051), so bodies and their rows age out together.
+
+**Found while building:** live dev has versioning on, blob soft-delete off, and no lifecycle policy (read 2026-09-23).
+
+**Tested:** `terraform fmt -check` passes. `validate` and `plan` need provider initialisation and are not run here.
+
+**Known-incomplete:**
+- Deletion is proven only by the phase 1 purge test, once applied.
+- Lifecycle runs about once a day, so deletion lands within about a day of the 30-day mark.

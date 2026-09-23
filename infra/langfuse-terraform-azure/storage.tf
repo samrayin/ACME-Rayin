@@ -45,6 +45,35 @@ resource "azurerm_storage_container" "this" {
   container_access_type = "private"
 }
 
+# Retention for raw ingestion event bodies (CHG-2026-052, PD-0005 phase 1).
+# Langfuse writes each event body to events/<projectId>/... before ClickHouse.
+# Versioning is on, so deleting the current blob alone keeps its previous
+# versions: both are deleted, or deletion is not real. Keep the period equal to
+# the ClickHouse TTL (scripts/retention/clickhouse-retention-ttl.sh) so bodies
+# and their rows age out together.
+resource "azurerm_storage_management_policy" "event_retention" {
+  storage_account_id = azurerm_storage_account.this.id
+
+  rule {
+    name    = "cairo-event-body-retention"
+    enabled = true
+
+    filters {
+      blob_types   = ["blockBlob"]
+      prefix_match = ["${azurerm_storage_container.this.name}/events/"]
+    }
+
+    actions {
+      base_blob {
+        delete_after_days_since_modification_greater_than = var.event_retention_days
+      }
+      version {
+        delete_after_days_since_creation = var.event_retention_days
+      }
+    }
+  }
+}
+
 resource "azurerm_private_endpoint" "storage" {
   name                = "${module.naming.private_endpoint.name}-storage"
   location            = azurerm_resource_group.this.location
