@@ -9,6 +9,8 @@
   - blob lifecycle rule applied, covering current and previous versions (CHG-2026-052).
   - **The purge proof is due 24–26 September.**
 - **Capability register (CHG-2026-053):** `acme-governance/CAIRO-CAPABILITIES.md`, plus an HTML view (private artifact).
+- **Claude Code traces re-enabled into a dev project (CHG-2026-055, owner decision).** This includes a backfill of past sessions, with credential-bearing sessions held back. It reopens the P0-2 export path by decision; the rating is unchanged. Details are in the acme-rayin-ops record.
+- **PD-0007 (proposed):** CAIRO's first engagement is an observe-only AI usage assessment, built on record mode.
 
 - **Guardrails v0.2.2 is live (05:05Z)** and needs no internet at runtime. It is v0.2.1 plus the embedding model pinned into the image (CHG-2026-049, N-58).
   - over-size prompts are blocked unscanned (9 ms);
