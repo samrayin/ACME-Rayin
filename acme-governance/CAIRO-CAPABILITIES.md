@@ -22,6 +22,8 @@
 | Central AI gateway | 🟢 | Every application calls models through one OpenAI-compatible endpoint (LiteLLM 1.100.1, pinned by digest) | CHG-2026-006 |
 | Gateway managed from the CAIRO console | 🟢 | Create and rotate application keys; teams, budgets, model allow-lists, rate limits; spend views | CHG-2026-005, CHG-2026-011 |
 | Edit key limits in the console | 🟢 | Change a key's models and rate limit; audited intent and outcome events | CHG-2026-030 |
+| Add models and endpoints from the console | 🟢 | Add, edit and remove gateway models without a config change or restart. Provider key is write-only (stored encrypted in the gateway database) or a reference to a key already held by the gateway. Strict endpoint checks: approved providers and hosts, https, no private or internal addresses. Guardrails models protected; every change audited. Admin-only, behind a switch | CHG-2026-056, ADR-0010 |
+| Smart router (automatic model choice) | 🟢 | One model name that routes each request to one of four tiers (simple to reasoning) by complexity. Scored inside the gateway in under a millisecond, so **no prompt text leaves it** to choose a route. Test-routing box; guardrails still inspect every routed request | CHG-2026-056, ADR-0010 |
 | Request-log mirror | 🟢 | One row per gateway call in CAIRO's database: model, tokens, cost, key, user, status, timings, **no prompt text**. Up to about 7 minutes' lag | CHG-2026-008 |
 | Multiple model providers | 🟡 | Model routing across providers. Dev uses free-tier and test providers only, so a contracted provider is needed for real data | CHG-2026-015 |
 | External access for applications outside the cluster | 🔵 | Model paths only, per-application key, IP allow-list, WAF recommended | Draft design, 2026-09-23 |
