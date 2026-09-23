@@ -1,11 +1,15 @@
 # CAIRO — Vision Tracker
 **Purpose:** single source of truth for "are we there yet," updated at every stage. Not a changelog — a status board. The changelog and ledger remain the detailed record; this file answers one question fast: what's done, what's next, what's blocking.
 
-**Last updated:** 2026-09-23 (after the first switch-on attempt). **B1 is done, and the hook is off again.**
-- **B1:** the owner copied the secret Secret-to-Secret. It is verified, because guardrails accepted it from inside the gateway pod.
-- **B2 and B3 passed** at 03:16Z: LiteLLM loaded the hook from the ConfigMap, in record mode.
-- **B4 failed:** the hook read no text (CHG-2026-044), so guardrails received no calls. It was reverted at 03:21Z and verified byte-identical to the anchor; no caller saw an error.
-- **Fix:** open in #125, with 79 tests and an in-image check that passes on the live pod. The next attempt is B2–B5 on the owner's go-ahead.
+**Last updated:** 2026-09-23. **The guardrail hook is ON in dev, in record mode, since 03:35Z. This is the first time a live prompt has been inspected.**
+- **B1:** done, owner-executed.
+- **First attempt (03:16Z):** reverted. The hook read no text, fixed in CHG-2026-044 (#125, merged).
+- **Second attempt (03:35Z):** B2 to B5 all passed.
+  - Requests are inspected, and the events reach CAIRO.
+  - A forged opt-out is still inspected.
+  - The judge's calls are excluded, with no loop.
+  - Added latency: median about 360 ms, max 1.6 s, 0 unavailable.
+- **Repo:** #128 makes it match live (`default_on: true`).
 
 - `verify-deployed.sh` reports all three components **TRACED**: console `acme-v4.38.0.6`, worker `worker-acme-v4.38.0.2`, guardrails `v0.1.0`. The guardrails image shows UNTRACED only when checked from this repo; from its own repo it traces to `v0.1.0`.
 - The gateway still runs LiteLLM 1.100.1 pinned by digest, with the image unchanged. It restarted twice during the attempt, and its live config is back to no `guardrails` block and no callbacks.
@@ -28,7 +32,7 @@
 
 | Clause | Status | Evidence |
 |---|---|---|
-| Prompts are checked | 🟡 **Works in isolation, not in the live flow** | 0% false positives / 100% detection, measured 2026-09-21 (32-prompt corpus). Nothing in the live gateway path calls it yet. |
+| Prompts are checked | 🟡 **Checked live in dev, record mode**, since 2026-09-23 03:35Z | Every gateway request goes to guardrails and the verdict reaches CAIRO. Nothing is refused (record, not enforce). Known gap: PII-bearing prompts skip the jailbreak rail. |
 | Decisions are recorded, append-only | 🔴 **Two demonstrated gaps** | (1) Key config changes via raw API bypass CAIRO's audit trail entirely — P1, found 2026-09-22. (2) Append-only not enforced at DB level (P0-5) — app connects as admin, not least-privilege. |
 | Reviewed in one console | 🟢 **Fix deployed and used** | CHG-2026-030 deployed as `acme-v4.38.0.6` (digest `sha256:08083ee3...2957`), health-checked, traced. Owner used the new Edit dialog against the judge key; reconciliation confirmed directly against `acme_litellm_keys` (`models`/`rpm_limit`/`updated_at` all match live state) and `acme_litellm_events` (matched `INTENT`/`OUTCOME`/`success` pair). The console can now reconcile drift it detects — the gap this row tracked is closed. Rotate's stale-value hazard (it reads `models`/`rpm_limit` from CAIRO's own DB row, not live state) is unchanged and still real on any other drifted key. |
 
@@ -40,8 +44,8 @@
 
 | Step | What it is | Status | Blocking? |
 |---|---|---|---|
-| **Step 0** | Guardrail's judge model excluded from its own inspection (stop the gateway calling itself in a loop) | 🟡 **Built and merged** in the hook (#106). The live key's prerequisite data is correct: the opt-out metadata, model allowlist and rpm cap were applied on 2026-09-22 under CHG-2026-029. It is **not verified live yet**; that is switch-on step B4 | Blocks Step 1 |
-| **Step 1** | The hook itself, wired into the gateway, **record mode only** (logs decisions, blocks nothing) | 🟡 **Code built and merged, switched off, not deployed.** Switch-on is B1 to B5, all Tier 1 and owner-gated: B1 secret → B2 ConfigMap with both files plus a watched restart → B3 the hook loads → B4 the Step 0 exclusion fires live → B5 real added latency measured | Blocks Step 2/3 |
+| **Step 0** | Guardrail's judge model excluded from its own inspection (stop the gateway calling itself in a loop) | 🟢 **Verified live 2026-09-23.** The judge's calls are skipped with no loop, and a forged body opt-out is still inspected. LiteLLM applies the opt-out itself, so the hook's `excluded` record never fires (minor) | — |
+| **Step 1** | The hook itself, wired into the gateway, **record mode only** (logs decisions, blocks nothing) | 🟢 **Live in dev since 2026-09-23 03:35Z.** B1 to B5 passed; see the deployment record in acme-rayin-ops. Health records go to gateway stdout only, until ADR-0009 | Blocks Step 2/3 |
 | **Step 2** | Make the audit trail durable / tamper-resistant | ⬜ Not started | Blocks Step 3 |
 | **Step 3** | Flip to **enforce** mode (actually blocks bad prompts) | ⬜ Not started, no date | Needs latency budget + multi-node infra |
 
@@ -65,7 +69,7 @@
 | **CHG-2026-040 / ADR-0009** | Durable guardrail health events: dedicated table, the three §3d metrics, credential, console view | 🟡 **Design merged (#114, 2026-09-23); build not started.** Four open questions answered 2026-09-23. **6–10 working days, not weekend work** — §8 says so plainly rather than compressing it. Build gated on §10.1: collect a real record-mode window first, so the bridge's data corrects `failureClass` before it becomes a Postgres enum. ADR-0005 Step 4 amended with gate (10): alerting before `enforce` |
 | **B1 — shared secret** | `CAIRO_GUARDRAIL_SECRET` in the gateway Secret, matching the guardrails service's `config_shared_secret` | 🟢 **Done 2026-09-23**, owner-executed Secret-to-Secret copy with no value displayed. Proven: the in-image check got a real verdict from guardrails, where a mismatch would be a 401 |
 | **Security and vulnerability check** | Read-only review of the cluster and Azure, the code and its dependencies, and GitHub and CI, ahead of switch-on | 🟢 **Done 2026-09-23.** No blocker for record mode in dev. The owner accepted three risks for dev: a large prompt can stall guardrails; PII prompts skip the jailbreak rail; the shared secret also allows config changes. About 14 High items remain before a customer. Findings are held privately in acme-rayin-ops; ratings are the owner's |
-| **CHG-2026-044** | Guardrail hook reads LiteLLM 1.100.1's real `{"texts": [...]}` input, prints its health record, and returns redactions in the right shape | 🟡 **Tested, pending merge (#125).** 79 unit tests, controlled against the old hook. `in_image_check.py` passes inside the live gateway pod: guardrails answered `allow` in 621 ms. Found by the reverted switch-on of 2026-09-23 |
+| **CHG-2026-044** | Guardrail hook reads LiteLLM 1.100.1's real `{"texts": [...]}` input, prints its health record, and returns redactions in the right shape | 🟢 **Merged (#125) and proven live** by the second switch-on. 79 unit tests, controlled against the old hook. `in_image_check.py` passes inside the live gateway pod: guardrails answered `allow` in 621 ms. Found by the reverted switch-on of 2026-09-23 |
 | **CI on `main`** | The CI/CD run for `main` @ `29a7fdae` | 🟡 **Pending for about 10 hours with no jobs started**, observed 2026-09-23. "Storybook Preview" and "Deploy to ECS" (an upstream Langfuse workflow) are queued behind it. Cause not yet diagnosed |
 
 ---
