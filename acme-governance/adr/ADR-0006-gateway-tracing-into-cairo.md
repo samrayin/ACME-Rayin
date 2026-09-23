@@ -375,3 +375,20 @@ sharpest argument for not enabling casually: off is fast, but off does not undo.
   - confirm a trace exists with tokens and cost;
   - confirm every marker is **absent** from ClickHouse and the blob event store.
   - Any marker found means immediate rollback.
+
+## 13. Enablement and Gate C result, 2026-09-23
+
+- **Delivery path changed to OTLP.** The legacy `langfuse` callback (Langfuse Python SDK 2.59.7) posts to `/api/public/ingestion`, which this Langfuse v4 CAIRO rejects: it runs in `events_only` mode, and the web log said the events "were not stored". The gateway now uses `langfuse_otel`: OTLP HTTP to `/api/public/otel` with `x-langfuse-ingestion-version: 4`. CAIRO's own dual-write migration bridge was rejected, because it would prop up a deprecated path by changing CAIRO's core ingestion.
+- **§11's audit was of the SDK path. On OTLP, Gate C decides, and it was run live** with a unique marker in every channel. The request's tokens and cost were captured.
+
+| Channel | ClickHouse | Blob raw body | Verdict |
+|---|---|---|---|
+| system and user messages, model response | absent | absent | **Pass.** Placeholder `redacted-by-litellm` |
+| `metadata.prompt`, `trace_name`, `trace_*`, `session_id`, `generation_name`, `debug_langfuse` | absent | absent | **Pass.** The allowlist hook works on OTLP |
+| `user` request field | present (`user_id`, `session_id`, metadata) | present | End-user attribution, caller-asserted (N-34). Owner to confirm this is wanted |
+| `langfuse_*` request headers | present (metadata) | present | **Residual:** caller free text reaches the trace by this channel on OTLP |
+| arbitrary metadata key | present (metadata) | present | **Residual:** as §11 scoped (`requester_metadata` not closed) |
+
+- **No credential in trace data.** Only the ingesting *public* key appears, in Langfuse's own `ingestion_api_key` column.
+- **OTLP raw bodies are stored under `events/otel/`**, not `events/<projectId>/`. The 30-day blob rule (CHG-2026-052) covers them. Per-project blob retention (PD-0005 phase 2) cannot split them by path.
+- **Recommended follow-up (a new change ID):** make the hook a full allowlist on caller metadata and `langfuse_*` headers (keep named keys only), so no caller free text reaches a trace by any channel. This closes both residuals.

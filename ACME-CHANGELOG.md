@@ -4373,3 +4373,24 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 **Known-incomplete:**
 - Deletion is proven only by the phase 1 purge test, once applied.
 - Lifecycle runs about once a day, so deletion lands within about a day of the 30-day mark.
+
+## 2026-09-23 — Gateway tracing delivered over OTLP; Gate C passed for content (CHG-2026-026)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-026 · Tier 1 · owner: Anees Ur Rahman (continues #138) |
+| **Dates** | Dev: **live since 2026-09-23 08:50Z**, applied, then this commit makes `main` match |
+| **Impact** | Every gateway request (the guardrail judge's calls included) is a trace in CAIRO project "Gateway traces", with tokens and cost. No prompt or completion text |
+| **Rollback** | Remove `langfuse_otel` from `callbacks` and restart, or restore the pre-tracing ConfigMap. Written traces remain (P0-11) |
+
+**What changed from #138:** `callbacks` now carries `langfuse_otel`, and `success_callback`/`failure_callback: [langfuse]` are gone.
+- **Why:** the legacy SDK posts to `/api/public/ingestion`, which this Langfuse v4 CAIRO rejects in `events_only` mode. The first live request's events were refused and not stored. OTLP is v4-native.
+
+**Gate C (ADR-0006 §13), live, every channel marked:**
+- **Stored in neither ClickHouse nor blob:** message content, response, `metadata.prompt`, and the `trace_*`, session and generation-name keys.
+- **Stored in both:**
+  - the `user` field, which is attribution (N-34);
+  - `langfuse_*` header values and arbitrary metadata keys. These are residual caller free-text channels.
+- **Recommended:** make the hook a full allowlist.
+
+**Incident, accepted by the owner:** during enablement the session called `/get/config/callbacks`, which returned and printed the "Gateway traces" secret key. The owner accepted it for dev ("ignore and proceed, this is dev setup"). **Never call that endpoint:** it returns credential values.
