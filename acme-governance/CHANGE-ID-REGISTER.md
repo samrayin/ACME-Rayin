@@ -76,6 +76,7 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | CHG-2026-052 | 1 | Blob lifecycle rule deleting raw event bodies after 30 days, in the Terraform module (PD-0005 phase 1) | Anees Ur Rahman | `feat/chg-2026-052-blob-lifecycle` | Claimed |
 | CHG-2026-027 | 2 | Doc-only fixes found while auditing the repo: two `codespell`-failing "unparseable" → "unparsable" typos in `ADR-0005-gateway-guardrail-hook.md` (CI has been failing on this since 2026-09-21), and the stale ADR index (#76) — `acme-governance/adr/README.md` was missing rows for ADR-0002, -0004, -0005, -0005-A and -0006. No product code, no config, no cluster dependency | Anees Ur Rahman | `docs/chg-2026-027-adr-doc-fixes` | Claimed |
 | CHG-2026-028 | 2 | Implementation of ADR-0006 §11's allowlist-shaped `async_pre_call_hook`: strips the unbounded `trace_` metadata namespace (permit-none allowlist), `metadata.prompt`, `debug_langfuse`, and four identifier fields, across both `metadata`/`litellm_metadata` containers and `langfuse_*`-prefixed HTTP headers. **Hook and tests only — no ConfigMap edit, no gateway restart, no callback enablement.** ADR-0006 stays Proposed until this is built AND verified | Anees Ur Rahman | `feat/chg-2026-028-cairo-trace-metadata-hook` | Claimed |
+| CHG-2026-053 | 2 | CAIRO capability register | Anees Ur Rahman | `docs/chg-2026-053-capability-register` | Claimed |
 
 ## ADR numbers
 
