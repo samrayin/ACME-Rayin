@@ -289,3 +289,14 @@ variable "additional_env" {
     error_message = "Each environment variable must have either 'value' or 'valueFrom' specified, but not both."
   }
 }
+
+variable "event_retention_days" {
+  description = "Days raw ingestion event bodies are kept in blob storage before deletion (CHG-2026-052). Keep equal to the ClickHouse retention TTL. Minimum 30."
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.event_retention_days >= 30
+    error_message = "event_retention_days must be at least 30 (retention floor, PD-0005)."
+  }
+}
