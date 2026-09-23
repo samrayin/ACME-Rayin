@@ -183,6 +183,13 @@ does not go stale the moment a fourth record exists.)
 ADRs and rollback folders are *evidence referenced by* these records, not a separate
 history. The ADR index (`adr/README.md`) is a table of contents only.
 
+**Critical findings** — any finding rated P0 or P1, and any finding that gates
+enforcement of a security or compliance control — are diagnosed, fixed and closed
+against `acme-governance/CRITICAL-FINDING-RESOLUTION-STANDARD.md` (CHG-2026-019)
+before they reach these records. It is a standard the write-up follows, not a
+fifth record: the finding, its rating and its closure still live in the Readiness
+Ledger.
+
 ## 7. Report format
 
 Four headings, nothing else: **what changed · what was verified · what failed ·
