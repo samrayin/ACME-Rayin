@@ -53,14 +53,7 @@ import {
  * never sent as a role — `setUserRole` syncs it as a removal instead, since
  * a NONE member must hold no org-member bridge in SFDC.
  */
-const LangfuseRole = z.enum([
-  "OWNER",
-  "ADMIN",
-  "MEMBER",
-  "VIEWER",
-  "NONE",
-  "SECURITY",
-]);
+const LangfuseRole = z.enum(["OWNER", "ADMIN", "MEMBER", "VIEWER", "NONE"]);
 type LangfuseRole = z.infer<typeof LangfuseRole>;
 
 // The SFDC org-member role picklist allows only ADMIN and DEVELOPER.
@@ -69,7 +62,6 @@ const LANGFUSE_TO_SFDC_ROLE = {
   ADMIN: "ADMIN",
   MEMBER: "DEVELOPER",
   VIEWER: "DEVELOPER",
-  SECURITY: "DEVELOPER",
 } as const;
 
 /**

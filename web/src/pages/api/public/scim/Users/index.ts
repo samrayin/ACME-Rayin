@@ -7,6 +7,7 @@ import { z } from "zod";
 import { type Role } from "@langfuse/shared";
 import { auditLog } from "@/src/features/audit-logs/auditLog";
 import { getSfdcService } from "@/src/ee/features/sfdc-sync/server";
+import { syncSfdcUserRole } from "@/src/features/rbac/lib/upstreamRole";
 import { hasEntitlementBasedOnPlan } from "@/src/features/entitlements/server/hasEntitlement";
 import { shadowAuth } from "@/src/features/public-api/server/shadowAuth";
 import { writeScimError } from "@/src/features/public-api/server/writeError";
@@ -262,7 +263,7 @@ export default async function handler(
         // SCIM provisioning is org-admin-driven, never an organic signup.
         leadSource: "Langfuse Cloud Invite",
       });
-      await getSfdcService()?.setUserRole({
+      await syncSfdcUserRole({
         orgId: authCheck.scope.orgId,
         userId: user.id,
         email: user.email,
