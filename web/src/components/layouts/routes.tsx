@@ -108,14 +108,16 @@ export const ROUTES: Route[] = [
   },
   {
     title: "Home",
-    projectRbacScopes: ["projectData:read"],
+    // ACME (ADR-0011): also Business Analyst, via dashboards:read.
+    projectRbacScopes: ["projectData:read", "dashboards:read"],
     pathname: `/project/[projectId]`,
     icon: Home,
     section: RouteSection.Main,
   },
   {
     title: "Dashboards",
-    projectRbacScopes: ["projectData:read"],
+    // ACME (ADR-0011): also Business Analyst, via dashboards:read.
+    projectRbacScopes: ["projectData:read", "dashboards:read"],
     pathname: `/project/[projectId]/dashboards`,
     icon: LayoutDashboard,
     productModule: "dashboards",
@@ -143,7 +145,13 @@ export const ROUTES: Route[] = [
     // nothing while CAIRO_LITELLM_MANAGEMENT_ENABLED is off.
     title: "LLM Gateway",
     pathname: `/project/[projectId]/acme-enhancements/llm-gateway`,
-    projectRbacScopes: ["llmGateway:read", "llmGatewayLogs:read"],
+    projectRbacScopes: [
+      "llmGateway:read",
+      "llmGatewayLogs:read",
+      // ACME (ADR-0011): Spend tab only / read-only evidence.
+      "llmGatewaySpend:read",
+      "evidence:read",
+    ],
     section: RouteSection.Main,
     menuNode: <AcmeLitellmGatewayNavItem />,
   },

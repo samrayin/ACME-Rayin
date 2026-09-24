@@ -16,13 +16,18 @@
  * (securityRoleAllowList.ts); everything else is blocked for that role.
  */
 import { z } from "zod";
+import { type Session } from "next-auth";
+import { type ProjectScope } from "@langfuse/shared";
 import { TRPCError } from "@trpc/server";
 import {
   createTRPCRouter,
   protectedProjectProcedure,
   protectedProjectProcedureWithoutTracing,
 } from "@/src/server/api/trpc";
-import { throwIfNoProjectAccess } from "@/src/features/rbac/utils/checkProjectAccess";
+import {
+  hasProjectAccess,
+  throwIfNoProjectAccess,
+} from "@/src/features/rbac/utils/checkProjectAccess";
 import { env } from "@/src/env.mjs";
 import { prisma } from "@langfuse/shared/src/db";
 import { logger } from "@langfuse/shared/src/server";
@@ -101,6 +106,21 @@ const limitsInput = {
 };
 
 const dateInput = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+/**
+ * ADR-0011: some reads are open to more than one scope -- the operational
+ * scope, or the Auditor's read-only evidence scope, or the Spend-only scope.
+ * Throws the standard FORBIDDEN when the caller holds none of them.
+ */
+function throwIfNoneOf(
+  session: Session | null,
+  projectId: string,
+  scopes: ProjectScope[],
+) {
+  if (scopes.some((scope) => hasProjectAccess({ session, projectId, scope })))
+    return;
+  throwIfNoProjectAccess({ session, projectId, scope: scopes[0]! });
+}
 
 function assertEnabled() {
   if (!isLitellmManagementEnabled()) {
@@ -287,11 +307,10 @@ export const acmeLitellmRouter = createTRPCRouter({
   keys: protectedProjectProcedure
     .input(z.object({ projectId: z.string() }))
     .query(({ ctx, input }) => {
-      throwIfNoProjectAccess({
-        session: ctx.session,
-        projectId: input.projectId,
-        scope: "llmGateway:read",
-      });
+      throwIfNoneOf(ctx.session, input.projectId, [
+        "llmGateway:read",
+        "evidence:read",
+      ]);
       assertEnabled();
       return guarded("keys", () =>
         listProjectKeys(deps(), {
@@ -443,11 +462,10 @@ export const acmeLitellmRouter = createTRPCRouter({
   teams: protectedProjectProcedure
     .input(z.object({ projectId: z.string() }))
     .query(({ ctx, input }) => {
-      throwIfNoProjectAccess({
-        session: ctx.session,
-        projectId: input.projectId,
-        scope: "llmGateway:read",
-      });
+      throwIfNoneOf(ctx.session, input.projectId, [
+        "llmGateway:read",
+        "evidence:read",
+      ]);
       assertEnabled();
       return guarded("teams", () =>
         listProjectTeams(deps(), {
@@ -529,11 +547,10 @@ export const acmeLitellmRouter = createTRPCRouter({
   models: protectedProjectProcedure
     .input(z.object({ projectId: z.string() }))
     .query(({ ctx, input }) => {
-      throwIfNoProjectAccess({
-        session: ctx.session,
-        projectId: input.projectId,
-        scope: "llmGateway:read",
-      });
+      throwIfNoneOf(ctx.session, input.projectId, [
+        "llmGateway:read",
+        "evidence:read",
+      ]);
       assertEnabled();
       return guarded("models", () => listModels(modelsDeps()));
     }),
@@ -672,11 +689,10 @@ export const acmeLitellmRouter = createTRPCRouter({
       z.object({ projectId: z.string(), refresh: z.boolean().default(false) }),
     )
     .query(({ ctx, input }) => {
-      throwIfNoProjectAccess({
-        session: ctx.session,
-        projectId: input.projectId,
-        scope: "llmGateway:read",
-      });
+      throwIfNoneOf(ctx.session, input.projectId, [
+        "llmGateway:read",
+        "evidence:read",
+      ]);
       assertEnabled();
       // A forced refresh calls every provider for real: CUD holders only.
       if (input.refresh) {
@@ -698,11 +714,10 @@ export const acmeLitellmRouter = createTRPCRouter({
       }),
     )
     .query(({ ctx, input }) => {
-      throwIfNoProjectAccess({
-        session: ctx.session,
-        projectId: input.projectId,
-        scope: "llmGateway:read",
-      });
+      throwIfNoneOf(ctx.session, input.projectId, [
+        "llmGateway:read",
+        "llmGatewaySpend:read",
+      ]);
       assertEnabled();
       if (input.startDate > input.endDate) {
         throw new TRPCError({

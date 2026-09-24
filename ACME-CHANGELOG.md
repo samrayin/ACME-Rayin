@@ -4499,3 +4499,42 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 **Why:** a new Member's LLM Gateway page requested the owner-only unmanaged-keys data four times on 2026-09-24. The server refused each request, so nothing was disclosed, but a page must not request data its role may not see (ADR-0011 §6).
 
 **What:** the `unmanagedKeys` query in the Keys tab runs only when the user is the organisation OWNER or an instance admin, read from the session. The server check is unchanged and remains the control.
+
+## 2026-09-24 — New roles: Business Analyst and Auditor; display names; server allow-lists (CHG-2026-059, part b)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-059 part (b) · Tier 1 (authorisation) · ADR-0011 accepted · owner: Anees Ur Rahman |
+| **Dates** | Built and tested locally. Dev: a console release (the migration runs at start-up) · Prod: none exists |
+| **Impact** | **Prompt Analyst (MEMBER) loses the LLM Gateway keys, teams and models tabs and keeps Spend** (ADR-0011 §11.5). Approving prompt promotions now needs `promptApprovals:approve`; Platform Owner and Admin already hold it, so no one loses the ability. New invitations no longer offer Viewer. Other existing roles are unchanged |
+| **Rollback** | Redeploy the previous image. The role values stay in the database: Postgres cannot drop enum values, so a new role is retired by reassigning its users |
+
+**What:**
+- **Roles** (migration `20260924120000_add_analyst_auditor_roles`, additive):
+  - `ANALYST`, shown as Business Analyst: dashboards, cost and usage;
+  - `AUDITOR`, shown as Auditor: read-only evidence;
+  - **neither has any content permission.**
+- **Display names:** Platform Owner, Platform Admin, Prompt Analyst (MEMBER), Viewer, Security Analyst, Business Analyst, Auditor. Labels only; enum values and the API are unchanged.
+- **New scopes:**
+  - `llmGatewaySpend:read` (the Spend tab alone);
+  - `evidence:read` (read-only gateway keys, teams and models for audit, never key material);
+  - `promptApprovals:approve`.
+- **Server allow-lists** (`securityRoleAllowList.ts`) generalised to all content-free roles:
+  - one minimal, read-only list per role;
+  - applied by the same middleware as for Security Analyst;
+  - the dashboard stream route and trace export use the same rule.
+
+  Business Analyst reaches dashboards; their data model has no prompt or response text fields.
+- **UI:**
+  - the Home and Dashboards sidebar links also appear for `dashboards:read`;
+  - the LLM Gateway tabs are shown per scope;
+  - Auditor lands on guardrails, like Security Analyst;
+  - approve and reject buttons need `promptApprovals:approve`.
+- **Enterprise boundary:**
+  - the new roles are in `ACME_ONLY_ROLES`, so upstream integrations never receive them;
+  - no Enterprise file changed;
+  - the typecheck wrapper tolerates only the known error.
+
+**Tests:** 25 new, and 150 of 150 in the RBAC-related suites pass when run as CI does. Every allowed procedure is checked to exist and to be a query. **Control:** adding a content procedure and a mutation to the Business Analyst list failed 2 tests.
+
+**Also fixed:** the `acmeLitellm.status` test expected the old response shape. CHG-2026-056 added `modelManagementEnabled`, and it went unnoticed because the router suite could not run locally until its harness was fixed.

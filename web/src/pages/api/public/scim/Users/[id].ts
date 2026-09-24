@@ -18,7 +18,18 @@ function parseScimRole(roles: unknown): Role | undefined {
     return undefined;
   }
   const parsed = z
-    .array(z.enum(["OWNER", "ADMIN", "MEMBER", "VIEWER", "NONE", "SECURITY"]))
+    .array(
+      z.enum([
+        "OWNER",
+        "ADMIN",
+        "MEMBER",
+        "VIEWER",
+        "NONE",
+        "SECURITY",
+        "ANALYST",
+        "AUDITOR",
+      ]),
+    )
     .safeParse(roles);
   return parsed.success ? parsed.data[0] : undefined;
 }

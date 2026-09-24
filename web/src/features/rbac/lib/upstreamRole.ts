@@ -11,7 +11,11 @@ import { type Role } from "@langfuse/shared/src/db";
 import { getSfdcService } from "@/src/ee/features/sfdc-sync/server";
 
 /** Roles that exist only in CAIRO. Upstream integrations never see them. */
-export const ACME_ONLY_ROLES = ["SECURITY"] as const satisfies readonly Role[];
+export const ACME_ONLY_ROLES = [
+  "SECURITY",
+  "ANALYST",
+  "AUDITOR",
+] as const satisfies readonly Role[];
 
 export type UpstreamRole = Exclude<Role, (typeof ACME_ONLY_ROLES)[number]>;
 

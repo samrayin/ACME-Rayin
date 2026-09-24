@@ -15,7 +15,10 @@
  * updateConfig), since approving changes what's live for every user.
  */
 import { z } from "zod";
-import { createTRPCRouter, protectedProjectProcedure } from "@/src/server/api/trpc";
+import {
+  createTRPCRouter,
+  protectedProjectProcedure,
+} from "@/src/server/api/trpc";
 import { throwIfNoProjectAccess } from "@/src/features/rbac/utils/checkProjectAccess";
 import { prisma } from "@langfuse/shared/src/db";
 import { removeLabelsFromPreviousPromptVersions } from "@/src/features/prompts/server/utils/updatePromptLabels";
@@ -94,14 +97,18 @@ export const acmePromptApprovalRouter = createTRPCRouter({
       throwIfNoProjectAccess({
         session: ctx.session,
         projectId: input.projectId,
-        scope: "project:update",
+        // ADR-0011 §11.1: approval is its own permission (Platform Owner/Admin).
+        scope: "promptApprovals:approve",
       });
 
       const approval = await prisma.acmePromptApproval.findFirst({
         where: { id: input.approvalId, projectId: input.projectId },
       });
       if (!approval) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Approval request not found." });
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Approval request not found.",
+        });
       }
       if (approval.status !== "PENDING") {
         throw new TRPCError({
@@ -177,14 +184,18 @@ export const acmePromptApprovalRouter = createTRPCRouter({
       throwIfNoProjectAccess({
         session: ctx.session,
         projectId: input.projectId,
-        scope: "project:update",
+        // ADR-0011 §11.1: approval is its own permission (Platform Owner/Admin).
+        scope: "promptApprovals:approve",
       });
 
       const approval = await prisma.acmePromptApproval.findFirst({
         where: { id: input.approvalId, projectId: input.projectId },
       });
       if (!approval) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Approval request not found." });
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Approval request not found.",
+        });
       }
       if (approval.status !== "PENDING") {
         throw new TRPCError({
@@ -222,7 +233,12 @@ export const acmePromptApprovalRouter = createTRPCRouter({
     }),
 
   listHistory: protectedProjectProcedure
-    .input(z.object({ projectId: z.string(), limit: z.number().min(1).max(200).default(50) }))
+    .input(
+      z.object({
+        projectId: z.string(),
+        limit: z.number().min(1).max(200).default(50),
+      }),
+    )
     .query(async ({ ctx, input }) => {
       throwIfNoProjectAccess({
         session: ctx.session,
@@ -231,7 +247,10 @@ export const acmePromptApprovalRouter = createTRPCRouter({
       });
 
       return prisma.acmePromptApproval.findMany({
-        where: { projectId: input.projectId, status: { in: ["APPROVED", "REJECTED"] } },
+        where: {
+          projectId: input.projectId,
+          status: { in: ["APPROVED", "REJECTED"] },
+        },
         orderBy: { reviewedAt: "desc" },
         take: input.limit,
       });

@@ -88,6 +88,15 @@ export const projectScopes = [
   // models and endpoints, and the smart router. Owner/admin only: it can
   // hand the gateway a provider credential and point it at an endpoint.
   "llmGatewayModels:CUD",
+  // ACME (ADR-0011, CHG-2026-059): the LLM Gateway Spend tab only, without
+  // keys, teams or models. Business Analyst; Prompt Analyst (own project).
+  "llmGatewaySpend:read",
+  // ACME (ADR-0011): read-only configuration evidence for audit -- gateway
+  // keys and models (never key material), guardrail settings, members.
+  "evidence:read",
+  // ACME (ADR-0011 §11.1): approve or reject prompt promotion requests
+  // (never one's own). Platform Owner and Platform Admin.
+  "promptApprovals:approve",
   // The append-only record of gateway management actions (and, with
   // CHG-2026-008, of gateway requests: who, which key, source address).
   // Audit-log sensitivity: owner, admin and the Security Analyst.
@@ -146,6 +155,9 @@ export const projectRoleAccessRights: Record<Role, ProjectScope[]> = {
     "llmGateway:read",
     "llmGateway:CUD",
     "llmGatewayModels:CUD",
+    "llmGatewaySpend:read",
+    "evidence:read",
+    "promptApprovals:approve",
     "llmGatewayLogs:read",
     "project:read",
     "projectData:read",
@@ -211,6 +223,9 @@ export const projectRoleAccessRights: Record<Role, ProjectScope[]> = {
     "llmGateway:read",
     "llmGateway:CUD",
     "llmGatewayModels:CUD",
+    "llmGatewaySpend:read",
+    "evidence:read",
+    "promptApprovals:approve",
     "llmGatewayLogs:read",
     "project:read",
     "projectData:read",
@@ -272,7 +287,8 @@ export const projectRoleAccessRights: Record<Role, ProjectScope[]> = {
     "alerts:CUD",
   ],
   MEMBER: [
-    "llmGateway:read",
+    // ACME (ADR-0011 §11.5): the gateway Spend tab only, not keys/teams/models.
+    "llmGatewaySpend:read",
     "project:read",
     "projectData:read",
     "projectMembers:read",
@@ -351,6 +367,28 @@ export const projectRoleAccessRights: Record<Role, ProjectScope[]> = {
     // The gateway's append-only record only -- not llmGateway:read, so no
     // keys, budgets or spend (ADR-0003 §3.3).
     "llmGatewayLogs:read",
+  ],
+  // ACME (ADR-0011): Business Analyst. Dashboards, cost and usage. No
+  // trace/session/prompt content (no projectData:read); enforced server-side
+  // by the ANALYST allow-list in securityRoleAllowList.ts.
+  ANALYST: [
+    "project:read",
+    "dashboards:read",
+    "metrics:read",
+    "llmGatewaySpend:read",
+  ],
+  // ACME (ADR-0011): Auditor. Evidence, read-only: audit logs, guardrail
+  // events, the gateway record, configuration, prompt approval history. No
+  // trace/session/prompt-response content; enforced server-side by the
+  // AUDITOR allow-list in securityRoleAllowList.ts.
+  AUDITOR: [
+    "project:read",
+    "projectAuditLogs:read",
+    "projectGuardrails:read",
+    "llmGatewayLogs:read",
+    "evidence:read",
+    "projectMembers:read",
+    "prompts:read",
   ],
 };
 

@@ -46,6 +46,9 @@ export const organizationRoleAccessRights: Record<Role, OrganizationScope[]> = {
   VIEWER: [],
   NONE: [],
   SECURITY: [],
+  // ACME (ADR-0011): project-level roles only; no organisation scopes.
+  ANALYST: [],
+  AUDITOR: [],
 };
 
 export const orgNoneRoleComment =

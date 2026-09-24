@@ -11,7 +11,8 @@ import {
   getTraceByIdFromEventsTable,
 } from "@langfuse/shared/src/server";
 import { env } from "@langfuse/shared/src/env";
-import { prisma, Role } from "@langfuse/shared/src/db";
+import { prisma, type Role } from "@langfuse/shared/src/db";
+import { isContentFreeRole } from "@/src/features/rbac/server/securityRoleAllowList";
 import { sendAdminAccessWebhook } from "@/src/server/adminAccessWebhook";
 import { TRACE_DOWNLOAD_OMIT_LARGE_FIELDS_THRESHOLD } from "../constants/traceDownloadConfig";
 
@@ -57,7 +58,7 @@ const hasProjectAccess = (
 ) =>
   session?.user.organizations.some((organization) =>
     organization.projects.some(
-      (project) => project.id === projectId && project.role !== Role.SECURITY,
+      (project) => project.id === projectId && !isContentFreeRole(project.role),
     ),
   ) ?? false;
 

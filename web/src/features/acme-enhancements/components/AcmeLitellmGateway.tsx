@@ -1749,7 +1749,24 @@ function EventsTab({ projectId }: { projectId: string }) {
 
 export function AcmeLitellmGateway({ projectId }: { projectId: string }) {
   const status = api.acmeLitellm.status.useQuery({ projectId });
-  const canRead = useHasProjectAccess({ projectId, scope: "llmGateway:read" });
+  // ADR-0011 §6: each tab is shown only to roles that may use it. Keys, teams
+  // and models: the operational scope or the Auditor's evidence scope. Spend:
+  // the operational scope or the Spend-only scope (Business Analyst, Prompt
+  // Analyst).
+  const canReadOps = useHasProjectAccess({
+    projectId,
+    scope: "llmGateway:read",
+  });
+  const canReadEvidence = useHasProjectAccess({
+    projectId,
+    scope: "evidence:read",
+  });
+  const canReadSpendOnly = useHasProjectAccess({
+    projectId,
+    scope: "llmGatewaySpend:read",
+  });
+  const canRead = canReadOps || canReadEvidence;
+  const canReadSpend = canReadOps || canReadSpendOnly;
   const canManage = useHasProjectAccess({ projectId, scope: "llmGateway:CUD" });
   const canManageModels = useHasProjectAccess({
     projectId,
@@ -1793,7 +1810,7 @@ export function AcmeLitellmGateway({ projectId }: { projectId: string }) {
       </Banner>
     );
   }
-  if (!canRead && !canReadLogs) {
+  if (!canRead && !canReadSpend && !canReadLogs) {
     return (
       <Banner
         tone="info"
@@ -1808,7 +1825,7 @@ export function AcmeLitellmGateway({ projectId }: { projectId: string }) {
   // record's writer connection the server refuses every change anyway; say so
   // up front instead of letting each button fail.
   const writable = s.reachable === true && s.auditConfigured;
-  const firstTab = canRead ? "keys" : "record";
+  const firstTab = canRead ? "keys" : canReadSpend ? "spend" : "record";
 
   return (
     <div className="flex flex-col gap-4">
@@ -1843,7 +1860,7 @@ export function AcmeLitellmGateway({ projectId }: { projectId: string }) {
           {canRead ? (
             <TabsBarTrigger value="models">Models</TabsBarTrigger>
           ) : null}
-          {canRead ? (
+          {canReadSpend ? (
             <TabsBarTrigger value="spend">Spend</TabsBarTrigger>
           ) : null}
           {canReadLogs ? (
@@ -1878,10 +1895,12 @@ export function AcmeLitellmGateway({ projectId }: { projectId: string }) {
                 writable={writable}
               />
             </TabsBarContent>
-            <TabsBarContent value="spend" className="mt-6">
-              <SpendTab projectId={projectId} />
-            </TabsBarContent>
           </>
+        ) : null}
+        {canReadSpend ? (
+          <TabsBarContent value="spend" className="mt-6">
+            <SpendTab projectId={projectId} />
+          </TabsBarContent>
         ) : null}
         {canReadLogs ? (
           <TabsBarContent value="record" className="mt-6">
