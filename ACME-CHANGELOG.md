@@ -4466,3 +4466,24 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
   - It trusts the identity provider's email claim, so it is only for a single-tenant Entra ID app, where only tenant admins set a user's email.
 
 **Tests:** 11 new, and typecheck and lint are clean. **Control:** making the check always allow failed 3 tests: an uninvited email, a look-alike email and a partial match.
+
+## 2026-09-24 — No ACME edits to Enterprise files: revert, MIT role conversion, CI guard (CHG-2026-058)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-058 · Tier 1 (licence compliance) · owner: Anees Ur Rahman |
+| **Dates** | Built and tested locally. Dev: next console release · Prod: none exists |
+| **Impact** | None at runtime. The Salesforce sync only runs on Langfuse Cloud with its MuleSoft credentials, so it is off in CAIRO before and after. The Security Analyst role is unchanged |
+| **Rollback** | Redeploy the previous image |
+
+**Why:** the Security Analyst role (#22, 2026-09-18) added `SECURITY` to the role list inside `web/src/ee/features/sfdc-sync/server/sfdcService.ts`, to make the build pass. Under the Enterprise licence, that edit belongs to Langfuse and may only be used with a licence. It was the only ACME edit in any Enterprise directory (licence map 2026-09-23, item 2.2).
+
+**What:**
+- **Revert:** the Enterprise file is restored byte-for-byte from upstream v4.38.0. All Enterprise directories are now identical to upstream.
+- **MIT conversion:** `web/src/features/rbac/lib/upstreamRole.ts` (`ACME_ONLY_ROLES`, `toUpstreamRole`, `syncSfdcUserRole`) keeps ACME-only roles out of upstream integrations. The 6 MIT call sites (sign-up, members, SCIM) use it.
+- **Typecheck:** `web/scripts/typecheck.mjs` runs tsc and tolerates exactly one known error: TS2322 in unmodified `src/ee/` files, where upstream's role list meets ACME's roles (2 sites, dormant code). Any other error still fails.
+- **CI guard:** `.github/workflows/acme-ee-boundary.yml` fails any PR that changes `ee/`, `web/src/ee/`, `worker/src/ee/` or `packages/shared/src/server/ee/`, except an upstream sync labelled `upstream-sync`.
+
+**Tests:** 7 new; typecheck (through the wrapper) and lint are clean. **Controls:**
+- disabling the ACME-only filter fails 1 test;
+- the wrapper failed on a genuine type error in its first run.

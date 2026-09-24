@@ -8,6 +8,7 @@ import {
 } from "@/src/features/entitlements/server";
 import { shouldAutoEnableV4 } from "@/src/features/events/lib/v4Rollout";
 import { getSfdcService } from "@/src/ee/features/sfdc-sync/server";
+import { syncSfdcUserRole } from "@/src/features/rbac/lib/upstreamRole";
 import { canCreateOrganizations } from "@/src/features/organizations/server/canCreateOrganizations";
 import { provisionStarterOrganizationForNewUser } from "@/src/features/onboarding/server/onboardingService";
 import { projectRoleAccessRights } from "@langfuse/shared";
@@ -379,7 +380,7 @@ async function processMembershipInvitations(email: string, userId: string) {
   // SFDC: link the freshly-created lead to each org as an org-member.
   await Promise.all(
     invitationsForUser.map((invitation) =>
-      getSfdcService()?.setUserRole({
+      syncSfdcUserRole({
         orgId: invitation.orgId,
         userId,
         email,

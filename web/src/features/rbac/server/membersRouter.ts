@@ -24,6 +24,7 @@ import {
 } from "@langfuse/shared/src/server";
 import { env } from "@/src/env.mjs";
 import { getSfdcService } from "@/src/ee/features/sfdc-sync/server";
+import { syncSfdcUserRole } from "@/src/features/rbac/lib/upstreamRole";
 import {
   createWithinEntitlementLimit,
   hasEntitlement,
@@ -407,7 +408,7 @@ export const membersRouter = createTRPCRouter({
           after: orgMembership,
         });
         // SFDC: link existing lead to org as a member.
-        await getSfdcService()?.setUserRole({
+        await syncSfdcUserRole({
           orgId: input.orgId,
           userId: user.id,
           email: user.email,
@@ -715,7 +716,7 @@ export const membersRouter = createTRPCRouter({
         after: updatedMembership,
       });
 
-      await getSfdcService()?.setUserRole({
+      await syncSfdcUserRole({
         orgId: input.orgId,
         userId: membership.userId,
         email: membership.user?.email,

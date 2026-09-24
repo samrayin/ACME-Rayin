@@ -5,6 +5,7 @@ import { logger } from "@langfuse/shared/src/server";
 import { z } from "zod";
 import { type NextApiRequest, type NextApiResponse } from "next";
 import { getSfdcService } from "@/src/ee/features/sfdc-sync/server";
+import { syncSfdcUserRole } from "@/src/features/rbac/lib/upstreamRole";
 import { hasEntitlementBasedOnPlan } from "@/src/features/entitlements/server/hasEntitlement";
 import { shadowAuth } from "@/src/features/public-api/server/shadowAuth";
 import { writeScimError } from "@/src/features/public-api/server/writeError";
@@ -129,7 +130,7 @@ async function provisionMembership({
         apiKeyId,
         orgId,
       });
-      await getSfdcService()?.setUserRole({
+      await syncSfdcUserRole({
         orgId,
         userId,
         email,
@@ -188,7 +189,7 @@ async function provisionMembership({
       apiKeyId,
       orgId,
     });
-    await getSfdcService()?.setUserRole({
+    await syncSfdcUserRole({
       orgId,
       userId,
       email,
