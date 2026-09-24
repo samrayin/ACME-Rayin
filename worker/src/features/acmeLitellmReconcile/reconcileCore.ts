@@ -20,7 +20,7 @@ import { z } from "zod";
 import { type Prisma } from "@prisma/client";
 
 export const PAGE_SIZE = 100;
-export const MAX_PAGES_PER_RUN = 200;
+const MAX_PAGES_PER_RUN = 200;
 /** Rows younger than this are left for the push to deliver first. */
 export const SETTLE_MS = 2 * 60_000;
 /** Each window starts this far before the previous one ended. */
@@ -33,7 +33,7 @@ const nnum = z.number().nullish();
 
 // Lenient on purpose: this is CAIRO reading LiteLLM, and LiteLLM adds fields
 // freely. Unknown fields are dropped. Strictness lives on the inbound receiver.
-export const spendLogRowSchema = z.object({
+const spendLogRowSchema = z.object({
   request_id: z.string().min(1),
   startTime: z.string().min(1),
   endTime: nstr,
@@ -64,7 +64,7 @@ export const spendLogRowSchema = z.object({
 });
 export type SpendLogRow = z.infer<typeof spendLogRowSchema>;
 
-export const spendLogsPageSchema = z.object({
+const spendLogsPageSchema = z.object({
   data: z.array(z.unknown()),
   total_pages: z.number().nullish(),
 });

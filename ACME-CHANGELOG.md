@@ -4539,6 +4539,34 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 
 **Also fixed:** the `acmeLitellm.status` test expected the old response shape. CHG-2026-056 added `modelManagementEnabled`, and it went unnoticed because the router suite could not run locally until its harness was fixed.
 
+## 2026-09-24 — CI: the `knip` check passes again (CHG-2026-063)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-063 · Tier 2 · owner: Anees Ur Rahman |
+| **Impact** | None at runtime. Code hygiene and CI only; no behaviour changes |
+| **Rollback** | Revert the commit |
+
+**Why:** the `knip` job in `pipeline.yml` had failed on every PR since at least #154, so a real new unused export or dependency could not be told apart from the known backlog.
+
+**What:**
+- **Unused exports (16) and exported types (8):**
+  - 21 are used only inside their own file, so the `export` keyword is dropped:
+    - `acmeLitellmClient.ts`, `acmeLitellmEndpointGuard.ts`, `acmeLitellmModels.ts`, `acmeLitellmRequestLogIngest.ts`, `acmeLitellmService.ts` and `acmeLitellmEventWriter.ts` under `web/src/features/acme-enhancements/server/litellm/`;
+    - `worker/src/features/acmeLitellmReconcile/reconcileCore.ts`.
+  - three were dead and are deleted:
+    - the `LitellmDailyActivity` type alias;
+    - the `MAX_BODY_BYTES` constant. The request-log route already enforces the same 4 MB limit through its own `bodyParser.sizeLimit`;
+    - the `useIsSecurityAnalyst` hook. It has been unused since CHG-2026-059 part (b) switched `ProjectHomePage` to `useLandsOnGuardrails`, which stays.
+  - no test imports any of them.
+- **Unused dependency:** `@anthropic-ai/sdk` removed from `web/package.json` and the lockfile. Nothing in `web/` imports it. pnpm also pruned a few orphaned `eslint-plugin-import` snapshot entries that nothing referenced; `pnpm install --frozen-lockfile` passes.
+- **Unused files (3):** three standalone integration scripts are added to the knip `ignore` list with a comment. They are run with Node or loaded by promptfoo through `file://` paths, so they are not dead:
+  - `integrations/prompt-library/seed-itops-library.mjs`;
+  - `integrations/promptfoo/config/hooks/langfuse-scores.js`;
+  - `integrations/promptfoo/config/summarize-benign.js`.
+- **Unused file after CHG-2026-065:** `web/src/ee/features/audit-log-viewer/AuditLogsSettingsPage.tsx` became unused when CHG-2026-065 removed upstream's project Audit Logs settings entry. It is Enterprise-licensed, so ACME may not edit or delete it. It is added to knip's web `ignoreFiles` with a comment instead.
+- No Enterprise (`ee/`) file changed.
+
 ## 2026-09-24 — Organization overview: AI coding agents banner rebranded to ACME CAIRO (CHG-2026-064)
 
 | | |

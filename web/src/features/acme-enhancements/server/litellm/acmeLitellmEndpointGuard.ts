@@ -21,7 +21,7 @@ import { BlockList, isIP } from "net";
 import { lookup } from "dns/promises";
 
 /** Providers a console-added model may use. `azure` needs an api_base. */
-export const ALLOWED_PROVIDERS = [
+const ALLOWED_PROVIDERS = [
   "anthropic",
   "openrouter",
   "groq",
@@ -148,7 +148,7 @@ export function isBlockedAddress(address: string): boolean {
 
 export type Resolver = (host: string) => Promise<string[]>;
 
-export const systemResolver: Resolver = async (host) =>
+const systemResolver: Resolver = async (host) =>
   (await lookup(host, { all: true, verbatim: true })).map((a) => a.address);
 
 /**

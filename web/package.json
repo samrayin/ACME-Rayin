@@ -36,7 +36,6 @@
   "dependencies": {
     "@ag-ui/client": "^0.0.52",
     "@ag-ui/core": "^0.0.52",
-    "@anthropic-ai/sdk": "^0.123.0",
     "@appsignal/opentelemetry-instrumentation-bullmq": "^0.8.0",
     "@astral-sh/ruff-wasm-web": "0.15.13",
     "@aws-crypto/sha256-browser": "^5.2.0",

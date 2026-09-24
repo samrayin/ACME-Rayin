@@ -49,9 +49,9 @@ export type LitellmScope = { orgId: string; projectId: string };
 // Metadata
 // ---------------------------------------------------------------------------
 
-export const CAIRO_METADATA_PREFIX = "cairo_";
+const CAIRO_METADATA_PREFIX = "cairo_";
 
-export type CairoKeyMetadata = {
+type CairoKeyMetadata = {
   cairo_managed: true;
   cairo_key_id: string;
   cairo_lineage_id: string;
@@ -740,7 +740,7 @@ export async function resolvePartialRotation(
 // Listing and drift
 // ---------------------------------------------------------------------------
 
-export type KeyDrift = "in_sync" | "missing" | "drifted" | "unknown";
+type KeyDrift = "in_sync" | "missing" | "drifted" | "unknown";
 
 function sameSet(a: string[], b: string[]) {
   return (

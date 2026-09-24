@@ -38,20 +38,15 @@ import {
 } from "./acmeLitellmService";
 
 /** The guardrails service depends on these; changing them breaks checks. */
-export const PROTECTED_MODEL_NAMES = [
+const PROTECTED_MODEL_NAMES = [
   "nvidia-nemotron",
   "groq-judge",
   "groq-safeguard",
   "gemini-judge",
 ] as const;
 
-export const ROUTER_MODEL = "auto_router/complexity_router";
-export const ROUTER_TIERS = [
-  "SIMPLE",
-  "MEDIUM",
-  "COMPLEX",
-  "REASONING",
-] as const;
+const ROUTER_MODEL = "auto_router/complexity_router";
+const ROUTER_TIERS = ["SIMPLE", "MEDIUM", "COMPLEX", "REASONING"] as const;
 export type RouterTier = (typeof ROUTER_TIERS)[number];
 
 export type ModelsDeps = LitellmServiceDeps & {
@@ -59,7 +54,7 @@ export type ModelsDeps = LitellmServiceDeps & {
   resolve?: Resolver;
 };
 
-export type CredentialInput =
+type CredentialInput =
   | { kind: "keep" }
   | { kind: "none" }
   | { kind: "reference"; name: string }
