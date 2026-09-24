@@ -1,3 +1,4 @@
+// CHG-2026-067: no-op comment, validating the P0/P1 watchlist CI check.
 import { createHash } from "crypto";
 import pLimit from "p-limit";
 
