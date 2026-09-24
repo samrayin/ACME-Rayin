@@ -1,6 +1,11 @@
 import { useState } from "react";
 import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/src/components/ui/card";
 import { Badge } from "@/src/components/ui/badge";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
@@ -25,14 +30,17 @@ import { api } from "@/src/utils/api";
 import { useHasProjectAccess } from "@/src/features/rbac";
 import { showErrorToast, showSuccessToast } from "@/src/features/notifications";
 
-function StatusBadge({ status }: { status: "PENDING" | "APPROVED" | "REJECTED" }) {
+function StatusBadge({
+  status,
+}: {
+  status: "PENDING" | "APPROVED" | "REJECTED";
+}) {
   if (status === "APPROVED") return <Badge variant="success">Approved</Badge>;
   if (status === "REJECTED") return <Badge variant="error">Rejected</Badge>;
   return <Badge variant="warning">Pending</Badge>;
 }
 
 function RequestApprovalForm({ projectId }: { projectId: string }) {
-  const canRequest = useHasProjectAccess({ projectId, scope: "prompts:CUD" });
   const prompts = api.acmePromptReview.listAll.useQuery({ projectId });
   const utils = api.useUtils();
 
@@ -49,18 +57,17 @@ function RequestApprovalForm({ projectId }: { projectId: string }) {
         description: `Waiting on an Owner/Admin to approve label "${targetLabel}".`,
       });
     },
-    onError: (error) => showErrorToast("Failed to request approval", error.message),
+    onError: (error) =>
+      showErrorToast("Failed to request approval", error.message),
   });
-
-  if (!canRequest) return null;
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-sm">Request approval</CardTitle>
         <p className="text-muted-foreground text-xs">
-          Ask an Owner/Admin to push this prompt version to a label — the
-          label only moves once they approve.
+          Ask an Owner/Admin to push this prompt version to a label — the label
+          only moves once they approve.
         </p>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 pt-0">
@@ -120,7 +127,12 @@ function RequestApprovalForm({ projectId }: { projectId: string }) {
 }
 
 export function AcmePromptApprovalTable({ projectId }: { projectId: string }) {
-  const canReview = useHasProjectAccess({ projectId, scope: "project:update" });
+  // ADR-0011 §11.1: approve/reject buttons only for promptApprovals:approve.
+  const canReview = useHasProjectAccess({
+    projectId,
+    scope: "promptApprovals:approve",
+  });
+  const canRequest = useHasProjectAccess({ projectId, scope: "prompts:CUD" });
   const pending = api.acmePromptApproval.listPending.useQuery({ projectId });
   const history = api.acmePromptApproval.listHistory.useQuery({ projectId });
   const utils = api.useUtils();
@@ -156,17 +168,17 @@ export function AcmePromptApprovalTable({ projectId }: { projectId: string }) {
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-1">
-            <CardTitle className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+            <CardTitle className="text-muted-foreground text-xs font-bold tracking-wide uppercase">
               Pending
             </CardTitle>
           </CardHeader>
-          <CardContent className="text-dark-yellow pt-0 text-2xl font-semibold">
+          <CardContent className="text-dark-yellow pt-0 text-2xl font-bold">
             {pendingCount}
           </CardContent>
         </Card>
       </div>
 
-      <RequestApprovalForm projectId={projectId} />
+      {canRequest && <RequestApprovalForm projectId={projectId} />}
 
       <Card>
         <CardHeader>
@@ -210,7 +222,10 @@ export function AcmePromptApprovalTable({ projectId }: { projectId: string }) {
                     <TableCell className="font-mono text-xs">
                       {new Date(a.requestedAt).toLocaleString()}
                     </TableCell>
-                    <TableCell className="text-muted-foreground max-w-[240px] truncate text-xs">
+                    <TableCell
+                      className="text-muted-foreground max-w-[240px] truncate text-xs"
+                      title={a.requestComment ?? undefined}
+                    >
                       {a.requestComment ?? "—"}
                     </TableCell>
                     {canReview && (
@@ -219,7 +234,9 @@ export function AcmePromptApprovalTable({ projectId }: { projectId: string }) {
                           <Button
                             size="sm"
                             disabled={approve.isPending || reject.isPending}
-                            onClick={() => approve.mutate({ projectId, approvalId: a.id })}
+                            onClick={() =>
+                              approve.mutate({ projectId, approvalId: a.id })
+                            }
                           >
                             Approve
                           </Button>
@@ -227,7 +244,9 @@ export function AcmePromptApprovalTable({ projectId }: { projectId: string }) {
                             size="sm"
                             variant="outline"
                             disabled={approve.isPending || reject.isPending}
-                            onClick={() => reject.mutate({ projectId, approvalId: a.id })}
+                            onClick={() =>
+                              reject.mutate({ projectId, approvalId: a.id })
+                            }
                           >
                             Reject
                           </Button>
@@ -248,7 +267,9 @@ export function AcmePromptApprovalTable({ projectId }: { projectId: string }) {
         </CardHeader>
         <CardContent className="pt-0">
           {!history.data || history.data.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No resolved requests yet.</p>
+            <p className="text-muted-foreground text-sm">
+              No resolved requests yet.
+            </p>
           ) : (
             <Table>
               <TableHeader>
@@ -272,7 +293,9 @@ export function AcmePromptApprovalTable({ projectId }: { projectId: string }) {
                       <StatusBadge status={a.status} />
                     </TableCell>
                     <TableCell className="font-mono text-xs">
-                      {a.reviewedAt ? new Date(a.reviewedAt).toLocaleString() : "—"}
+                      {a.reviewedAt
+                        ? new Date(a.reviewedAt).toLocaleString()
+                        : "—"}
                     </TableCell>
                   </TableRow>
                 ))}

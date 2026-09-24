@@ -48,18 +48,18 @@ import { DashboardGrid } from "@/src/features/widgets/components/DashboardGrid";
 import { HomeDashboardSelect } from "@/src/features/dashboard/components/HomeDashboardSelect";
 import { useQueryProjectOrOrganization } from "@/src/features/projects/hooks";
 import { setupTracingRoute } from "@/src/features/setup/setupRoutes";
-import { useIsSecurityAnalyst } from "@/src/features/rbac/hooks/useIsSecurityAnalyst";
+import { useLandsOnGuardrails } from "@/src/features/rbac/hooks/useIsSecurityAnalyst";
 
 // Controller: no widget query may fire before the session resolves the v3/v4
 // read path — an unresolved session used to read as v3, fire a full wave of
 // legacy-table queries, then re-run the whole dashboard on v4 once the
 // session landed (via the scheduler reset key below).
 export default function ProjectHomePage() {
-  // ACME: the Security Analyst role cannot read the dashboard's trace data
-  // (securityRoleAllowList.ts), so send it to the page it can use.
+  // ACME: Security Analyst and Auditor cannot read the dashboard's trace data
+  // (securityRoleAllowList.ts, ADR-0011), so send them to a page they can use.
   const landingRouter = useRouter();
   const landingProjectId = landingRouter.query.projectId as string | undefined;
-  const isSecurityAnalyst = useIsSecurityAnalyst(landingProjectId);
+  const isSecurityAnalyst = useLandsOnGuardrails(landingProjectId);
   useEffect(() => {
     if (isSecurityAnalyst && landingProjectId) {
       landingRouter.replace(

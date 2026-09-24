@@ -31,7 +31,16 @@ const roleValues = {
   VIEWER: "VIEWER",
   NONE: "NONE",
   SECURITY: "SECURITY", // ACME: Security Analyst role (securityRoleAllowList.ts)
+  ANALYST: "ANALYST", // ACME (ADR-0011): Business Analyst
+  AUDITOR: "AUDITOR", // ACME (ADR-0011): Auditor
 } as const satisfies Record<Role, Role>;
+
+// ACME (ADR-0011 §11.4): new invitations don't offer VIEWER, which reads
+// prompt and response content; Business Analyst replaces it for numbers-only
+// access. VIEWER stays valid for existing members and the API.
+const INVITABLE_ORG_ROLES = Object.values(roleValues).filter(
+  (role) => role !== roleValues.VIEWER,
+);
 
 const formSchema = z.object({
   email: z.string().trim().pipe(z.email()),
@@ -140,7 +149,7 @@ export function CreateProjectMemberDialog({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {Object.values(roleValues).map((role) => (
+                        {INVITABLE_ORG_ROLES.map((role) => (
                           <RoleSelectItem role={role} key={role} />
                         ))}
                       </SelectContent>

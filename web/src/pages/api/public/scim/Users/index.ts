@@ -185,7 +185,16 @@ export default async function handler(
       let role: Role = "NONE";
       if (roles && Array.isArray(roles) && roles.length > 0) {
         const roleSchema = z.array(
-          z.enum(["OWNER", "ADMIN", "MEMBER", "VIEWER", "NONE", "SECURITY"]),
+          z.enum([
+            "OWNER",
+            "ADMIN",
+            "MEMBER",
+            "VIEWER",
+            "NONE",
+            "SECURITY",
+            "ANALYST",
+            "AUDITOR",
+          ]),
         );
         const parsedRoles = roleSchema.safeParse(roles);
         if (!parsedRoles.success) {

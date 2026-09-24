@@ -115,7 +115,17 @@ const reduceScopesToListItems = (
   );
 };
 
-const formatRole = (role: Role) =>
-  role === "SECURITY"
-    ? "Security Analyst"
-    : role.charAt(0).toUpperCase() + role.slice(1).toLowerCase();
+// ACME (ADR-0011 §3): CAIRO display names. Labels only -- enum values, the
+// API and upstream compatibility are unchanged.
+const ROLE_DISPLAY_NAMES: Record<Role, string> = {
+  OWNER: "Platform Owner",
+  ADMIN: "Platform Admin",
+  MEMBER: "Prompt Analyst",
+  VIEWER: "Viewer",
+  NONE: "None",
+  SECURITY: "Security Analyst",
+  ANALYST: "Business Analyst",
+  AUDITOR: "Auditor",
+};
+
+const formatRole = (role: Role) => ROLE_DISPLAY_NAMES[role];

@@ -171,11 +171,12 @@ describe("acmeLitellm RBAC", () => {
         has(r as never, "llmGateway:CUD"),
       ),
     ).toEqual(["OWNER", "ADMIN"]);
+    // ADR-0011 §11.5: MEMBER (Prompt Analyst) sees the Spend tab only.
     expect(
       ["OWNER", "ADMIN", "MEMBER", "VIEWER", "NONE", "SECURITY"].filter((r) =>
         has(r as never, "llmGateway:read"),
       ),
-    ).toEqual(["OWNER", "ADMIN", "MEMBER", "VIEWER"]);
+    ).toEqual(["OWNER", "ADMIN", "VIEWER"]);
     expect(
       ["OWNER", "ADMIN", "MEMBER", "VIEWER", "NONE", "SECURITY"].filter((r) =>
         has(r as never, "llmGatewayLogs:read"),
@@ -304,6 +305,8 @@ describe("acmeLitellm RBAC", () => {
       auditConfigured: expect.any(Boolean),
       reachable: true,
       requestLogsEnabled: true,
+      // CHG-2026-056: console model management switch (a boolean, no secret).
+      modelManagementEnabled: expect.any(Boolean),
     });
     expect(JSON.stringify(out)).not.toContain("sk-test-master");
     expect(JSON.stringify(out)).not.toContain("litellm.invalid");
