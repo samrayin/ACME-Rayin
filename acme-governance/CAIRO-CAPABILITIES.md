@@ -2,7 +2,7 @@
 
 **Purpose:** one place that says what CAIRO can do today, how far each capability has got, and where the evidence is. It is written for product, sales and due-diligence conversations. It is **not** a changelog, which holds the history, and **not** the Readiness Ledger, which holds the gaps and risks. It links to both.
 
-**As of:** 2026-09-23. **Environment:** one dev environment. **Nothing is deployed for a customer.** "Live" below means live in dev.
+**As of:** 2026-09-24. **Environment:** one dev environment. **Nothing is deployed for a customer.** "Live" below means live in dev.
 
 **Update rule:** update a row in the same PR as the change that moves it. A capability moves to 🟢 only on verified live evidence, not on merge.
 
@@ -78,14 +78,16 @@
 | Capability | Status | What it does | Evidence |
 |---|---|---|---|
 | Prompt review dates | 🟢 | Prompts carry review-by dates | Changelog 2026-09-16/17 |
-| Prompt approval workflow | 🟡 | Request and approve promotion; **self-approval blocked**. Advisory: labels can still be set directly | Changelog 2026-09-16/17, Ledger N-40 |
+| Prompt approval workflow | 🟡 | Request and approve promotion; **self-approval blocked**; only Owner and Admin approve (CHG-2026-059). Advisory: labels can still be set directly | Changelog 2026-09-16/17, Ledger N-40 |
 | A/B and canary rollout | 🟢 | Staged rollout of prompt versions | Changelog 2026-09-16/17 |
 
 ## 7. Console, identity and branding
 
 | Capability | Status | What it does | Evidence |
 |---|---|---|---|
-| Single sign-on (Microsoft Entra ID) | 🟢 | SSO sign-in; self-sign-up disabled | Changelog 2026-09-18/20 |
+| Single sign-on (Microsoft Entra ID) | 🟢 | SSO sign-in; open sign-up disabled, and invited users can create their account (invite-only) | Changelog 2026-09-18/20, CHG-2026-057 |
+| Roles for bank teams | 🟡 | Owner, Admin, Prompt Analyst, Viewer, Security Analyst, Business Analyst (numbers only) and Auditor (read-only evidence). Roles without content access are enforced on the server by allow-lists. **Live; not yet checked with a signed-in user per role** | ADR-0011, CHG-2026-059 |
+| Per-project access policy | 🔵 | Narrows a person's role on a given project, never widens it; ACME-built, not the Enterprise project-roles feature | ADR-0011 §5, CHG-2026-059 part c |
 | CAIRO branding and themes | 🟢 | ACME branding; upstream promotions switched off | Changelog, CHG-2026-025 |
 | In-console AI assistant | 🟢 | A chat widget served through the gateway | Changelog 2026-09-09 to 15 |
 | Client-side PII masking of SDK traces | 🟢 | Masking for traces sent by CAIRO's own SDK client | Changelog 2026-09-16/17 |
@@ -95,6 +97,7 @@
 | Capability | Status | What it does | Evidence |
 |---|---|---|---|
 | Traceable releases | 🟢 | `release.sh` builds, tags and deploys by digest; `verify-deployed.sh` proves what runs | Changelog 2026-09-18 |
+| No edits to Enterprise-licensed code | 🟢 | ACME code edits no Langfuse Enterprise file; a CI check fails any PR that does | CHG-2026-058 |
 | Change governance | 🟢 | Change IDs, risk tiers, ADRs, rollback plans, changelog check in CI | CHG-2026-001, -004, -007, -037 |
 | CI running for real | 🟢 | Full pipeline on GitHub-hosted runners | CHG-2026-034 |
 | Rebuild on a fresh subscription | ⬜ | Terraform end-to-end, unproven | ACME-Rayin #23 |
