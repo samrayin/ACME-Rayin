@@ -9,6 +9,7 @@
  *  - Nothing else the server returns contains key material.
  */
 import { Fragment, useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import {
   Card,
   CardContent,
@@ -592,11 +593,22 @@ function KeysTab({
   const keys = api.acmeLitellm.keys.useQuery({ projectId });
   const teams = api.acmeLitellm.teams.useQuery({ projectId });
   const catalogue = api.acmeLitellm.catalogue.useQuery({ projectId });
+  // ADR-0011 §6 (CHG-2026-059): keys created outside CAIRO belong to no
+  // project and are visible to organisation owners only. Other roles don't
+  // request them at all, so the section is never rendered for them and the
+  // server is never asked for data the role may not see.
+  const session = useSession();
+  const orgRole = session.data?.user?.organizations.find((o) =>
+    o.projects.some((p) => p.id === projectId),
+  )?.role;
+  const isOrgOwner = session.data?.user?.admin === true || orgRole === "OWNER";
   const unmanaged = api.acmeLitellm.unmanagedKeys.useQuery(
     { projectId },
-    // FORBIDDEN means "not an organisation owner": the section is simply not
-    // shown, so no error toast.
-    { retry: false, meta: { silentHttpCodes: [403] } },
+    {
+      enabled: isOrgOwner,
+      retry: false,
+      meta: { silentHttpCodes: [403] },
+    },
   );
 
   const [name, setName] = useState("");

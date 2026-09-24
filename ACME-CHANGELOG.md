@@ -4488,6 +4488,18 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 - disabling the ACME-only filter fails 1 test;
 - the wrapper failed on a genuine type error in its first run.
 
+## 2026-09-24 — LLM Gateway: owner-only data no longer requested for other roles (CHG-2026-059, part a)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-059 part (a) · Tier 1 · ADR-0011 §6 · owner: Anees Ur Rahman |
+| **Impact** | Non-owners no longer request the "Keys created outside CAIRO" data, which ends the FORBIDDEN log entries. Owners see no change |
+| **Rollback** | Redeploy the previous image |
+
+**Why:** a new Member's LLM Gateway page requested the owner-only unmanaged-keys data four times on 2026-09-24. The server refused each request, so nothing was disclosed, but a page must not request data its role may not see (ADR-0011 §6).
+
+**What:** the `unmanagedKeys` query in the Keys tab runs only when the user is the organisation OWNER or an instance admin, read from the session. The server check is unchanged and remains the control.
+
 ## 2026-09-24 — New roles: Business Analyst and Auditor; display names; server allow-lists (CHG-2026-059, part b)
 
 | | |
