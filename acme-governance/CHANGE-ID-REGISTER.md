@@ -88,6 +88,7 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | CHG-2026-063 | 2 | Make the CI `knip` check pass: remove unused exports, a dead hook and an unused dependency; knip ignores for standalone integration scripts | Anees Ur Rahman | `chore/chg-2026-063-knip` | Claimed |
 | CHG-2026-064 | 2 | Rebrand the organization-overview AI coding agents banner to ACME CAIRO, with a "Connect with us" contact link | Anees Ur Rahman | `feat/chg-2026-064-agent-banner` | Claimed |
 | CHG-2026-065 | 2 | Project settings: CAIRO label on the API key .env snippet and the upstream Audit Logs settings entry removed | Anees Ur Rahman | `feat/chg-2026-065-settings-branding` | Claimed |
+| CHG-2026-066 | 2 | Compliance drift gates: three new CI checks (change-ID presence, P0/P1 path watchlist, data-residency warning) alongside the existing ee/ boundary and changelog checks, plus a new "Compliance drift check" section in `CAIRO-Approval-Tiers-Standing-Rule.md` covering the findings a path-diff can't see (P0-1, P0-2, P0-4, P0-8). Owner directive 2026-09-24: compliance must be part of the build, drift highlighted before deploy, not after. Doc + CI only, no product code, no rating change | Anees Ur Rahman | `feat/compliance-drift-gates` | Claimed |
 
 ## ADR numbers
 

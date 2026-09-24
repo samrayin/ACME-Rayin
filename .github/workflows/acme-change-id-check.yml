@@ -1,0 +1,76 @@
+name: ACME change-ID check
+
+# CHANGE-ID-REGISTER.md's own rule: "Claim before use... before the ID
+# appears in any commit, branch, ADR, changelog entry or PR title. An ID
+# that is not in this file on main is not yours." That rule has been
+# violated by accident before this check existed: the register's own header
+# records two sessions colliding on "the next number" in one day
+# (2026-09-19). This check makes the rule mechanical instead of relying on
+# every session remembering it.
+#
+# A PR that changes product code, governance documents, or infrastructure
+# must reference a CHG-2026-NNN ID (in the branch name, PR title, or PR
+# body) that is present as a row in CHANGE-ID-REGISTER.md on this PR's own
+# head. Opt out only with the "no-change-id" label, for PRs with no
+# deployable or governance effect (e.g. a pure CI/tooling experiment).
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  change-id:
+    name: Change ID claimed for this PR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require a claimed CHG-2026-NNN ID
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BRANCH_NAME: ${{ github.head_ref }}
+          SKIP_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'no-change-id') }}
+        run: |
+          set -euo pipefail
+
+          changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
+          relevant=$(printf '%s\n' "$changed" \
+            | grep -E '^(web|worker|packages|ee|infra|deploy|integrations|rayin|scripts|acme-governance|\.github/workflows)/' \
+            | grep -vE '^acme-governance/CHANGE-ID-REGISTER\.md$' || true)
+
+          if [ -z "$relevant" ]; then
+            echo "No product, governance, infra or CI change in this PR; no change ID required."
+            exit 0
+          fi
+
+          if [ "$SKIP_LABEL" = "true" ]; then
+            echo "::warning::Change ID check skipped by the no-change-id label."
+            exit 0
+          fi
+
+          haystack="$BRANCH_NAME
+          $PR_TITLE
+          $PR_BODY"
+          id=$(printf '%s\n' "$haystack" | grep -oE 'CHG-2026-[0-9]{3}' | head -1 || true)
+
+          if [ -z "$id" ]; then
+            echo "::error::This PR changes product, governance, infra or CI files but references no CHG-2026-NNN ID in its branch name, title or body. Claim a fresh ID in acme-governance/CHANGE-ID-REGISTER.md first (its own claim-before-use rule), then reference it here — or apply 'no-change-id' if this genuinely has no deployable or governance effect."
+            printf 'Relevant files changed:\n%s\n' "$relevant"
+            exit 1
+          fi
+
+          if ! grep -qF "| $id |" acme-governance/CHANGE-ID-REGISTER.md; then
+            echo "::error::This PR references $id but that ID is not a row in acme-governance/CHANGE-ID-REGISTER.md on this PR's own head. Claim it there first (register-only commit or as part of this PR), per the register's own claim-before-use rule."
+            exit 1
+          fi
+
+          echo "$id is claimed in CHANGE-ID-REGISTER.md. OK."
