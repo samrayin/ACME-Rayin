@@ -1,7 +1,12 @@
 # CAIRO — Vision Tracker
 **Purpose:** single source of truth for "are we there yet," updated at every stage. Not a changelog — a status board. The changelog and ledger remain the detailed record; this file answers one question fast: what's done, what's next, what's blocking.
 
-**Last updated:** 2026-09-24. **CAIRO has bank-shaped roles in dev, invited SSO users can sign in, and no ACME code edits Enterprise-licensed files.** Console `acme-v4.38.0.11`, worker `worker-acme-v4.38.0.3`, both TRACED.
+**Last updated:** 2026-09-25. **The dev console carries the CAIRO name in its address and on two upstream screens.** Console `acme-v4.38.0.12`, worker `worker-acme-v4.38.0.3`, both TRACED.
+- **Console address renamed (CHG-2026-061):** the dev console moved to a CAIRO-named address on 2026-09-24. Entra sign-in verified by the owner. The old address keeps serving for about two weeks, then retires. Until the sign-in URL is in the Helm values, a Helm upgrade of the console release would revert it; image-only releases are safe. Details in the private operations record.
+- **Branding (CHG-2026-064, CHG-2026-065):** live in `acme-v4.38.0.12`. The organization-overview agent banner reads "ACME CAIRO" with a "Connect with us" contact link; the API key `.env` snippet carries a `# ACME CAIRO` label (variable names stay `LANGFUSE_*`, which the SDKs require); upstream's Enterprise Audit Logs settings entry is removed. CAIRO's own audit log is unchanged.
+- **Gateway external access (CHG-2026-062):** testing only, dummy data, no WAF or IP allow-list yet. The first external app test could not yet route its traffic through; not diagnosed. A proper hostname waits on a DNS record.
+
+**2026-09-24:** CAIRO has bank-shaped roles in dev, invited SSO users can sign in, and no ACME code edits Enterprise-licensed files.** Console `acme-v4.38.0.11`, worker `worker-acme-v4.38.0.3`, both TRACED.
 - **Roles (CHG-2026-059 parts a and b, ADR-0011):** live since 11:28Z.
   - **New roles:** Business Analyst sees dashboards, cost and usage. Auditor has read-only evidence: audit logs, guardrail events, the gateway record and configuration, prompts and their approval history, and members.
   - **Renamed:** Member is shown as Prompt Analyst.
