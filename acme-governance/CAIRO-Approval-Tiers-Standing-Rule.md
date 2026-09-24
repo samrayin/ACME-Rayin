@@ -65,6 +65,48 @@ Do not resume "in flight" as though uninterrupted, even for Tier 2 work.
 
 ---
 
+## Compliance drift check — run before opening any PR, not after
+
+**Tracked as:** CHG-2026-066. Mandatory going forward: compliance is part of the build, not a
+periodic reassessment finding. Drift gets highlighted before a change ships, so nothing has to
+be deployed and then reversed — CHG-2026-058 (an Enterprise-licensed file edit, caught and
+reverted after the fact) is exactly the failure mode this exists to prevent happening again.
+
+Three of the four dimensions below are now mechanically enforced by CI on every PR
+(`acme-ee-boundary.yml`, `acme-change-id-check.yml`, `acme-p0-p1-watchlist.yml`,
+`acme-residency-watch.yml`) — a red check is a hard stop, not a suggestion. But CI only catches
+what a path-diff can see. Before opening a PR, a session still runs this checklist itself,
+because two of these are judgment calls no grep can make:
+
+1. **License boundary.** Does this touch `ee/`, `web/src/ee/`, `worker/src/ee/`, or
+   `packages/shared/src/server/ee/`? CI blocks it (`acme-ee-boundary.yml`) unless labeled
+   `upstream-sync`. Don't apply that label to make a red check go away — it means what it says.
+2. **Change ID.** Claimed in `CHANGE-ID-REGISTER.md` and referenced in the branch/title/body?
+   CI blocks product/governance/infra/CI changes without one (`acme-change-id-check.yml`).
+3. **P0/P1 watchlist.** Does the diff touch a path in `P0-P1-WATCHLIST.yml`? CI requires an
+   `<ID>-ACK` line in the PR body (`acme-p0-p1-watchlist.yml`) — but the watchlist is a seed,
+   not exhaustive by design (see its own header). Four open findings can't be path-matched at
+   all and stay a judgment call every session makes directly:
+   - **P0-1** (secrets in agent transcripts) — before any command that could echo, log, or
+     export a credential value, stop and think about where that output goes.
+   - **P0-2** (unredacted observability export) — currently *accepted* for one dev project by
+     owner decision (CHG-2026-055), not fixed. Don't read that acceptance as license to enable
+     it anywhere else, or to treat the underlying risk as resolved.
+   - **P0-4** (unrotated credentials) — don't add a new consumer of a credential already flagged
+     as unrotated without naming that in the PR.
+   - **P0-8** (historic exports resident in the trace store) — don't run or propose any bulk
+     delete/export against the trace store without the two-step sequence P0-8 itself requires
+     (resolve where payload bodies live, validate the origin predicate) already satisfied.
+4. **Data residency.** Terraform region/location change? CI warns, doesn't block
+   (`acme-residency-watch.yml`) — P0-7's mismatch (live: Sweden Central; HLD: West Europe) means
+   a silent third value is the actual risk, not the existing two.
+
+**Surface the result in the PR itself** — the ack line, a one-line "no watchlist paths touched"
+note, whatever applies — not only in a later status report. The point is a reviewer sees it
+before merge, not a future session finding it during the next reassessment.
+
+---
+
 ## Why this shape, briefly
 
 - Merging stays Tier 1 because it is the one moment that converts "proposed" into "real" across code, ratings, and register claims — and it's exactly where this session's one real process violation occurred (a bundled register-claim PR), caught only because a human was reviewing before merge.

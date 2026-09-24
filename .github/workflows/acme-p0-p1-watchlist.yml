@@ -1,0 +1,96 @@
+name: ACME P0/P1 watchlist
+
+# CHG-2026-066. Findings kept getting caught late this week — after code
+# shipped, not before — because nothing connected "this PR touches path X"
+# to "path X is load-bearing for an open P0/P1 in the Readiness Ledger."
+# This check makes that connection visible at PR time instead of during the
+# next periodic reassessment.
+#
+# acme-governance/P0-P1-WATCHLIST.yml lists path prefixes tied to specific
+# open findings, with the reason. If a PR touches a watched path, its body
+# must contain an explicit acknowledgment line (e.g. "P0-5-ACK: least-
+# privilege cutover unaffected, schema-only column add"). The check does not
+# evaluate whether the acknowledgment is *correct* — that is the reviewer's
+# job — only that the PR author looked at the connection and said something,
+# rather than the finding surfacing for the first time after deploy.
+#
+# Opt out only with the "no-p0-p1-check" label.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  p0-p1-watchlist:
+    name: Open P0/P1 findings acknowledged
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Ensure PyYAML is available
+        run: python3 -m pip install --quiet --disable-pip-version-check pyyaml
+
+      - name: Check touched paths against the watchlist
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          SKIP_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'no-p0-p1-check') }}
+        run: |
+          set -euo pipefail
+
+          if [ "$SKIP_LABEL" = "true" ]; then
+            echo "::warning::P0/P1 watchlist check skipped by the no-p0-p1-check label."
+            exit 0
+          fi
+
+          changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
+
+          paths=$(python3 - <<'PYEOF'
+          import yaml
+          with open("acme-governance/P0-P1-WATCHLIST.yml") as f:
+              data = yaml.safe_load(f)
+          for row in data["watchlist"]:
+              print(f"{row['path']}\t{row['finding']}\t{row['why']}")
+          PYEOF
+          )
+
+          hit_findings=""
+          report=""
+          while IFS=$'\t' read -r path finding why; do
+            [ -z "$path" ] && continue
+            match=$(printf '%s\n' "$changed" | grep -F "$path" || true)
+            if [ -n "$match" ]; then
+              hit_findings="$hit_findings $finding"
+              report="$report
+          - $finding ($path): $why
+            touched: $(printf '%s' "$match" | tr '\n' ' ')"
+            fi
+          done <<< "$paths"
+
+          if [ -z "$hit_findings" ]; then
+            echo "No watchlisted path touched."
+            exit 0
+          fi
+
+          missing=""
+          for finding in $(printf '%s\n' "$hit_findings" | tr ' ' '\n' | sort -u); do
+            if ! printf '%s' "$PR_BODY" | grep -qE "${finding}-ACK"; then
+              missing="$missing $finding"
+            fi
+          done
+
+          if [ -n "$missing" ]; then
+            echo "::error::This PR touches paths tied to open Readiness Ledger findings without an acknowledgment. Add a line like '<ID>-ACK: <why this PR is safe w.r.t. that finding>' to the PR body for each of:$missing"
+            printf 'Details:%s\n' "$report"
+            exit 1
+          fi
+
+          echo "All touched watchlist findings acknowledged in the PR body."
+          printf 'Details:%s\n' "$report"

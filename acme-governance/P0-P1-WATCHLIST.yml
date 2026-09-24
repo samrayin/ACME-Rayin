@@ -1,0 +1,66 @@
+# P0/P1 path watchlist — CHG-2026-066.
+#
+# Purpose: when a PR touches a path tied to an OPEN P0 or P1 finding in the
+# RAYIN Readiness Ledger, the acme-p0-p1-watchlist CI check requires the PR
+# to explicitly acknowledge which finding it touches (a line anywhere in the
+# PR body matching "P0-N-ACK" or "P1-N-ACK"), so the connection is visible to
+# a reviewer before merge instead of discovered after deploy.
+#
+# What this is NOT: a complete mapping of every open finding, and not a
+# substitute for judgment. Four open findings are deliberately absent because
+# they describe credential values or already-resident data, not code paths a
+# diff can touch — a CI path-match cannot see them:
+#   P0-1  Secrets exposed in agent transcripts (evidence/credential state)
+#   P0-2  Unredacted observability export (workstation plugin config, not this repo)
+#   P0-4  Remaining unrotated credentials (credential values)
+#   P0-8  Historic agent exports resident in the trace store (already-written data)
+# These stay covered by the standing per-session compliance check instead
+# (acme-governance/CAIRO-Approval-Tiers-Standing-Rule.md, "Compliance drift
+# check" section) — a judgment call, not a mechanical one.
+#
+# Adding a row: pick the narrowest real path prefix you can, cite the exact
+# Ledger finding ID, and say in one line why that path is load-bearing for
+# it. A row that's too broad just trains reviewers to acknowledge-and-ignore.
+# Owner reviews any addition/removal — this file is itself governance
+# content (Tier 1) under CHANGE-PROCEDURE.md.
+
+watchlist:
+  - path: "deploy/azure/"
+    finding: "P0-3"
+    why: "Key Vault is provisioned but has no CSI driver / External Secrets Operator wiring it to any Secret. Infra changes here are exactly where that gets fixed or quietly stays broken."
+
+  - path: "packages/shared/prisma/"
+    finding: "P0-5"
+    why: "Web/worker connect to Postgres as the admin login, not rayin_app_runtime. Schema/migration changes here run under that same over-privileged connection until the least-privilege cutover (CHG-2026-010 / ADR-0004) lands."
+
+  - path: "packages/shared/prisma/migrations/"
+    finding: "P0-6"
+    why: "The first migration to ship after the least-privilege cutover will crash-loop web unless start-up migration is restructured first (separate migration connection or a Job). Every new migration is a candidate to trip this."
+
+  - path: "deploy/azure/"
+    finding: "P0-7"
+    why: "The live environment runs in Sweden Central; the HLD documents West Europe. Any Terraform region/location change should either close that mismatch or must not silently widen it."
+
+  - path: "rayin-guardrails/app/rayin_push.py"
+    finding: "P0-10"
+    why: "The guardrail audit-trail push is fire-and-forget with an in-memory buffer lost on restart. This is the file that implements that fail-open behavior."
+
+  - path: "rayin-guardrails/app/events.py"
+    finding: "P0-10"
+    why: "Same fail-open audit-trail path as rayin_push.py — event construction feeding the push."
+
+  - path: "web/src/features/acme-enhancements/guardrails/"
+    finding: "P0-10"
+    why: "Consumer side of the guardrail audit trail (acmeGuardrailsRouter.ts and related): nothing currently drains or alerts on push failures."
+
+  - path: "worker/src/ee/dataRetention/"
+    finding: "P0-11"
+    why: "Mature retention-deletion code that cannot fire because Project.retentionDays needs the Enterprise entitlement this OSS instance doesn't have. Changes here should not be mistaken for closing P0-11."
+
+  - path: "worker/src/features/batch-data-retention-cleaner/"
+    finding: "P0-11"
+    why: "Same entitlement-gated retention path as worker/src/ee/dataRetention/."
+
+  - path: "acme-governance/rollback/"
+    finding: "P0-11"
+    why: "ACME's own Postgres tables (acme_guardrail_events, LiteLLM tables) have no purge job at all — rayin_retention_purger exists only in the migration that creates it. A rollback record touching retention should say whether it changes that."
