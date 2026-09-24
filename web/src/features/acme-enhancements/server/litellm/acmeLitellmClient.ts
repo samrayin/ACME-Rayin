@@ -101,7 +101,7 @@ export function redact(
 
 const metadataSchema = z.record(z.string(), z.unknown()).nullish();
 
-export const litellmKeyRowSchema = z.object({
+const litellmKeyRowSchema = z.object({
   // LiteLLM's SHA-256 of the key, never the key itself.
   token: z.string(),
   key_alias: z.string().nullish(),
@@ -145,7 +145,7 @@ const keyInfoResponseSchema = z.object({
   }),
 });
 
-export const litellmTeamRowSchema = z.object({
+const litellmTeamRowSchema = z.object({
   team_id: z.string(),
   team_alias: z.string().nullish(),
   max_budget: z.number().nullish(),
@@ -200,7 +200,7 @@ const modelInfoSchema = z.object({
 // ADR-0010: the fields CAIRO reads from each deployment. Deliberately NOT
 // api_key or any other credential field: they are never parsed, so they can
 // never reach a response, a log line or the audit record.
-export const litellmDeploymentSchema = z.object({
+const litellmDeploymentSchema = z.object({
   model_name: z.string(),
   litellm_params: z
     .object({
@@ -243,10 +243,7 @@ const routerValidationSchema = z.object({
 const routingTestSchema = z.object({
   routed_model: z.string(),
   routed_model_configured: z.boolean().nullish(),
-  routing_decision: z
-    .object({ tier: z.string().nullish() })
-    .loose()
-    .nullish(),
+  routing_decision: z.object({ tier: z.string().nullish() }).loose().nullish(),
 });
 
 const healthEndpointSchema = z.object({
@@ -303,7 +300,6 @@ const dailyActivityResponseSchema = z.object({
     })
     .nullish(),
 });
-export type LitellmDailyActivity = z.infer<typeof dailyActivityResponseSchema>;
 
 // ---------------------------------------------------------------------------
 // Request types

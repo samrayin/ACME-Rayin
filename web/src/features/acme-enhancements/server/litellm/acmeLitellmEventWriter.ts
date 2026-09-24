@@ -46,7 +46,7 @@ export function getLitellmWriterClient(): PrismaClient {
   return writerClient;
 }
 
-export type LitellmEventAction =
+type LitellmEventAction =
   | "key.create"
   | "key.update"
   | "key.revoke"

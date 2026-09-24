@@ -26,7 +26,6 @@ import { z } from "zod";
 import { type Prisma } from "@prisma/client";
 
 export const MAX_RECORDS_PER_REQUEST = 512; // LiteLLM's DEFAULT_BATCH_SIZE
-export const MAX_BODY_BYTES = 4 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------
 // Authentication
@@ -192,19 +191,17 @@ export const standardLoggingPayloadSchema = z
   })
   .strict();
 
-export type StandardLoggingPayload = z.infer<
-  typeof standardLoggingPayloadSchema
->;
+type StandardLoggingPayload = z.infer<typeof standardLoggingPayloadSchema>;
 
 // ---------------------------------------------------------------------------
 // Row building
 // ---------------------------------------------------------------------------
 
 export type KeyOwner = { cairoKeyId: string; orgId: string; projectId: string };
-export type KeyOwnerLookup = ReadonlyMap<string, KeyOwner>;
+type KeyOwnerLookup = ReadonlyMap<string, KeyOwner>;
 
 /** Fields shared by both capture paths. */
-export type RequestLogFacts = {
+type RequestLogFacts = {
   requestId: string;
   litellmCallId: string | null;
   startTime: Date;
@@ -228,9 +225,7 @@ export type RequestLogFacts = {
 };
 
 /** The ONLY place a payload becomes persisted data: an explicit allow-list. */
-export function factsFromPushPayload(
-  p: StandardLoggingPayload,
-): RequestLogFacts {
+function factsFromPushPayload(p: StandardLoggingPayload): RequestLogFacts {
   return {
     requestId: p.id,
     litellmCallId: p.litellm_call_id ?? null,
@@ -256,7 +251,7 @@ export function factsFromPushPayload(
   };
 }
 
-export function toRequestLogRow(
+function toRequestLogRow(
   facts: RequestLogFacts,
   source: "PUSH" | "RECONCILE",
   owners: KeyOwnerLookup,
