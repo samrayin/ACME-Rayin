@@ -82,6 +82,7 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | CHG-2026-055 | 1 | Claude Code observability plugin export re-enabled into a dev CAIRO project, with a backfill of past sessions (owner decision, 2026-09-23). Environment details are in the private operations record. **Claimed after the change was made**: the owner decided and the work ran in one session; recorded here so the change is traceable. Reopens the P0-2 export path by decision; rating unchanged | Anees Ur Rahman | records in `acme-rayin-ops` | Claimed (retrospective) |
 | CHG-2026-057 | 1 | Invite-only sign-up: with sign-up disabled, allow creating an account only when a pending CAIRO invitation exists for that exact email (SSO users invited as Members are currently blocked with OAuthCreateAccount). Authentication change | Anees Ur Rahman | `feat/chg-2026-057-invite-only-signup` | Claimed |
 | CHG-2026-058 | 1 | Revert the only ACME edit to a Langfuse Enterprise-licensed file (`web/src/ee/features/sfdc-sync/server/sfdcService.ts`, added with the Security Analyst role in #22) back to upstream, handle ACME-only roles at the MIT call sites instead, and add a CI guard that fails any PR changing `ee/`, `web/src/ee/` or `worker/src/ee/`. Licence map item 2.2 | Anees Ur Rahman | `fix/chg-2026-058-ee-revert` | Claimed |
+| CHG-2026-059 | 1 | CAIRO RBAC for bank deployments: new organisation roles (Business Analyst, Auditor, optional Approver), an ACME-owned project access policy that can only narrow a role per project (clean-room, not the Enterprise project-roles feature), and hiding features per role in the UI. Design first in ADR-0011 | Anees Ur Rahman | `docs/adr-0011-cairo-rbac` | Claimed |
 
 ## ADR numbers
 
@@ -98,6 +99,7 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | ADR-0008 | CHG-2026-033 | CI runner provisioning for the heavy `pipeline.yml` jobs (N-51): provision the Blacksmith GitHub App vs. move to `ubuntu-latest` | Accepted — owner picked path (b), implemented and merged (CHG-2026-034, #94) |
 | ADR-0009 | CHG-2026-040 | Guardrail health events: dedicated table, the three §3d metrics, the credential and its scope, and what production-grade completion actually costs | Claimed — design only |
 | ADR-0010 | CHG-2026-056 | Gateway model management and the complexity auto router: where models and provider credentials are stored, encryption key (salt) handling, endpoint restrictions, audit, permissions, and how it is turned off | Claimed |
+| ADR-0011 | CHG-2026-059 | CAIRO roles and the ACME project access policy: role set, permission matrix, narrowing-only project policy, what each role must not see, and the Enterprise boundary | Claimed |
 
 The rows above for CHG-2026-001 to -003 and ADR-0000 to -0002 were reconstructed
 on 2026-09-19 from `main` and every branch on the remote; they were not claimed
