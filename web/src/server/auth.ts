@@ -5,7 +5,7 @@ import {
   type Session,
 } from "next-auth";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
-import { prisma } from "@langfuse/shared/src/db";
+import { prisma, type Role } from "@langfuse/shared/src/db";
 import { isInAppAgentInstanceEnabled } from "@langfuse/shared/in-app-agent/server/modelProvider";
 import {
   hashPassword,
@@ -19,6 +19,8 @@ import { isGatewayEnabledForOrganization } from "@/src/features/ai-gateway/serve
 import { env } from "@/src/env.mjs";
 import { createProjectMembershipsOnSignup } from "@/src/features/auth/lib/createProjectMembershipsOnSignup";
 import { decideSignup } from "@/src/features/auth/lib/inviteOnlySignup";
+import { applyProjectAccessCeiling } from "@/src/features/acme-enhancements/projectAccess/projectAccessPolicy";
+import { loadProjectAccessCeilings } from "@/src/features/acme-enhancements/projectAccess/loadProjectAccessCeilings";
 import { getSessionLoginAt } from "@/src/features/auth/lib/sessionExpiration";
 import { type AdClickIds } from "@/src/features/auth/lib/signupAttribution";
 import {
@@ -865,6 +867,11 @@ export async function getAuthOptions(signupAttribution?: {
             dualPreviewAvailable,
           });
 
+          // ACME (ADR-0011): per-project ceilings that can only narrow a role.
+          const acmeProjectCeilings = dbUser
+            ? await loadProjectAccessCeilings(dbUser.id)
+            : new Map<string, Role>();
+
           return {
             ...session,
             environment: {
@@ -949,11 +956,17 @@ export async function getAuthOptions(signupAttribution?: {
                           cloudConfig: parsedCloudConfig.data,
                           projects: orgMembership.organization.projects
                             .map((project) => {
-                              const projectRole = resolveProjectRole({
-                                projectId: project.id,
-                                projectMemberships:
-                                  orgMembership.ProjectMemberships,
-                                orgMembershipRole: orgMembership.role,
+                              // ACME (ADR-0011): narrowed by the project access
+                              // policy; NONE drops the project in the filter below.
+                              const projectRole = applyProjectAccessCeiling({
+                                resolvedRole: resolveProjectRole({
+                                  projectId: project.id,
+                                  projectMemberships:
+                                    orgMembership.ProjectMemberships,
+                                  orgMembershipRole: orgMembership.role,
+                                }),
+                                orgRole: orgMembership.role,
+                                ceiling: acmeProjectCeilings.get(project.id),
                               });
                               return {
                                 id: project.id,

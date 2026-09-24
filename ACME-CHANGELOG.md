@@ -4570,3 +4570,23 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 - `web/src/features/public-api/hooks/useLangfuseEnvCode.ts`: a `# ACME CAIRO` comment line heads the snippet, both in the settings view and when new keys are shown. **The variable names stay `LANGFUSE_*`**: the Langfuse SDKs and OpenTelemetry exporters read exactly those names, so renaming them would silently break every integration that copies the snippet.
 
 **Tests:** prettier and eslint clean.
+
+## 2026-09-25 — Project access: per-project limits that can only narrow a role (CHG-2026-059, part c)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-059 part (c) · Tier 1 (authorisation) · ADR-0011 §5 accepted · owner: Anees Ur Rahman |
+| **Dates** | Built and tested locally. Dev: a console release (the migration runs at start-up) · Prod: none exists |
+| **Impact** | None until an admin sets a limit: with no rows, every person keeps exactly the access they have today. A new Organization settings page, "Project access", for members with `organizationMembers:CUD` (Owner, Admin) |
+| **Rollback** | `CAIRO_PROJECT_ACCESS_POLICY_ENABLED=false` stops applying limits (rows are kept), or delete the rows, or redeploy the previous image. The new table is additive |
+
+**What:**
+- **Rule:** an admin may set, per person and project, a limit role whose permissions are all within the person's organization role. `NONE` ("No access") hides the project. The limit can only narrow; "narrower" is judged by permissions, not rank, because Security Analyst and Auditor sit sideways from Prompt Analyst.
+- **Table** `acme_project_access` (migration `20260924150000_add_acme_project_access`): one row per project and person, cascading on membership, project and user deletion. ACME's own table; upstream `ProjectMembership` and the Enterprise project-roles entitlement are untouched.
+- **Enforcement:** one hook in the session callback (`server/auth.ts`) narrows the role upstream resolved. Everything downstream reads the session, so the sidebar, page guards and tRPC checks narrow with it. A limit that no longer fits the person's organization role (for example after a demotion) **fails closed**: the project is hidden and the screen flags the row for review. Public-API keys are not affected.
+- **Router** `acmeProjectAccess` (`overview`, `set`, `remove`): needs `organizationMembers:CUD`; refuses widening and sideways limits, limits on yourself, and limits on someone with a higher role; every change is audit-logged (`acmeProjectAccess`).
+- **Screen:** Organization settings > Project access. Pick a member, then set a limit per project; only valid limits are offered.
+
+**Tests:** 33 new (`acmeProjectAccess.servertest.ts`): the subset rule and the "never wider than either the organization or the resolved role" property over every role pair; `NONE` drops the project from the session; router refusals happen before any write. **Controls:** removing the subset check failed 11 tests, removing fail-closed failed 9, removing the higher-role guard failed 1.
+
+**Found while building:** Viewer is not a narrowing of Prompt Analyst. Since part (b), Prompt Analyst holds only the gateway Spend permission while Viewer still holds `llmGateway:read`, so the policy correctly refuses "limit a Prompt Analyst to Viewer". Whether Viewer should keep `llmGateway:read` is for the owner.

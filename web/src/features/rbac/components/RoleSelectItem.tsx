@@ -128,4 +128,4 @@ const ROLE_DISPLAY_NAMES: Record<Role, string> = {
   AUDITOR: "Auditor",
 };
 
-const formatRole = (role: Role) => ROLE_DISPLAY_NAMES[role];
+export const formatRole = (role: Role) => ROLE_DISPLAY_NAMES[role];

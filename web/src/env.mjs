@@ -391,6 +391,8 @@ export const env = createEnv({
     // pending invitation create its account on first SSO sign-in. Default off.
     // Only for a single-tenant identity provider whose email claim is admin-set.
     CAIRO_AUTH_ALLOW_INVITED_SIGNUP: z.enum(["true", "false"]).optional(),
+    // ACME (ADR-0011): project access policy; on unless "false" (rollback).
+    CAIRO_PROJECT_ACCESS_POLICY_ENABLED: z.enum(["true", "false"]).optional(),
     AUTH_EMAIL_VERIFICATION_REQUIRED: z
       .enum(["true", "false"])
       .default("false"),
@@ -1120,6 +1122,8 @@ export const env = createEnv({
     AUTH_DISABLE_SIGNUP: process.env.AUTH_DISABLE_SIGNUP,
     CAIRO_AUTH_ALLOW_INVITED_SIGNUP:
       process.env.CAIRO_AUTH_ALLOW_INVITED_SIGNUP,
+    CAIRO_PROJECT_ACCESS_POLICY_ENABLED:
+      process.env.CAIRO_PROJECT_ACCESS_POLICY_ENABLED,
     AUTH_EMAIL_VERIFICATION_REQUIRED:
       process.env.AUTH_EMAIL_VERIFICATION_REQUIRED,
     AUTH_SESSION_MAX_AGE: process.env.AUTH_SESSION_MAX_AGE,

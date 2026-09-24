@@ -51,7 +51,9 @@ type AuditableResource =
   | "gatewayConfig"
   | "gatewayAiConnection"
   // legacy resources
-  | "membership";
+  | "membership"
+  // ACME (ADR-0011): project access policy rows.
+  | "acmeProjectAccess";
 
 type AuditLog = {
   resourceType: AuditableResource;
