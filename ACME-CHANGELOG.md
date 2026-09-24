@@ -4538,3 +4538,20 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 **Tests:** 25 new, and 150 of 150 in the RBAC-related suites pass when run as CI does. Every allowed procedure is checked to exist and to be a query. **Control:** adding a content procedure and a mutation to the Business Analyst list failed 2 tests.
 
 **Also fixed:** the `acmeLitellm.status` test expected the old response shape. CHG-2026-056 added `modelManagementEnabled`, and it went unnoticed because the router suite could not run locally until its harness was fixed.
+
+## 2026-09-24 — Project settings: CAIRO label on the .env snippet, upstream Audit Logs entry removed (CHG-2026-065)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-065 · Tier 2 (UI only) · owner: Anees Ur Rahman |
+| **Dates** | Dev: next console release · Prod: none exists |
+| **Impact** | Visual only. Project Settings no longer lists "Audit Logs"; the API key `.env` snippet starts with a `# ACME CAIRO` line |
+| **Rollback** | Redeploy the previous image |
+
+**Why:** the owner asked for the settings page to show the CAIRO name instead of Langfuse and to drop the Audit Logs entry. That entry is upstream's Enterprise-licensed, entitlement-gated viewer; CAIRO's own audit log is the "Audit Logs" page under ACME Enhancements.
+
+**What:**
+- `web/src/features/projects/ProjectSettingsPage.tsx`: the Audit Logs settings page and its import are removed. The Enterprise component itself is untouched (CHG-2026-058 boundary). The organization settings entry is unchanged; it only shows with the Enterprise entitlement.
+- `web/src/features/public-api/hooks/useLangfuseEnvCode.ts`: a `# ACME CAIRO` comment line heads the snippet, both in the settings view and when new keys are shown. **The variable names stay `LANGFUSE_*`**: the Langfuse SDKs and OpenTelemetry exporters read exactly those names, so renaming them would silently break every integration that copies the snippet.
+
+**Tests:** prettier and eslint clean.

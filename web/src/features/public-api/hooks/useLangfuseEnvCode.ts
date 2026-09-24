@@ -6,6 +6,10 @@ type LangfuseKeys = {
   publicKey: string;
 };
 
+// ACME (CHG-2026-065): CAIRO label. The variable names stay LANGFUSE_*,
+// because the Langfuse SDKs and OpenTelemetry exporters read exactly these.
+const ENV_HEADER = "# ACME CAIRO";
+
 function getLangfuseBaseUrl(baseUrl: string): string {
   return `${baseUrl}${env.NEXT_PUBLIC_BASE_PATH ?? ""}`;
 }
@@ -16,6 +20,7 @@ export function getLangfuseEnvCode(
 ): string {
   if (keys) {
     return `
+${ENV_HEADER}
 LANGFUSE_SECRET_KEY="${keys.secretKey}"
 LANGFUSE_PUBLIC_KEY="${keys.publicKey}"
 LANGFUSE_BASE_URL="${baseUrl}"
@@ -23,6 +28,7 @@ LANGFUSE_BASE_URL="${baseUrl}"
   }
 
   return `
+${ENV_HEADER}
 LANGFUSE_SECRET_KEY="sk-lf-..."
 LANGFUSE_PUBLIC_KEY="pk-lf-..."
 LANGFUSE_BASE_URL="${baseUrl}"
