@@ -4553,3 +4553,20 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 **What:** `web/src/features/developer-tools/components/AgentToolsBanner.tsx`: new headline, `mailto:` contact link, button label. The body still names the Langfuse Agent Skill, MCP server and CLI, which are the upstream tools the user connects. The dismiss key is unchanged (`agent-tools-banner:v1`), so users who dismissed the banner do not see it again.
 
 **Tests:** prettier and eslint clean on the file; no existing tests reference the banner.
+
+## 2026-09-24 — Project settings: CAIRO label on the .env snippet, upstream Audit Logs entry removed (CHG-2026-065)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-065 · Tier 2 (UI only) · owner: Anees Ur Rahman |
+| **Dates** | Dev: next console release · Prod: none exists |
+| **Impact** | Visual only. Project Settings no longer lists "Audit Logs"; the API key `.env` snippet starts with a `# ACME CAIRO` line |
+| **Rollback** | Redeploy the previous image |
+
+**Why:** the owner asked for the settings page to show the CAIRO name instead of Langfuse and to drop the Audit Logs entry. That entry is upstream's Enterprise-licensed, entitlement-gated viewer; CAIRO's own audit log is the "Audit Logs" page under ACME Enhancements.
+
+**What:**
+- `web/src/features/projects/ProjectSettingsPage.tsx`: the Audit Logs settings page and its import are removed. The Enterprise component itself is untouched (CHG-2026-058 boundary). The organization settings entry is unchanged; it only shows with the Enterprise entitlement.
+- `web/src/features/public-api/hooks/useLangfuseEnvCode.ts`: a `# ACME CAIRO` comment line heads the snippet, both in the settings view and when new keys are shown. **The variable names stay `LANGFUSE_*`**: the Langfuse SDKs and OpenTelemetry exporters read exactly those names, so renaming them would silently break every integration that copies the snippet.
+
+**Tests:** prettier and eslint clean.
