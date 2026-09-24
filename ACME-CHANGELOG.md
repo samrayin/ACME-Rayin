@@ -4538,3 +4538,18 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 **Tests:** 25 new, and 150 of 150 in the RBAC-related suites pass when run as CI does. Every allowed procedure is checked to exist and to be a query. **Control:** adding a content procedure and a mutation to the Business Analyst list failed 2 tests.
 
 **Also fixed:** the `acmeLitellm.status` test expected the old response shape. CHG-2026-056 added `modelManagementEnabled`, and it went unnoticed because the router suite could not run locally until its harness was fixed.
+
+## 2026-09-24 — Organization overview: AI coding agents banner rebranded to ACME CAIRO (CHG-2026-064)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-064 · Tier 2 (text and link only) · owner: Anees Ur Rahman |
+| **Dates** | Dev: next console release · Prod: none exists |
+| **Impact** | Visual only. The banner on the organization overview now reads "ACME CAIRO works great with your AI coding agents." and its button reads "Connect with us", opening an email to the ACME helpdesk instead of the upstream Langfuse docs page |
+| **Rollback** | Redeploy the previous image |
+
+**Why:** the owner asked for the banner to carry the CAIRO name and to send interested users to ACME rather than to upstream documentation.
+
+**What:** `web/src/features/developer-tools/components/AgentToolsBanner.tsx`: new headline, `mailto:` contact link, button label. The body still names the Langfuse Agent Skill, MCP server and CLI, which are the upstream tools the user connects. The dismiss key is unchanged (`agent-tools-banner:v1`), so users who dismissed the banner do not see it again.
+
+**Tests:** prettier and eslint clean on the file; no existing tests reference the banner.
