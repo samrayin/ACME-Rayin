@@ -4618,3 +4618,18 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 **Tests:** 33 new (`acmeProjectAccess.servertest.ts`): the subset rule and the "never wider than either the organization or the resolved role" property over every role pair; `NONE` drops the project from the session; router refusals happen before any write. **Controls:** removing the subset check failed 11 tests, removing fail-closed failed 9, removing the higher-role guard failed 1.
 
 **Found while building:** Viewer is not a narrowing of Prompt Analyst. Since part (b), Prompt Analyst holds only the gateway Spend permission while Viewer still holds `llmGateway:read`, so the policy correctly refuses "limit a Prompt Analyst to Viewer". Whether Viewer should keep `llmGateway:read` is for the owner.
+
+## 2026-09-25 — LiteLLM deployment manifest: disable default service-account token automount (CHG-2026-069)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-069 · Tier 2 (infra hardening, manifest source only) · owner: Anees Ur Rahman |
+| **Dates** | Source-only. No cluster change in this commit; applying it live is a separate, owner-gated LiteLLM restart |
+| **Impact** | None at runtime as shipped — the pod is not restarted by this change. Once applied, the pod no longer gets the default Kubernetes service-account token auto-mounted at `/var/run/secrets/kubernetes.io/serviceaccount`. LiteLLM never calls the Kubernetes API — every credential it uses comes from environment variables (`integrations/litellm/config/litellm-config.yaml`'s `os.environ/*` references: provider keys, `DATABASE_URL`, `LITELLM_MASTER_KEY`) and its config arrives as a mounted ConfigMap volume, not through the API — so the token had no use and removing it drops an unused credential from the pod's filesystem |
+| **Rollback** | Revert the commit; if already applied to the live cluster, the owner re-applies the previous manifest (drop the `automountServiceAccountToken: false` line) |
+
+**Why:** finding 3 of 5 from the 2026-09-25 independent security review (rayin-security-scanner) of `integrations/litellm/k8s/deployment.yaml`. Checkov flagged `CKV_K8S_38` (default service-account token auto-mounted) against `Deployment.rayin-platform.litellm`'s `template.spec`. Rated Low by the reviewer — real but no live exposure demonstrated; the fix removes an unused credential rather than closing an active path.
+
+**What:** `integrations/litellm/k8s/deployment.yaml` — `automountServiceAccountToken: false` added as the first key under `template.spec`, at 6-space indent, directly after `spec:` (line 24) and before `containers:`. Nothing else in the file changed. Independent of the still-open CHG-2026-067 and CHG-2026-068 branches (both based on `main`, same as this one); if merged after CHG-2026-068's pod-level `securityContext` block, this line belongs before it, per the reviewer's instruction.
+
+**Tests:** `checkov -f integrations/litellm/k8s/deployment.yaml --framework kubernetes --check CKV_K8S_38` — PASSED (previously FAILED on the unmodified file, confirmed on a scratch copy before editing the tracked file).
