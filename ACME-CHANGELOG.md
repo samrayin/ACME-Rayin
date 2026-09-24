@@ -4633,3 +4633,18 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 **What:** `integrations/litellm/k8s/deployment.yaml`, lines 42-47 — `capabilities: drop: ["ALL"]` added to the `litellm` container's `securityContext`, directly after `allowPrivilegeEscalation: false`, at the same indent as its sibling keys. `runAsUser`, the pinned image digest (line 34), `envFrom` and the ConfigMap comment are unchanged.
 
 **Tests:** `checkov -f integrations/litellm/k8s/deployment.yaml --framework kubernetes --check CKV_K8S_28,CKV_K8S_37` — both PASSED (previously FAILED on the unmodified file, confirmed on a scratch copy before editing the tracked file).
+
+## 2026-09-25 — LiteLLM deployment manifest: pod-level securityContext and seccomp profile (CHG-2026-068)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-068 · Tier 2 (infra hardening, manifest source only) · owner: Anees Ur Rahman |
+| **Dates** | Source-only. No cluster change in this commit; applying it live is a separate, owner-gated LiteLLM restart |
+| **Impact** | None at runtime as shipped — the pod is not restarted by this change. Once applied, the pod runs under containerd's `RuntimeDefault` seccomp profile — the same default the image is already built and run under (Docker's default seccomp) — and `runAsNonRoot: true` is asserted again at pod level, restating what the container-level `securityContext` (lines 42-47, CHG-2026-067) already enforces |
+| **Rollback** | Revert the commit; if already applied to the live cluster, the owner re-applies the previous manifest (drop the pod-level `securityContext` block) |
+
+**Why:** finding 2 of 5 from the 2026-09-25 independent security review (rayin-security-scanner) of `integrations/litellm/k8s/deployment.yaml`. Checkov flagged `CKV_K8S_29` (no pod-level `securityContext`) and `CKV_K8S_31` (no seccomp profile) against `Deployment.rayin-platform.litellm`'s `template.spec`. Rated Low by the reviewer — real but behaviour-preserving hardening: `RuntimeDefault` is containerd's default profile, the same as the Docker default the LiteLLM image is already built and run under.
+
+**What:** `integrations/litellm/k8s/deployment.yaml`, between `spec:` (line 24, under `template:`) and `containers:` (line 25) — a pod-level `securityContext` (`runAsNonRoot: true`, `seccompProfile.type: RuntimeDefault`) added at 6-space indent. Nothing else in the file changed. Built on top of the still-open CHG-2026-067 branch (`fix/chg-2026-067-litellm-drop-capabilities`), since that finding's fix is what the line numbers here were measured against.
+
+**Tests:** `checkov -f integrations/litellm/k8s/deployment.yaml --framework kubernetes --check CKV_K8S_29,CKV_K8S_31` — both PASSED (previously FAILED on the unmodified file, confirmed on a scratch copy before editing the tracked file). Full-file scan after this change plus CHG-2026-067's shows the only remaining failures are `CKV_K8S_22`, `CKV_K8S_40`, `CKV_K8S_35`, `CKV_K8S_38` and `CKV2_K8S_6` — none of which this finding claims to close.
