@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Change** | CHG-2026-059 · Tier 1 (authorisation) · owner: Anees Ur Rahman |
-| **Status** | **Proposed: design only.** No build before the owner accepts this ADR (§11) |
+| **Status** | **Accepted by the owner, 2026-09-24** ("go with recommendations", §11). Build proceeds under CHG-2026-059 |
 | **Related** | CHG-2026-058 (no ACME edits to Enterprise files; MIT role conversion `upstreamRole.ts`; CI guard) · Security Analyst role (#22) · licence map 2026-09-23 items 2.1–2.4 |
 
 ## 1. The problem
@@ -45,7 +45,7 @@ Roles are organisation-wide. Display names are what CAIRO shows; enum values are
 | Security Analyst | `SECURITY` | Security operations | Existing |
 | **Business Analyst** | `ANALYST` | Business owners and finance: cost, usage, dashboards | **New** |
 | **Auditor** | `AUDITOR` | Internal audit, compliance, regulator visits: evidence, read-only | **New** |
-| Approver *(optional, §11)* | `APPROVER` | Model-risk or AI governance: approve prompt promotions | **New, if chosen** |
+| Approver | — | Not a role (owner decision §11.1): a `promptApprovals:approve` permission on Platform Admin | Permission, not a role |
 | No access | `NONE` | — | Existing |
 
 Renaming in the UI changes labels only. Enum values, the API and upstream compatibility stay the same.
@@ -63,7 +63,7 @@ New scopes, where a role needs part of an existing one without the rest:
 |---|---|
 | Business Analyst (`ANALYST`) | `project:read`, `dashboards:read`, `metrics:read`, `llmGatewaySpend:read` |
 | Auditor (`AUDITOR`) | `project:read`, `projectAuditLogs:read`, `projectGuardrails:read`, `llmGatewayLogs:read`, `evidence:read`, `projectMembers:read`, `prompts:read` (approval history; see §11 Q3) |
-| Approver (`APPROVER`), if chosen | `project:read`, `prompts:read`, `promptApprovals:approve` (new; never their own request, as today) |
+| Platform Admin (existing), added | `promptApprovals:approve` (new; never their own request, as today) |
 
 **Neither Business Analyst nor Auditor holds `projectData:read`, so neither reads traces, sessions or prompt and response content.**
 
@@ -122,7 +122,7 @@ Everything downstream (sidebar gating, tRPC `throwIfNoProjectAccess`, page guard
 ## 7. Staying outside the Enterprise boundary
 
 - New role values are an MIT database migration (`ALTER TYPE "Role" ADD VALUE ...`), as SECURITY was.
-- `ACME_ONLY_ROLES` in `upstreamRole.ts` grows to include `ANALYST`, `AUDITOR` and `APPROVER`, so upstream integrations never receive them.
+- `ACME_ONLY_ROLES` in `upstreamRole.ts` grows to include `ANALYST` and `AUDITOR`, so upstream integrations never receive them.
 - The web typecheck wrapper (CHG-2026-058) already tolerates exactly the known Enterprise-file type error that new role values cause, and nothing else.
 - The CI guard fails any change under `ee/`.
 - The project access policy is ACME code and tables only.
@@ -151,10 +151,12 @@ Everything downstream (sidebar gating, tRPC `throwIfNoProjectAccess`, page guard
 - **Policy:** delete its rows, or turn off the hook with a flag, `CAIRO_PROJECT_ACCESS_POLICY_ENABLED` (default on after acceptance). The organisation roles are unaffected.
 - **Role values:** Postgres cannot drop enum values, so a new role is retired by reassigning its users to another role. The value stays unused.
 
-## 11. Decisions for the owner
+## 11. Owner decisions (2026-09-24: "go with recommendations")
 
-1. **Approver:** a separate role, or a `promptApprovals:approve` permission given to Platform Admin? *(Recommended: permission on Admin; add the role later if a bank asks for four-eyes separation.)*
-2. **Security Analyst and Auditor:** keep both, or merge? *(Recommended: keep both; Security Analyst has no configuration view.)*
-3. **Auditor and prompt templates:** may Auditors read prompt templates (not customer data) to review approval history? *(Recommended: yes.)*
-4. **Viewer:** keep as is, or give the Viewer label only to Business Analyst in bank deployments and hide `VIEWER` from the invite dialog? *(Recommended: hide it in bank deployments.)*
-5. **Prompt Analyst and the gateway:** only their own project's usage, or no gateway view at all? *(Recommended: own project's spend tab only.)*
+| # | Question | Decision |
+|---|---|---|
+| 1 | Approver | **A `promptApprovals:approve` permission on Platform Admin**, not a separate role. Add a role later if a bank asks for four-eyes separation |
+| 2 | Security Analyst and Auditor | **Keep both.** Security Analyst has no configuration view |
+| 3 | Auditor and prompt templates | **Auditors may read prompt templates** (not customer data) to review approval history |
+| 4 | Viewer | **Hide `VIEWER` from the invite dialog in bank deployments.** Business Analyst replaces it there. It stays in the enum for compatibility |
+| 5 | Prompt Analyst and the gateway | **Their own project's Spend tab only** |
