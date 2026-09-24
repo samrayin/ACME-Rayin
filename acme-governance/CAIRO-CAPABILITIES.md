@@ -87,7 +87,7 @@
 |---|---|---|---|
 | Single sign-on (Microsoft Entra ID) | 🟢 | SSO sign-in; open sign-up disabled, and invited users can create their account (invite-only) | Changelog 2026-09-18/20, CHG-2026-057 |
 | Roles for bank teams | 🟡 | Owner, Admin, Prompt Analyst, Viewer, Security Analyst, Business Analyst (numbers only) and Auditor (read-only evidence). Roles without content access are enforced on the server by allow-lists. **Live; not yet checked with a signed-in user per role** | ADR-0011, CHG-2026-059 |
-| Per-project access policy | 🔵 | Narrows a person's role on a given project, never widens it; ACME-built, not the Enterprise project-roles feature | ADR-0011 §5, CHG-2026-059 part c |
+| Per-project access policy | 🟡 | Narrows a person's role on a given project, never widens it; "No access" hides the project; ACME-built, not the Enterprise project-roles feature. **Live, with no limits set; not yet exercised end to end with a test user** | ADR-0011 §5, CHG-2026-059 part c |
 | CAIRO branding and themes | 🟢 | ACME branding; upstream promotions switched off | Changelog, CHG-2026-025 |
 | In-console AI assistant | 🟢 | A chat widget served through the gateway | Changelog 2026-09-09 to 15 |
 | Client-side PII masking of SDK traces | 🟢 | Masking for traces sent by CAIRO's own SDK client | Changelog 2026-09-16/17 |

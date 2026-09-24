@@ -1,7 +1,13 @@
 # CAIRO — Vision Tracker
 **Purpose:** single source of truth for "are we there yet," updated at every stage. Not a changelog — a status board. The changelog and ledger remain the detailed record; this file answers one question fast: what's done, what's next, what's blocking.
 
-**Last updated:** 2026-09-25. **The dev console carries the CAIRO name in its address and on two upstream screens.** Console `acme-v4.38.0.12`, worker `worker-acme-v4.38.0.3`, both TRACED.
+**Last updated:** 2026-09-25. **The dev console carries the CAIRO name in its address and on two upstream screens.** Console `acme-v4.38.0.13`, worker `worker-acme-v4.38.0.3`, both TRACED.
+- **Project access (CHG-2026-059 part c, ADR-0011 §5):** live in `acme-v4.38.0.13` since 2026-09-24 21:47Z.
+  - **What it does:** Owners and Admins can limit what one person can do in one project. A limit can only narrow the person's organisation role, never widen it. "No access" hides the project, and a limit that no longer fits hides the project too (fails closed).
+  - **Page:** Organization settings > Project access.
+  - **Storage and switch:** ACME's own table, without the Enterprise project-roles feature. It is on by default, with no limits set yet; `CAIRO_PROJECT_ACCESS_POLICY_ENABLED=false` is the rollback switch.
+  - **Not yet verified:** the hook on a live sign-in, and a limit exercised end to end with a test user.
+  - **Open question for the owner:** should Viewer keep the full gateway read? Prompt Analyst does not have it, so Viewer cannot be offered as a Prompt Analyst's limit.
 - **Console address renamed (CHG-2026-061):** the dev console moved to a CAIRO-named address on 2026-09-24. Entra sign-in verified by the owner. The old address keeps serving for about two weeks, then retires. Until the sign-in URL is in the Helm values, a Helm upgrade of the console release would revert it; image-only releases are safe. Details in the private operations record.
 - **Branding (CHG-2026-064, CHG-2026-065):** live in `acme-v4.38.0.12`. The organization-overview agent banner reads "ACME CAIRO" with a "Connect with us" contact link; the API key `.env` snippet carries a `# ACME CAIRO` label (variable names stay `LANGFUSE_*`, which the SDKs require); upstream's Enterprise Audit Logs settings entry is removed. CAIRO's own audit log is unchanged.
 - **Gateway external access (CHG-2026-062):** testing only, dummy data, no WAF or IP allow-list yet. The first external app test could not yet route its traffic through; not diagnosed. A proper hostname waits on a DNS record.
