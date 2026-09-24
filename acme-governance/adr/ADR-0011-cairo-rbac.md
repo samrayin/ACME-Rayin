@@ -67,6 +67,13 @@ New scopes, where a role needs part of an existing one without the rest:
 
 **Neither Business Analyst nor Auditor holds `projectData:read`, so neither reads traces, sessions or prompt and response content.**
 
+**Scopes alone do not enforce that.** Upstream's trace, observation, session and score procedures check project membership, not a scope. So, exactly as for the Security Analyst (`web/src/features/rbac/server/securityRoleAllowList.ts`), every content-free role is enforced by a **server-side allow-list of tRPC procedures**, applied in every project-access middleware and in the Next.js routes that return trace content outside tRPC.
+- It is an allow-list, not a deny-list, so a procedure added by a future upstream merge is blocked for these roles until someone allows it on purpose.
+- The existing allow-list is generalised to one list per content-free role: `SECURITY`, `ANALYST` and `AUDITOR`.
+- Business Analyst: dashboard and metrics procedures, and the gateway spend procedure.
+- Auditor: the audit, guardrail and gateway record procedures, the read-only evidence procedures and prompt-approval history.
+- **Added 2026-09-24 during the build, before merge:** found by reading how Security Analyst is protected.
+
 ## 5. The ACME project access policy (narrowing only)
 
 **Rule.** For each person and project, an organisation admin may set a **ceiling role** that is lower than or equal to the person's organisation role, or `NONE` to hide the project. The person's effective role in that project is the ceiling. Without a policy row, nothing changes.
