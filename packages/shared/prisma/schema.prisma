@@ -84,6 +84,7 @@ model User {
   evaluatorsCreated         Evaluator[]                 @relation("EvaluatorCreatedByUser")
   evaluatorVersionsCreated  EvaluatorVersion[]          @relation("EvaluatorVersionCreatedByUser")
   evaluationRulesCreated    EvaluationRule[]            @relation("EvaluationRuleCreatedByUser")
+  acmeProjectAccess         AcmeProjectAccess[] // ACME (ADR-0011)
 
   @@map("users")
 }
@@ -194,6 +195,7 @@ model Project {
   InAppAgentRun                     InAppAgentRun[]
   InAppAgentPendingToolApproval     InAppAgentPendingToolApproval[]
   gatewayConfigs                    GatewayConfig[]                     @relation("GatewayDefaultIngestionProject")
+  acmeProjectAccess                 AcmeProjectAccess[] // ACME (ADR-0011)
 
   @@index([orgId])
   @@map("projects")
@@ -440,6 +442,8 @@ model OrganizationMembership {
   createdAt          DateTime            @default(now()) @map("created_at")
   updatedAt          DateTime            @default(now()) @updatedAt @map("updated_at")
   ProjectMemberships ProjectMembership[]
+
+  acmeProjectAccess AcmeProjectAccess[] // ACME (ADR-0011)
 
   @@unique([orgId, userId])
   @@index([userId])
@@ -989,10 +993,10 @@ model AcmeGuardrailEvent {
   //   block  -> rawContentEncrypted (the one Restricted-tier column in this
   //             schema -- see §1.2/§3.4; encrypted with a dedicated key,
   //             not the shared global ENCRYPTION_KEY)
-  eventId              String?   @unique(map: "acme_guardrail_events_event_id_key") @map("event_id")
-  redactedText         String?   @map("redacted_text")
-  piiFindings          Json?     @map("pii_findings")
-  rawContentEncrypted  String?   @map("raw_content_encrypted")
+  eventId             String? @unique(map: "acme_guardrail_events_event_id_key") @map("event_id")
+  redactedText        String? @map("redacted_text")
+  piiFindings         Json?   @map("pii_findings")
+  rawContentEncrypted String? @map("raw_content_encrypted")
 
   // Human end-user identity, forwarded from rayin-guardrails' caller.
   // Deliberately separate from agentId (identifies the AI agent, not the
@@ -1000,19 +1004,19 @@ model AcmeGuardrailEvent {
   // without this, a jailbreak investigation could answer "which agent" but
   // not "which employee". Caller-asserted for now (not yet verified against
   // an Entra ID token); see rayin-guardrails' planned JWT validation work.
-  userId               String?   @map("user_id")
+  userId String? @map("user_id")
 
   // Machine the guarded request came from (hostname or device id), forwarded
   // by the caller alongside userId. Caller-asserted, like userId:
   // rayin-guardrails only sees the gateway pod as its network peer, not the
   // end user's machine.
-  clientHost           String?   @map("client_host")
+  clientHost String? @map("client_host")
 
   // Which capture path wrote this row: PUSH (durable audit-trail endpoint,
   // full tiered content) or PULL (dashboard buffer reconciliation, metadata
   // only, for events whose push failed). Null = recorded before this column
   // existed; existing rows are deliberately not backfilled (audit table).
-  source               AcmeGuardrailEventSource?
+  source AcmeGuardrailEventSource?
 
   // Dedup key: pre-dates eventId (rayin-guardrails' ring buffer originally
   // had no event id of its own). Kept in place until the eventId backfill
@@ -2274,4 +2278,30 @@ model CloudSpendAlert {
 
   @@index([orgId])
   @@map("cloud_spend_alerts")
+}
+
+// ---------------------------------------------------------------------
+// ACME: project access policy (ADR-0011 section 5, CHG-2026-059 part c).
+// Per person and project, a ceiling role that can only NARROW what the
+// person's organisation role allows (NONE hides the project). ACME's own
+// table, clean-room: not upstream ProjectMembership, which is the
+// Enterprise project-roles feature. Enforced in the session callback.
+model AcmeProjectAccess {
+  id              String                 @id @default(cuid())
+  orgId           String                 @map("org_id")
+  orgMembershipId String                 @map("org_membership_id")
+  orgMembership   OrganizationMembership @relation(fields: [orgMembershipId], references: [id], onDelete: Cascade)
+  projectId       String                 @map("project_id")
+  project         Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId          String                 @map("user_id")
+  user            User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ceilingRole     Role                   @map("ceiling_role")
+  createdBy       String                 @map("created_by")
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @default(now()) @updatedAt @map("updated_at")
+
+  @@unique([projectId, userId])
+  @@index([userId])
+  @@index([orgId])
+  @@map("acme_project_access")
 }

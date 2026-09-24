@@ -1,0 +1,48 @@
+name: ACME data residency watch
+
+# CHG-2026-066. Readiness Ledger P0-7: the live environment runs in Azure
+# Sweden Central (deploy/azure/main.tf: location = "swedencentral"), while
+# the HLD names Azure West Europe throughout. Neither is wrong on its own —
+# the mismatch is that nobody is watching for a *third* value showing up
+# silently in a future infra PR, for a BFSI/GCC product where region is a
+# direct due-diligence question.
+#
+# Warning-only, not a hard fail: a real region change may be the entire
+# point of a PR (e.g. finally closing P0-7). This just makes sure the diff
+# doesn't slip past a reviewer scanning a long Terraform PR for the actual
+# resource changes.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "deploy/**/*.tf"
+      - "deploy/**/*.tfvars"
+
+permissions:
+  contents: read
+
+jobs:
+  residency-watch:
+    name: Region/location changes flagged for review
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Flag any location/region literal change
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          diff=$(git diff "$BASE_SHA...$HEAD_SHA" -- 'deploy/**/*.tf' 'deploy/**/*.tfvars' || true)
+          hits=$(printf '%s\n' "$diff" | grep -E '^[+-].*\b(location|region)\b\s*=' || true)
+          if [ -z "$hits" ]; then
+            echo "No location/region literal changed."
+            exit 0
+          fi
+          echo "::warning::This PR changes a Terraform location/region value. Readiness Ledger P0-7 already has an unresolved mismatch between the live environment (Sweden Central) and the HLD (West Europe) — confirm this change is intentional, and that the HLD and P0-7 are updated to match, not left further out of sync."
+          printf '%s\n' "$hits"

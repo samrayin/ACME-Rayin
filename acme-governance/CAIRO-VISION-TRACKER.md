@@ -1,7 +1,24 @@
 # CAIRO — Vision Tracker
 **Purpose:** single source of truth for "are we there yet," updated at every stage. Not a changelog — a status board. The changelog and ledger remain the detailed record; this file answers one question fast: what's done, what's next, what's blocking.
 
-**Last updated:** 2026-09-23 (late). **Gateway traces now land in CAIRO (metadata only), and 30-day retention is live for traces and raw bodies.** The guardrail hook remains on in record mode since 03:35Z.
+**Last updated:** 2026-09-25. **The dev console carries the CAIRO name in its address and on two upstream screens.** Console `acme-v4.38.0.12`, worker `worker-acme-v4.38.0.3`, both TRACED.
+- **Console address renamed (CHG-2026-061):** the dev console moved to a CAIRO-named address on 2026-09-24. Entra sign-in verified by the owner. The old address keeps serving for about two weeks, then retires. Until the sign-in URL is in the Helm values, a Helm upgrade of the console release would revert it; image-only releases are safe. Details in the private operations record.
+- **Branding (CHG-2026-064, CHG-2026-065):** live in `acme-v4.38.0.12`. The organization-overview agent banner reads "ACME CAIRO" with a "Connect with us" contact link; the API key `.env` snippet carries a `# ACME CAIRO` label (variable names stay `LANGFUSE_*`, which the SDKs require); upstream's Enterprise Audit Logs settings entry is removed. CAIRO's own audit log is unchanged.
+- **Gateway external access (CHG-2026-062):** testing only, dummy data, no WAF or IP allow-list yet. The first external app test could not yet route its traffic through; not diagnosed. A proper hostname waits on a DNS record.
+
+**2026-09-24:** CAIRO has bank-shaped roles in dev, invited SSO users can sign in, and no ACME code edits Enterprise-licensed files.** Console `acme-v4.38.0.11`, worker `worker-acme-v4.38.0.3`, both TRACED.
+- **Roles (CHG-2026-059 parts a and b, ADR-0011):** live since 11:28Z.
+  - **New roles:** Business Analyst sees dashboards, cost and usage. Auditor has read-only evidence: audit logs, guardrail events, the gateway record and configuration, prompts and their approval history, and members.
+  - **Renamed:** Member is shown as Prompt Analyst.
+  - **Enforcement:** Security Analyst, Business Analyst and Auditor are limited to server-side allow-lists that exclude prompt and response content.
+  - **Approvals:** only Owner and Admin can approve prompt promotions.
+  - **Invitations:** new invitations no longer offer Viewer.
+  - **Not yet verified:** a live sign-in for each role. The owner is to invite test users.
+  - **Next:** part c, a per-project access policy that can only narrow a role (flag off by default), and part d, in-page hiding.
+- **Invite-only sign-up (CHG-2026-057):** live since `acme-v4.38.0.8`. With open sign-up disabled, an SSO user can create an account only if a pending invitation exists for that email. Verified by an invited user's sign-in. Invitation emails are not sent in dev (no SMTP).
+- **No Enterprise edits (CHG-2026-058):** the only ACME edit to an Enterprise-licensed file was reverted. ACME-only roles now map to upstream roles in MIT code, and a CI check fails any PR that changes `ee/` paths. Live since `acme-v4.38.0.10`.
+
+**2026-09-23 (late):** gateway traces land in CAIRO (metadata only), and 30-day retention is live for traces and raw bodies. The guardrail hook has stayed on in record mode since 03:35Z.
 - **Tracing (CHG-2026-026):** live over OTLP since 08:50Z, into the project "Gateway traces". Tokens and cost are captured. Gate C passed: no prompt or response text in ClickHouse or blob. Residuals: caller `langfuse_*` headers and free metadata keys (follow-up proposed). The legacy SDK callback was rejected by v4 `events_only`.
 - **Retention, PD-0005 phase 1:**
   - P0-8 evidence exported first (CHG-2026-050: 37,821 events and 22,680 raw bodies, manifest `468B7EAE…`);

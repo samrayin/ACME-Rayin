@@ -51,6 +51,7 @@ import { acmeLitellmRouter } from "@/src/features/acme-enhancements/server/litel
 import { acmePromptReviewRouter } from "@/src/features/acme-enhancements/server/acmePromptReviewRouter";
 import { acmePromptApprovalRouter } from "@/src/features/acme-enhancements/server/acmePromptApprovalRouter";
 import { acmeThemeRouter } from "@/src/features/acme-enhancements/server/acmeThemeRouter";
+import { acmeProjectAccessRouter } from "@/src/features/acme-enhancements/server/acmeProjectAccessRouter";
 import { tableRouter } from "@/src/features/table/server/tableRouter";
 import { batchActionRouter } from "@/src/features/batch-actions/server/batchActionRouter";
 import { cloudStatusRouter } from "@/src/features/cloud-status-notification/server/cloud-status-router";
@@ -132,6 +133,7 @@ export const appRouter = createTRPCRouter({
   acmePromptReview: acmePromptReviewRouter,
   acmePromptApproval: acmePromptApprovalRouter,
   acmeTheme: acmeThemeRouter,
+  acmeProjectAccess: acmeProjectAccessRouter,
   table: tableRouter,
   batchAction: batchActionRouter,
   cloudStatus: cloudStatusRouter,

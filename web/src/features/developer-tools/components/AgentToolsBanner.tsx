@@ -1,15 +1,15 @@
 import { Callout } from "@/src/components/design-system/Callout/Callout";
 import { DismissController } from "@/src/components/DismissController";
 import { Button } from "@/src/components/ui/button";
-import Link from "next/link";
 import { Bot } from "lucide-react";
 
-const DOCS_HREF =
-  "https://langfuse.com/docs/api-and-data-platform/features/agent-skill";
+// ACME (CHG-2026-064): CAIRO branding and an ACME contact link instead of the
+// upstream docs link.
+const CONTACT_HREF = "mailto:helpdesk@almoayyedcomputers.com";
 
 /**
- * Informational, dismissible banner that highlights Langfuse's support for AI
- * coding agents via the Agent Skill, MCP server, and CLI. Rendered on the
+ * Informational, dismissible banner that highlights support for AI coding
+ * agents via the Agent Skill, MCP server, and CLI. Rendered on the
  * organization overview page.
  */
 export function AgentToolsBanner() {
@@ -22,9 +22,7 @@ export function AgentToolsBanner() {
             align="middle"
             actions={
               <Button asChild size="sm" variant="secondary">
-                <Link href={DOCS_HREF} target="_blank">
-                  Learn more
-                </Link>
+                <a href={CONTACT_HREF}>Connect with us</a>
               </Button>
             }
             onDismiss={onDismiss}
@@ -33,7 +31,7 @@ export function AgentToolsBanner() {
               <Bot className="mt-0.5 h-4 w-4 shrink-0 sm:mt-0" />
               <span>
                 <span className="font-bold">
-                  Langfuse works great with your AI coding agents.
+                  ACME CAIRO works great with your AI coding agents.
                 </span>{" "}
                 Connect Claude Code, Codex, and other agents to your data with
                 the Langfuse Agent Skill, MCP server, and CLI.

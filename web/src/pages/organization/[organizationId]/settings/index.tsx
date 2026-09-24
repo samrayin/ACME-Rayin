@@ -21,6 +21,7 @@ import { useIsCloudBillingAvailable } from "@/src/ee/features/billing/utils/isCl
 import { env } from "@/src/env.mjs";
 import { OrgAuditLogsSettingsPage } from "@/src/ee/features/audit-log-viewer/OrgAuditLogsSettingsPage";
 import { useHasOrganizationAccess } from "@/src/features/rbac/utils/checkOrganizationAccess";
+import { AcmeProjectAccessSettings } from "@/src/features/acme-enhancements/components/AcmeProjectAccessSettings";
 import { useV4UpgradeUiFlag } from "@/src/features/v4-migration/useV4UpgradeUiEnabled";
 import { OrganizationFeaturePreviewsSettings } from "@/src/features/feature-flags/components/OrganizationFeaturePreviewsSettings";
 import useIsFeatureEnabled from "@/src/features/feature-flags/hooks/useIsFeatureEnabled";
@@ -57,6 +58,11 @@ export function useOrganizationSettingsPages(): OrganizationSettingsPage[] {
     organizationId: organization?.id,
     scope: "gateway:manage",
   });
+  // ACME (ADR-0011): the Project access page is for member managers only.
+  const canManageMembers = useHasOrganizationAccess({
+    organizationId: organization?.id,
+    scope: "organizationMembers:CUD",
+  });
   const plan = usePlan();
   const isLangfuseCloud = isCloudPlan(plan) ?? false;
   const isCloudBillingAvailable = useIsCloudBillingAvailable();
@@ -78,6 +84,7 @@ export function useOrganizationSettingsPages(): OrganizationSettingsPage[] {
     showAiGateway: canManageGateway && isAiGatewayEnabled,
     showFeaturePreviews:
       canUpdateOrganization && organization.id !== env.NEXT_PUBLIC_DEMO_ORG_ID,
+    showProjectAccess: canManageMembers,
   });
 }
 
@@ -90,6 +97,7 @@ export const getOrganizationSettingsPages = ({
   showV4Migration,
   showAiGateway,
   showFeaturePreviews,
+  showProjectAccess = false,
 }: {
   organization: {
     id: string;
@@ -108,6 +116,8 @@ export const getOrganizationSettingsPages = ({
   showV4Migration: boolean;
   showAiGateway: boolean;
   showFeaturePreviews: boolean;
+  // ACME (ADR-0011): Owner and Admin, via organizationMembers:CUD.
+  showProjectAccess?: boolean;
 }): OrganizationSettingsPage[] => [
   {
     title: "General",
@@ -192,6 +202,15 @@ export const getOrganizationSettingsPages = ({
         </div>
       </div>
     ),
+  },
+  // ACME (ADR-0011 section 5): per-project limits that only narrow a role.
+  {
+    title: "Project access",
+    slug: "project-access",
+    section: "Organization",
+    cmdKKeywords: ["project", "access", "limit", "role", "rbac"],
+    content: <AcmeProjectAccessSettings orgId={organization.id} />,
+    show: showProjectAccess,
   },
   {
     title: "Audit Logs",
