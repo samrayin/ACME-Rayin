@@ -18,6 +18,7 @@ import {
 import { isGatewayEnabledForOrganization } from "@/src/features/ai-gateway/server/availability";
 import { env } from "@/src/env.mjs";
 import { createProjectMembershipsOnSignup } from "@/src/features/auth/lib/createProjectMembershipsOnSignup";
+import { decideSignup } from "@/src/features/auth/lib/inviteOnlySignup";
 import { getSessionLoginAt } from "@/src/features/auth/lib/sessionExpiration";
 import { type AdClickIds } from "@/src/features/auth/lib/signupAttribution";
 import {
@@ -624,10 +625,19 @@ const createExtendedPrismaAdapter = (signupAttribution?: {
   async createUser(profile: Omit<AdapterUser, "id">) {
     if (!prismaAdapter.createUser)
       throw new Error("createUser not implemented");
-    if (
-      env.NEXT_PUBLIC_SIGN_UP_DISABLED === "true" ||
-      env.AUTH_DISABLE_SIGNUP === "true"
-    ) {
+    // ACME (CHG-2026-057): with sign-up disabled, an invited email may still
+    // create its account when CAIRO_AUTH_ALLOW_INVITED_SIGNUP is on.
+    const signup = await decideSignup(
+      profile.email,
+      {
+        signupDisabled:
+          env.NEXT_PUBLIC_SIGN_UP_DISABLED === "true" ||
+          env.AUTH_DISABLE_SIGNUP === "true",
+        allowInvitedSignup: env.CAIRO_AUTH_ALLOW_INVITED_SIGNUP === "true",
+      },
+      prisma,
+    );
+    if (!signup.allowed) {
       throw new Error("Sign up is disabled.");
     }
     if (!profile.email) {

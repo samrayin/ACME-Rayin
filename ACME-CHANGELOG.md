@@ -4445,3 +4445,24 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 - **Audit actions:** `model.*` and `router.*`, through `auditedMutation`.
 
 **Tests:** 52 new server tests, and the existing gateway suites still pass (100 server tests, 6 client tests). Typecheck and lint are clean. The `acmeLitellmRouter` suite fails on `main` without this change (71 of 73, test-harness headers) and is being fixed separately. **Controls:** each guard was broken in turn, and the tests caught every one. The results were: key redaction in gateway errors 1 failure; host allowlist 1; public-address check 11; config models read-only 1; heuristic-only router 2; audit never records the key 2; no reuse of an existing name 1. The tests also caught a real defect before these controls ran: a `::ffff:0:0/96` rule in Node's `BlockList` blocked every IPv4 address.
+
+## 2026-09-23 — Invite-only sign-up for SSO users (CHG-2026-057)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-057 · Tier 1 (authentication) · owner: Anees Ur Rahman |
+| **Dates** | Built and tested locally. Dev: needs a console release and `CAIRO_AUTH_ALLOW_INVITED_SIGNUP=true`, owner-gated · Prod: none exists |
+| **Impact** | None until the flag is on. With it on and sign-up disabled, a person with a pending invitation can create their account on first SSO sign-in; everyone else is still refused |
+| **Rollback** | Turn the flag off |
+
+**Why:** with `AUTH_DISABLE_SIGNUP=true`, upstream refuses to create any account, invited or not. A user invited as Member and signing in through Entra ID got `OAuthCreateAccount` (web log: `adapter_error_createUser`), so the only way in was to open sign-up for everyone.
+
+**What:**
+- `decideSignup()` (`web/src/features/auth/lib/inviteOnlySignup.ts`) runs in the auth adapter's `createUser`.
+- With sign-up disabled and the flag on, it allows account creation only when a pending `MembershipInvitation` exists for that exact email. The email is trimmed and lowercased, matching how invitations are stored, and must be valid.
+- The invitation then attaches through upstream's `processMembershipInvitations`, unchanged.
+- **Scope:**
+  - Only the SSO adapter path is affected; password sign-up stays disabled.
+  - It trusts the identity provider's email claim, so it is only for a single-tenant Entra ID app, where only tenant admins set a user's email.
+
+**Tests:** 11 new, and typecheck and lint are clean. **Control:** making the check always allow failed 3 tests: an uninvited email, a look-alike email and a partial match.
