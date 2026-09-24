@@ -41,17 +41,13 @@ watchlist:
     finding: "P0-7"
     why: "The live environment runs in Sweden Central; the HLD documents West Europe. Any Terraform region/location change should either close that mismatch or must not silently widen it."
 
-  - path: "rayin-guardrails/app/rayin_push.py"
+  - path: "web/src/features/acme-enhancements/server/acmeGuardrails"
     finding: "P0-10"
-    why: "The guardrail audit-trail push is fire-and-forget with an in-memory buffer lost on restart. This is the file that implements that fail-open behavior."
+    why: "Consumer side of the guardrail audit trail (acmeGuardrailsRouter.ts, the events-ingest and pull-backfill services): nothing currently drains or alerts on push failures."
 
-  - path: "rayin-guardrails/app/events.py"
+  - path: "web/src/pages/api/public/guardrails-events.ts"
     finding: "P0-10"
-    why: "Same fail-open audit-trail path as rayin_push.py — event construction feeding the push."
-
-  - path: "web/src/features/acme-enhancements/guardrails/"
-    finding: "P0-10"
-    why: "Consumer side of the guardrail audit trail (acmeGuardrailsRouter.ts and related): nothing currently drains or alerts on push failures."
+    why: "The public ingest endpoint the guardrail push writes to. rayin_push.py/events.py (the fail-open push itself) live in the separate rayin-guardrails repository, out of this CI's reach — this row is this repo's only real P0-10 surface."
 
   - path: "worker/src/ee/dataRetention/"
     finding: "P0-11"
