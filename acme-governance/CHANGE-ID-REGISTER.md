@@ -87,6 +87,7 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | CHG-2026-062 | 1 | Expose the LLM gateway to applications outside the cluster (dev, testing): its own hostname and TLS certificate on the existing Application Gateway, an edge allow-list of the model-call paths only (`/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, `/v1/models`), a virtual key on every call. No WAF or caller-IP restriction in this step (owner decision: option B for dummy-data testing; WAF_v2 + IP allow-list before real data). New public entry point. Environment details in the private operations record | Anees Ur Rahman | `ops/chg-2026-062-gateway-exposure` | Claimed |
 | CHG-2026-063 | 2 | Make the CI `knip` check pass: remove unused exports, a dead hook and an unused dependency; knip ignores for standalone integration scripts | Anees Ur Rahman | `chore/chg-2026-063-knip` | Claimed |
 | CHG-2026-064 | 2 | Rebrand the organization-overview AI coding agents banner to ACME CAIRO, with a "Connect with us" contact link | Anees Ur Rahman | `feat/chg-2026-064-agent-banner` | Claimed |
+| CHG-2026-065 | 2 | Project settings: CAIRO label on the API key .env snippet and the upstream Audit Logs settings entry removed | Anees Ur Rahman | `feat/chg-2026-065-settings-branding` | Claimed |
 
 ## ADR numbers
 
