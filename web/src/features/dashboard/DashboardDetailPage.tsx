@@ -1,5 +1,6 @@
 import { useRouter } from "next/router";
 import { api } from "@/src/utils/api";
+import { useIsContentFreeRole } from "@/src/features/rbac/hooks/useIsSecurityAnalyst";
 import {
   useReadPath,
   type ResolvedReadPath,
@@ -901,15 +902,19 @@ function DashboardDetailView({ readPath }: { readPath: ResolvedReadPath }) {
     };
   }, [hasCUDAccess, handleDroppedFile]);
 
+  // ACME (ADR-0011 section 6): filter options read trace data.
+  const isContentFreeRole = useIsContentFreeRole(projectId);
   const { nameOptions, tagsOptions } = useDashboardFilterOptions({
     projectId,
     isV4,
     timeRange,
+    enabled: !isContentFreeRole,
   });
 
   const environmentOptionsState = useEnvironmentFilterOptionsCache({
     projectId,
     timeRange,
+    enabled: !isContentFreeRole,
   });
   const environmentOptions = environmentOptionsState.environmentOptions.map(
     (value) => ({

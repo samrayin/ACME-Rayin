@@ -21,6 +21,7 @@ import { api } from "@/src/utils/api";
 import { type RouterOutput } from "@/src/utils/types";
 import { TagPromptPopover } from "@/src/features/tag/components/TagPromptPopover";
 import { DataTableToolbar } from "@/src/components/table/data-table-toolbar";
+import { useIsContentFreeRole } from "@/src/features/rbac/hooks/useIsSecurityAnalyst";
 import {
   promptFilterConfig,
   useQueryFilterState,
@@ -140,6 +141,9 @@ export function PromptTable() {
       },
     },
   );
+  // ACME (ADR-0011 section 6): prompt metrics aggregate trace data, and saved
+  // table views are not on the content-free allow-lists (Auditor).
+  const isContentFreeRole = useIsContentFreeRole(projectId);
   const promptMetrics = api.prompts.metrics.useQuery(
     {
       projectId,
@@ -151,7 +155,10 @@ export function PromptTable() {
     },
     {
       enabled:
-        Boolean(projectId) && prompts.data && prompts.data.totalCount > 0,
+        Boolean(projectId) &&
+        !isContentFreeRole &&
+        prompts.data &&
+        prompts.data.totalCount > 0,
       trpc: {
         context: {
           skipBatch: true,
@@ -439,6 +446,7 @@ export function PromptTable() {
   const { isLoading: isViewLoading, ...viewControllers } = useTableViewManager({
     tableName: TableViewPresetTableName.Prompts,
     projectId,
+    disabled: isContentFreeRole,
     stateUpdaters: {
       setColumnVisibility,
       setColumnOrder,
@@ -522,11 +530,15 @@ export function PromptTable() {
           setColumnOrder={handleColumnOrderChange}
           columnVisibility={columnVisibility}
           setColumnVisibility={handleColumnVisibilityChange}
-          viewConfig={{
-            tableName: TableViewPresetTableName.Prompts,
-            projectId,
-            controllers: viewControllers,
-          }}
+          viewConfig={
+            isContentFreeRole
+              ? undefined
+              : {
+                  tableName: TableViewPresetTableName.Prompts,
+                  projectId,
+                  controllers: viewControllers,
+                }
+          }
         />
 
         {/* Content area with sidebar and table */}

@@ -20,6 +20,7 @@ import { useOrganizationSettingsPages } from "@/src/pages/organization/[organiza
 import { useAccountSettingsPages } from "@/src/pages/account/settings";
 import { useQueryProjectOrOrganization } from "@/src/features/projects/hooks";
 import { api } from "@/src/utils/api";
+import { useHasProjectAccess } from "@/src/features/rbac/utils/checkProjectAccess";
 import { type NavigationItem } from "@/src/components/layouts/utilities/routes";
 import { useReadPath } from "@/src/features/events";
 
@@ -149,6 +150,11 @@ function DashboardsGroup({ onNavigate }: { onNavigate: () => void }) {
   const capture = usePostHogClientCapture();
   const { project } = useQueryProjectOrOrganization();
   const { open } = useCommandMenu();
+  // ACME (ADR-0011 section 6): not for roles without dashboard access.
+  const canReadDashboards = useHasProjectAccess({
+    projectId: project?.id,
+    scope: "dashboards:read",
+  });
 
   const dashboardsQuery = api.dashboard.allDashboards.useQuery(
     {
@@ -161,7 +167,7 @@ function DashboardsGroup({ onNavigate }: { onNavigate: () => void }) {
       page: 0,
     },
     {
-      enabled: open && Boolean(project?.id),
+      enabled: open && Boolean(project?.id) && canReadDashboards,
     },
   );
 

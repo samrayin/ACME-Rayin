@@ -17,6 +17,7 @@ import { Card } from "@/src/components/ui/card";
 import { TransferProjectDialogController } from "@/src/features/projects/components/TransferProjectDialogController";
 import { useHasEntitlement } from "@/src/features/entitlements/hooks";
 import { useHasProjectAccess } from "@/src/features/rbac/utils/checkProjectAccess";
+import { useIsContentFreeRole } from "@/src/features/rbac/hooks/useIsSecurityAnalyst";
 import { useRouter } from "next/router";
 import { SettingsDangerZone } from "@/src/components/SettingsDangerZone";
 import { ActionButton } from "@/src/components/ActionButton";
@@ -60,11 +61,18 @@ export function useProjectSettingsPages(): ProjectSettingsPageEntry[] {
     scope: "scoreConfigs:read",
   });
   const showV4Migration = useV4UpgradeUiFlag();
+  // ACME (ADR-0011 section 6): content-free roles get only the pages whose
+  // procedures their server allow-lists permit.
+  const isContentFreeRole = useIsContentFreeRole(project?.id);
+  const canReadProjectMembers = useHasProjectAccess({
+    projectId: project?.id,
+    scope: "projectMembers:read",
+  });
   if (!project || !organization || !router.query.projectId) {
     return [];
   }
 
-  return getProjectSettingsPages({
+  const pages = getProjectSettingsPages({
     project,
     organization,
     showBillingSettings,
@@ -75,6 +83,10 @@ export function useProjectSettingsPages(): ProjectSettingsPageEntry[] {
     showScoreConfigSettings,
     showV4Migration,
   });
+  if (!isContentFreeRole) return pages;
+  const contentFreeSlugs = new Set(["index", "organization"]);
+  if (canReadProjectMembers) contentFreeSlugs.add("members");
+  return pages.filter((page) => contentFreeSlugs.has(page.slug));
 }
 
 const getProjectSettingsPages = ({
