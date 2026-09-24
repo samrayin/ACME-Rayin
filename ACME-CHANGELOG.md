@@ -4564,6 +4564,7 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
   - `integrations/prompt-library/seed-itops-library.mjs`;
   - `integrations/promptfoo/config/hooks/langfuse-scores.js`;
   - `integrations/promptfoo/config/summarize-benign.js`.
+- **Unused file after CHG-2026-065:** `web/src/ee/features/audit-log-viewer/AuditLogsSettingsPage.tsx` became unused when CHG-2026-065 removed upstream's project Audit Logs settings entry. It is Enterprise-licensed, so ACME may not edit or delete it. It is added to knip's web `ignoreFiles` with a comment instead.
 - No Enterprise (`ee/`) file changed.
 
 ## 2026-09-24 — Organization overview: AI coding agents banner rebranded to ACME CAIRO (CHG-2026-064)

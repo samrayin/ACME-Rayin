@@ -48,6 +48,9 @@
         // Standalone benchmark invoked directly with Node rather than imported by the application.
         "src/features/traces/components/AdvancedJsonViewer/lazy/benchByteJsonIndex.ts",
         "src/__tests__/mocks/**",
+        // ACME (CHG-2026-065): no longer mounted in project settings. It is
+        // Enterprise-licensed, so ACME may not edit or delete it; kept as upstream.
+        "src/ee/features/audit-log-viewer/AuditLogsSettingsPage.tsx",
       ],
       // Include runtime JavaScript modules such as src/env.mjs in dependency analysis.
       "project": ["src/**/*.{ts,tsx,mjs}"],
