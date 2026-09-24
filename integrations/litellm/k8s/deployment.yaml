@@ -22,6 +22,7 @@ spec:
       labels:
         app: litellm
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: litellm
           # Pinned by digest (CHG-2026-006, 2026-09-19): this is the multi-arch
