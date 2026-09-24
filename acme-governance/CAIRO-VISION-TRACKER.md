@@ -101,6 +101,7 @@
 | **CHG-2026-052** | Blob lifecycle rule, 30 days, current and previous versions | 🟡 **Applied in dev by the owner** (intentional drift from Terraform, ops #21). First deletions and proof due 25–26 September |
 | **CHG-2026-053** | Capability register | 🟡 **#145 merged**, plus an HTML view |
 | **CI on `main`** | The CI/CD run for `main` @ `29a7fdae` | 🟡 **Pending for about 10 hours with no jobs started**, observed 2026-09-23. "Storybook Preview" and "Deploy to ECS" (an upstream Langfuse workflow) are queued behind it. Cause not yet diagnosed |
+| **CHG-2026-063** | Make the CI `knip` check pass (issue #96): 21 in-file-only exports un-exported, 3 dead symbols deleted (incl. the `useIsSecurityAnalyst` hook), unused `@anthropic-ai/sdk` removed from web, 3 standalone integration scripts added to knip's ignore list. No runtime change, no Enterprise file | 🟡 **PR #172 open, awaiting the owner's merge.** Claim #170 self-merged under Tier 2.5. CI on #172: `knip`, `prettier-check` and the changelog check pass. `lint` (42 warnings, none in changed files) and 4 server/worker tests (`public-api-auth-parity`, `build-trace-export`, `create-authed-project-api-route-auth-errors`, `bufferedStreamUploader`) fail identically on docs-only PR #167, so they predate this change. Local web typecheck: identical 44 environmental errors with and without the change |
 
 ---
 
