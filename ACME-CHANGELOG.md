@@ -4617,4 +4617,19 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 
 **Tests:** 33 new (`acmeProjectAccess.servertest.ts`): the subset rule and the "never wider than either the organization or the resolved role" property over every role pair; `NONE` drops the project from the session; router refusals happen before any write. **Controls:** removing the subset check failed 11 tests, removing fail-closed failed 9, removing the higher-role guard failed 1.
 
+## 2026-09-25 — LiteLLM deployment manifest: drop all container capabilities (CHG-2026-067)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-067 · Tier 2 (infra hardening, manifest source only) · owner: Anees Ur Rahman |
+| **Dates** | Source-only. No cluster change in this commit; applying it live is a separate, owner-gated LiteLLM restart |
+| **Impact** | None at runtime as shipped — the pod is not restarted by this change. Once applied, the `litellm` container's effective capability set becomes empty instead of the container-runtime default set, which it never used (non-root uid 1000, port 4000, no setuid path) |
+| **Rollback** | Revert the commit; if already applied to the live cluster, the owner re-applies the previous manifest (drop the `capabilities` block) |
+
+**Why:** finding 1 of 5 from the 2026-09-25 independent security review (rayin-security-scanner) of `integrations/litellm/k8s/deployment.yaml`. Checkov flagged `CKV_K8S_28` (NET_RAW capability not minimized) and `CKV_K8S_37` (capabilities not minimized) against the `litellm` container's `securityContext`. Both clear when all capabilities are explicitly dropped; a non-root process listening on port 4000 needs none, and `allowPrivilegeEscalation: false` already blocks setuid-based capability gain. Rated Low by the reviewer — real but behaviour-preserving hardening, not a live exposure.
+
+**What:** `integrations/litellm/k8s/deployment.yaml`, lines 42-47 — `capabilities: drop: ["ALL"]` added to the `litellm` container's `securityContext`, directly after `allowPrivilegeEscalation: false`, at the same indent as its sibling keys. `runAsUser`, the pinned image digest (line 34), `envFrom` and the ConfigMap comment are unchanged.
+
+**Tests:** `checkov -f integrations/litellm/k8s/deployment.yaml --framework kubernetes --check CKV_K8S_28,CKV_K8S_37` — both PASSED (previously FAILED on the unmodified file, confirmed on a scratch copy before editing the tracked file).
+
 **Found while building:** Viewer is not a narrowing of Prompt Analyst. Since part (b), Prompt Analyst holds only the gateway Spend permission while Viewer still holds `llmGateway:read`, so the policy correctly refuses "limit a Prompt Analyst to Viewer". Whether Viewer should keep `llmGateway:read` is for the owner.
