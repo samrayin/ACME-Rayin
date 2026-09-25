@@ -335,7 +335,9 @@ export const projectRoleAccessRights: Record<Role, ProjectScope[]> = {
     "projectAiAssistant:use",
   ],
   VIEWER: [
-    "llmGateway:read",
+    // ADR-0011 §11 Q7 (owner, 2026-09-25): the gateway Spend tab only, as
+    // for Prompt Analyst -- no keys, teams or models.
+    "llmGatewaySpend:read",
     "project:read",
     "projectData:read",
     "prompts:read",

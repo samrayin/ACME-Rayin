@@ -79,6 +79,9 @@ describe("content-free roles: scope sets (ADR-0011 §4)", () => {
   it("Prompt Analyst (MEMBER) sees the gateway Spend tab only (§11.5)", () => {
     expect(scopes(Role.MEMBER)).toContain("llmGatewaySpend:read");
     expect(scopes(Role.MEMBER)).not.toContain("llmGateway:read");
+    // §11 Q7: Viewer too.
+    expect(scopes(Role.VIEWER)).toContain("llmGatewaySpend:read");
+    expect(scopes(Role.VIEWER)).not.toContain("llmGateway:read");
   });
 
   it("approving prompt promotions is Platform Owner / Admin only (§11.1)", () => {

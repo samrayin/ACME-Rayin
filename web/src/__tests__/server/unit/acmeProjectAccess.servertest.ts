@@ -114,10 +114,9 @@ describe("project access policy: properties over every role pair (§8)", () => {
         expect(isValidCeiling(orgRole, role)).toBe(true);
     }
     expect(validCeilingsFor(Role.VIEWER)).not.toContain(Role.MEMBER);
-    // Since CHG-2026-059 b, Prompt Analyst (MEMBER) has only the gateway
-    // Spend scope while Viewer keeps llmGateway:read, so Viewer is NOT a
-    // narrowing of Prompt Analyst and cannot be offered as its limit.
-    expect(validCeilingsFor(Role.MEMBER)).not.toContain(Role.VIEWER);
+    // ADR-0011 §11 Q7: Viewer has the gateway Spend tab only, like Prompt
+    // Analyst, so Viewer is a narrowing of Prompt Analyst.
+    expect(validCeilingsFor(Role.MEMBER)).toContain(Role.VIEWER);
     expect(validCeilingsFor(Role.MEMBER)).not.toContain(Role.ADMIN);
   });
 });

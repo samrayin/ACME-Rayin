@@ -167,3 +167,5 @@ Everything downstream (sidebar gating, tRPC `throwIfNoProjectAccess`, page guard
 | 3 | Auditor and prompt templates | **Auditors may read prompt templates** (not customer data) to review approval history |
 | 4 | Viewer | **Hide `VIEWER` from the invite dialog in bank deployments.** Business Analyst replaces it there. It stays in the enum for compatibility |
 | 5 | Prompt Analyst and the gateway | **Their own project's Spend tab only** |
+| 6 | Auditor allow-list additions found in part (d) (2026-09-25) | **Accepted:** `prompts.resolvePromptGraph`, `members.allFromProject`, `members.allInvitesFromProject` (read-only, within §4 and Q3) |
+| 7 | Viewer and the gateway (2026-09-25) | **Remove `llmGateway:read` from Viewer.** Viewer gets the Spend tab only, as Prompt Analyst does (`llmGatewaySpend:read`), so Viewer is a valid project access limit for a Prompt Analyst |

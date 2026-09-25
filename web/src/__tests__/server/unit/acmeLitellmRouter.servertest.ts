@@ -171,12 +171,13 @@ describe("acmeLitellm RBAC", () => {
         has(r as never, "llmGateway:CUD"),
       ),
     ).toEqual(["OWNER", "ADMIN"]);
-    // ADR-0011 §11.5: MEMBER (Prompt Analyst) sees the Spend tab only.
+    // ADR-0011 §11.5 and §11 Q7: Prompt Analyst (MEMBER) and Viewer see the
+    // Spend tab only.
     expect(
       ["OWNER", "ADMIN", "MEMBER", "VIEWER", "NONE", "SECURITY"].filter((r) =>
         has(r as never, "llmGateway:read"),
       ),
-    ).toEqual(["OWNER", "ADMIN", "VIEWER"]);
+    ).toEqual(["OWNER", "ADMIN"]);
     expect(
       ["OWNER", "ADMIN", "MEMBER", "VIEWER", "NONE", "SECURITY"].filter((r) =>
         has(r as never, "llmGatewayLogs:read"),

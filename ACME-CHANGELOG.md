@@ -4652,3 +4652,20 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 - **Result:** 140 of 140.
 
 **Not yet verified:** a live sign-in in each role, which needs test users.
+
+## 2026-09-25 — Viewer sees the gateway Spend tab only; Auditor additions accepted (CHG-2026-059, part e)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-059 part (e) · Tier 1 (authorisation) · ADR-0011 §11 Q6 and Q7 (owner decisions, 2026-09-25) · owner: Anees Ur Rahman |
+| **Dates** | Built and tested locally. Dev: a console release · Prod: none exists |
+| **Impact** | **Viewer loses the LLM Gateway keys, teams and models tabs and keeps Spend**, as Prompt Analyst did in part (b). Other roles are unchanged |
+| **Rollback** | Redeploy the previous image |
+
+**What:**
+- **Viewer:** `llmGateway:read` is replaced by `llmGatewaySpend:read` (owner: "remove llmGateway:read from Viewer"). Viewer keeps its gateway access through the Spend tab only, rather than losing the page outright.
+- **Project access:** Viewer is now a narrowing of Prompt Analyst, so it can be set as a Prompt Analyst's project access limit.
+- **Auditor allow-list:** the three additions from part (d) are accepted by the owner: `prompts.resolvePromptGraph`, `members.allFromProject`, `members.allInvitesFromProject`.
+- **ADR-0011 §11:** records both decisions as Q6 and Q7.
+
+**Tests:** the role-map and policy tests are updated to the new rule. 170 of 170 pass in the RBAC suites.
