@@ -11,12 +11,15 @@ type UseDashboardFilterOptionsParams = {
   projectId: string;
   isV4: boolean;
   timeRange: TimeRange;
+  // ACME (ADR-0011): false for roles whose allow-list excludes these queries.
+  enabled?: boolean;
 };
 
 export function useDashboardFilterOptions({
   projectId,
   isV4,
   timeRange,
+  enabled = true,
 }: UseDashboardFilterOptionsParams) {
   const commonQueryOptions = {
     trpc: { context: { skipBatch: true } },
@@ -86,12 +89,12 @@ export function useDashboardFilterOptions({
   // a "Bad Request" toast.
   const traceFilterOptions = api.traces.filterOptions.useQuery(
     { projectId, timestampFilter: traceTimestampFilter },
-    { ...commonQueryOptions, enabled: Boolean(projectId) && !isV4 },
+    { ...commonQueryOptions, enabled: enabled && Boolean(projectId) && !isV4 },
   );
 
   const eventsFilterOptions = api.events.filterOptions.useQuery(
     { projectId, startTimeFilter },
-    { ...commonQueryOptions, enabled: Boolean(projectId) && isV4 },
+    { ...commonQueryOptions, enabled: enabled && Boolean(projectId) && isV4 },
   );
 
   const nameOptions = useMemo(

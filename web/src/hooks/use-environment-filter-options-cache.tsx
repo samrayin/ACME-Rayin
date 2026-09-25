@@ -65,9 +65,12 @@ const dedupeOptions = (options: string[]) => Array.from(new Set(options));
 export function useEnvironmentFilterOptionsCache({
   projectId,
   timeRange,
+  enabled = true,
 }: {
   projectId: string;
   timeRange: TimeRange;
+  // ACME (ADR-0011): false for roles whose allow-list excludes this query.
+  enabled?: boolean;
 }) {
   const absoluteTimeRange = useMemo(
     () => toAbsoluteTimeRange(timeRange) ?? undefined,
@@ -108,7 +111,7 @@ export function useEnvironmentFilterOptionsCache({
         fromTimestamp: absoluteTimeRange?.from,
       },
       {
-        enabled: Boolean(projectId) && !hasValidCache,
+        enabled: enabled && Boolean(projectId) && !hasValidCache,
         trpc: {
           context: {
             skipBatch: true,

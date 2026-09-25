@@ -3,6 +3,7 @@ import { ActionButton } from "@/src/components/ActionButton";
 import Page from "@/src/components/layouts/page";
 import { PromptTable } from "@/src/features/prompts/components/prompts-table";
 import { useHasProjectAccess } from "@/src/features/rbac/utils/checkProjectAccess";
+import { useIsContentFreeRole } from "@/src/features/rbac/hooks/useIsSecurityAnalyst";
 import { Download, UploadIcon, PlusIcon } from "lucide-react";
 import { api } from "@/src/utils/api";
 import { PromptsOnboarding } from "@/src/components/onboarding/PromptsOnboarding";
@@ -54,6 +55,8 @@ export default function PromptsWithFolder() {
     projectId,
     scope: "prompts:read",
   });
+  // ACME (ADR-0011 section 6): bulk export is not on the Auditor allow-list.
+  const isContentFreeRole = useIsContentFreeRole(projectId);
   const promptLimit = useEntitlementLimit("prompt-management-count-prompts");
   const utils = api.useUtils();
   const [isExporting, setIsExporting] = useState(false);
@@ -129,7 +132,7 @@ export default function PromptsWithFolder() {
         actionButtonsRight: (
           <>
             {projectId && <AutomationButton projectId={projectId} />}
-            {hasReadAccess && (
+            {hasReadAccess && !isContentFreeRole && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" disabled={isExporting}>

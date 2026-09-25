@@ -48,7 +48,10 @@ import { DashboardGrid } from "@/src/features/widgets/components/DashboardGrid";
 import { HomeDashboardSelect } from "@/src/features/dashboard/components/HomeDashboardSelect";
 import { useQueryProjectOrOrganization } from "@/src/features/projects/hooks";
 import { setupTracingRoute } from "@/src/features/setup/setupRoutes";
-import { useLandsOnGuardrails } from "@/src/features/rbac/hooks/useIsSecurityAnalyst";
+import {
+  useIsContentFreeRole,
+  useLandsOnGuardrails,
+} from "@/src/features/rbac/hooks/useIsSecurityAnalyst";
 
 // Controller: no widget query may fire before the session resolves the v3/v4
 // read path — an unresolved session used to read as v3, fire a full wave of
@@ -92,11 +95,14 @@ function HomeDashboard({ readPath }: { readPath: ResolvedReadPath }) {
   const capture = usePostHogClientCapture();
   const projectId = router.query.projectId as string;
   const { project } = useQueryProjectOrOrganization();
+  // ACME (ADR-0011 section 6): Business Analyst sees the home dashboard but
+  // not trace data, so skip the trace-reading tracing check and filter options.
+  const isContentFreeRole = useIsContentFreeRole(projectId);
   const { data: hasTracingConfigured, isLoading: isTracingCheckLoading } =
     api.traces.hasTracingConfigured.useQuery(
       { projectId },
       {
-        enabled: Boolean(projectId),
+        enabled: Boolean(projectId) && !isContentFreeRole,
         trpc: {
           context: {
             skipBatch: true,
@@ -134,11 +140,13 @@ function HomeDashboard({ readPath }: { readPath: ResolvedReadPath }) {
     projectId,
     isV4,
     timeRange,
+    enabled: !isContentFreeRole,
   });
 
   const environmentOptionsState = useEnvironmentFilterOptionsCache({
     projectId,
     timeRange,
+    enabled: !isContentFreeRole,
   });
   const environmentOptions: string[] =
     environmentOptionsState.environmentOptions;
@@ -415,7 +423,8 @@ function HomeDashboard({ readPath }: { readPath: ResolvedReadPath }) {
                   </span>
                 </Link>
               </Button>
-              {!isTracingCheckLoading &&
+              {!isContentFreeRole &&
+                !isTracingCheckLoading &&
                 !hasTracingConfigured &&
                 project &&
                 (hasSetupTracingAccess ? (

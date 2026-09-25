@@ -85,7 +85,13 @@ const AUDITOR_ROLE_ALLOWED_PROCEDURES: ReadonlySet<string> = new Set([
   "prompts.allPromptMeta",
   "prompts.allVersions",
   "prompts.getProtectedLabels",
+  // CHG-2026-059 d: the prompt detail page composes the template from its
+  // dependencies (template data only, as byId), and the Members settings
+  // page lists members and pending invites (Auditor holds projectMembers:read).
+  "prompts.resolvePromptGraph",
   "members.byProjectId",
+  "members.allFromProject",
+  "members.allInvitesFromProject",
 ]);
 
 const ALLOW_LISTS: Partial<Record<Role, ReadonlySet<string>>> = {

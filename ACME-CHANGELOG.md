@@ -4618,3 +4618,37 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 **Tests:** 33 new (`acmeProjectAccess.servertest.ts`): the subset rule and the "never wider than either the organization or the resolved role" property over every role pair; `NONE` drops the project from the session; router refusals happen before any write. **Controls:** removing the subset check failed 11 tests, removing fail-closed failed 9, removing the higher-role guard failed 1.
 
 **Found while building:** Viewer is not a narrowing of Prompt Analyst. Since part (b), Prompt Analyst holds only the gateway Spend permission while Viewer still holds `llmGateway:read`, so the policy correctly refuses "limit a Prompt Analyst to Viewer". Whether Viewer should keep `llmGateway:read` is for the owner.
+
+## 2026-09-25 — Roles see only what they can use: in-page hiding (CHG-2026-059, part d)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-059 part (d) · Tier 1 (authorisation UI) · ADR-0011 §6 accepted · owner: Anees Ur Rahman |
+| **Dates** | Built and tested locally. Dev: a console release · Prod: none exists |
+| **Impact** | For Security Analyst, Business Analyst and Auditor, screens stop calling procedures their server allow-lists refuse, so they no longer see "Forbidden" errors. For these three roles, controls that need trace content are hidden. Other roles are unchanged |
+| **Rollback** | Redeploy the previous image |
+
+**Why:** an audit traced every page these roles can open and found 12 calls their allow-lists refuse. Each one showed the user a "Forbidden" toast. None disclosed data, because the server refused them all.
+
+**What:**
+- **Every project page:** the v3-experience check is skipped for these roles; they get the safe default. **Go to... menu:** the dashboards group loads only with `dashboards:read`.
+- **Project settings:** these roles see General and Organization Settings, plus Members when they hold `projectMembers:read` (Auditor). API Keys, MCP & CLI, LLM Connections, Model Definitions, Integrations, Exports, Batch Actions and Notifications are hidden for them.
+- **Prompts (Auditor):**
+  - no prompt metrics, which aggregate trace data;
+  - no saved table views and no bulk Export;
+  - the automations count loads only with `automations:read`;
+  - on the prompt detail page, the playground menu and the "Linked Generations" tab need `projectData:read`.
+- **Home and Dashboards (Business Analyst):** the "Configure Tracing" check and the trace-name, tag and environment filter options are skipped, because they read trace data. The charts still load through the allowed dashboard procedures.
+- **Auditor allow-list, three read-only additions** within ADR-0011 §4 and §11 Q3:
+  - `prompts.resolvePromptGraph`: the template composed from its dependencies, the same data as `byId`;
+  - `members.allFromProject` and `members.allInvitesFromProject`, because Auditor holds `projectMembers:read`.
+- **New hook** `useIsContentFreeRole`. The filter-option hooks gain an optional `enabled` switch.
+
+**Tests:**
+- **New:** `acme-role-navigation.clienttest.tsx` pins each content-free role's sidebar and proves no trace, session or content page appears for them. Control: a Prompt Analyst does see Tracing.
+- **Existing:**
+  - `contentFreeRoles` checks the new allow-list entries exist and are read-only;
+  - the settings, command menu, v4-migration and in-app-agent tests still pass.
+- **Result:** 140 of 140.
+
+**Not yet verified:** a live sign-in in each role, which needs test users.

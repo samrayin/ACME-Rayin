@@ -165,6 +165,12 @@ export const PromptDetail = ({
     projectId,
     scope: "comments:read",
   });
+  // ACME (ADR-0011 section 6): the playground and linked generations read
+  // trace content, so they need projectData:read (Auditor reads templates).
+  const hasProjectDataAccess = useHasProjectAccess({
+    projectId,
+    scope: "projectData:read",
+  });
   const promptHistoryInput = useMemo(
     () => ({
       name: promptName,
@@ -452,34 +458,36 @@ export const PromptDetail = ({
                 <div className="min-h-1 flex-1" />
               </div>
               <div className="flex h-full flex-wrap content-start items-start justify-end gap-1 lg:flex-nowrap">
-                <JumpToPlaygroundDropdownMenuController
-                  source="prompt"
-                  prompt={{
-                    ...prompt,
-                    resolvedPrompt: promptGraph.data?.resolvedPrompt,
-                  }}
-                  analyticsEventName="prompt_detail:test_in_playground_button_click"
-                >
-                  {({ Trigger, disabled, title }) => (
-                    <Trigger asChild>
-                      <Button
-                        variant="outline"
-                        disabled={disabled}
-                        title={title}
-                        className={cn(
-                          "flex items-center gap-1",
-                          disabled
-                            ? "cursor-not-allowed opacity-50"
-                            : "cursor-pointer",
-                        )}
-                      >
-                        <Terminal className="h-4 w-4" />
-                        <span className="hidden md:inline">Playground</span>
-                        <ChevronDown className="h-3 w-3" />
-                      </Button>
-                    </Trigger>
-                  )}
-                </JumpToPlaygroundDropdownMenuController>
+                {hasProjectDataAccess && (
+                  <JumpToPlaygroundDropdownMenuController
+                    source="prompt"
+                    prompt={{
+                      ...prompt,
+                      resolvedPrompt: promptGraph.data?.resolvedPrompt,
+                    }}
+                    analyticsEventName="prompt_detail:test_in_playground_button_click"
+                  >
+                    {({ Trigger, disabled, title }) => (
+                      <Trigger asChild>
+                        <Button
+                          variant="outline"
+                          disabled={disabled}
+                          title={title}
+                          className={cn(
+                            "flex items-center gap-1",
+                            disabled
+                              ? "cursor-not-allowed opacity-50"
+                              : "cursor-pointer",
+                          )}
+                        >
+                          <Terminal className="h-4 w-4" />
+                          <span className="hidden md:inline">Playground</span>
+                          <ChevronDown className="h-3 w-3" />
+                        </Button>
+                      </Trigger>
+                    )}
+                  </JumpToPlaygroundDropdownMenuController>
+                )}
                 {hasAccess && (
                   <Dialog
                     open={isCreateExperimentDialogOpen}
@@ -586,34 +594,38 @@ export const PromptDetail = ({
             <TabsBarList className="max-w-full min-w-0 justify-start overflow-x-auto">
               <TabsBarTrigger value="prompt">Prompt</TabsBarTrigger>
               <TabsBarTrigger value="config">Config</TabsBarTrigger>
-              <TabsBarTrigger value="linked-generations">
-                Linked Generations
-              </TabsBarTrigger>
+              {hasProjectDataAccess && (
+                <TabsBarTrigger value="linked-generations">
+                  Linked Generations
+                </TabsBarTrigger>
+              )}
               <TabsBarTrigger value="use-prompt">Use Prompt</TabsBarTrigger>
             </TabsBarList>
-            <TabsBarContent
-              value="linked-generations"
-              className="mt-0 mb-2 flex max-h-full min-h-0 flex-1 flex-col overflow-hidden"
-            >
-              <div className="flex h-full flex-1 flex-col overflow-hidden">
-                {isV4 ? (
-                  <EventsTable
-                    projectId={prompt.projectId}
-                    promptName={prompt.name}
-                    promptVersion={prompt.version}
-                    omittedFilter={["promptName"]}
-                    isolateTableState
-                  />
-                ) : (
-                  <LegacyGenerations
-                    projectId={prompt.projectId}
-                    promptName={prompt.name}
-                    promptVersion={prompt.version}
-                    omittedFilter={["promptName"]}
-                  />
-                )}
-              </div>
-            </TabsBarContent>
+            {hasProjectDataAccess && (
+              <TabsBarContent
+                value="linked-generations"
+                className="mt-0 mb-2 flex max-h-full min-h-0 flex-1 flex-col overflow-hidden"
+              >
+                <div className="flex h-full flex-1 flex-col overflow-hidden">
+                  {isV4 ? (
+                    <EventsTable
+                      projectId={prompt.projectId}
+                      promptName={prompt.name}
+                      promptVersion={prompt.version}
+                      omittedFilter={["promptName"]}
+                      isolateTableState
+                    />
+                  ) : (
+                    <LegacyGenerations
+                      projectId={prompt.projectId}
+                      promptName={prompt.name}
+                      promptVersion={prompt.version}
+                      omittedFilter={["promptName"]}
+                    />
+                  )}
+                </div>
+              </TabsBarContent>
+            )}
             <TabsBarContent
               value="prompt"
               className="mt-0 flex max-h-full min-h-0 flex-1 overflow-hidden"
