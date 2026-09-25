@@ -1,7 +1,10 @@
 # CAIRO — Vision Tracker
 **Purpose:** single source of truth for "are we there yet," updated at every stage. Not a changelog — a status board. The changelog and ledger remain the detailed record; this file answers one question fast: what's done, what's next, what's blocking.
 
-**Last updated:** 2026-09-25. **The dev console carries the CAIRO name in its address and on two upstream screens.** Console `acme-v4.38.0.14`, worker `worker-acme-v4.38.0.3`, both TRACED.
+**Last updated:** 2026-09-25. **The dev console carries the CAIRO name in its address and on two upstream screens.** Console `acme-v4.38.0.15`, worker `worker-acme-v4.38.0.3`, both TRACED.
+- **Viewer and the gateway (CHG-2026-059 part e, owner decisions ADR-0011 §11 Q6–Q7):** live in `acme-v4.38.0.15` since 03:18Z.
+  - Viewer now sees only the LLM Gateway Spend tab, as Prompt Analyst does. As a result, Viewer can be set as a Prompt Analyst's project access limit.
+  - The Auditor allow-list additions from part d are accepted.
 - **Roles see only what they can use (CHG-2026-059 part d, ADR-0011 §6):** live in `acme-v4.38.0.14` since 02:34Z.
   - An audit of every page Security Analyst, Business Analyst and Auditor can open found 12 calls their server allow-lists refuse. Each showed a "Forbidden" error; none disclosed data.
   - Those calls are no longer made, and their controls are hidden for these roles.
