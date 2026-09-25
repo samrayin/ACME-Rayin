@@ -1,7 +1,12 @@
 # CAIRO — Vision Tracker
 **Purpose:** single source of truth for "are we there yet," updated at every stage. Not a changelog — a status board. The changelog and ledger remain the detailed record; this file answers one question fast: what's done, what's next, what's blocking.
 
-**Last updated:** 2026-09-25. **The dev console carries the CAIRO name in its address and on two upstream screens.** Console `acme-v4.38.0.15`, worker `worker-acme-v4.38.0.3`, both TRACED.
+**Last updated:** 2026-09-25. **The dev console carries the CAIRO name in its address and on two upstream screens.** Console `acme-v4.38.0.16`, worker `worker-acme-v4.38.0.3`, both TRACED.
+- **Guardrail event detail (CHG-2026-071):** live in `acme-v4.38.0.16` since 10:28Z.
+  - **Fixed:** "View trace" failed with "Trace not found" for gateway traffic, because the event's id is LiteLLM's call id, not a trace id.
+  - **Now:** the event shows its matching gateway request (model, status, key, tokens, cost), with a Show JSON view. The encrypted content is never sent.
+  - **Security Analyst** sees it all, pinned by a test.
+  - **Still open:** User and Machine stay "Not recorded" until the gateway forwards a user id (N-34).
 - **Viewer and the gateway (CHG-2026-059 part e, owner decisions ADR-0011 §11 Q6–Q7):** live in `acme-v4.38.0.15` since 03:18Z.
   - Viewer now sees only the LLM Gateway Spend tab, as Prompt Analyst does. As a result, Viewer can be set as a Prompt Analyst's project access limit.
   - The Auditor allow-list additions from part d are accepted.
