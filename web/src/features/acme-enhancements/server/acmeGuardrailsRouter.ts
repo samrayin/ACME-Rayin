@@ -31,8 +31,14 @@
  * endpoint it exposes, so every fetch below needs the header too.
  */
 import { z } from "zod";
-import { createTRPCRouter, protectedProjectProcedure } from "@/src/server/api/trpc";
-import { throwIfNoProjectAccess } from "@/src/features/rbac/utils/checkProjectAccess";
+import {
+  createTRPCRouter,
+  protectedProjectProcedure,
+} from "@/src/server/api/trpc";
+import {
+  hasProjectAccess,
+  throwIfNoProjectAccess,
+} from "@/src/features/rbac/utils/checkProjectAccess";
 import { env } from "@/src/env.mjs";
 import {
   prisma,
@@ -43,12 +49,18 @@ import { logger } from "@langfuse/shared/src/server";
 import { TRPCError } from "@trpc/server";
 import { selectPullBackfillRows } from "@/src/features/acme-enhancements/server/acmeGuardrailsPullBackfill";
 
-const DIRECTION_FROM_DB: Record<AcmeGuardrailEventDirection, "input" | "output"> = {
+const DIRECTION_FROM_DB: Record<
+  AcmeGuardrailEventDirection,
+  "input" | "output"
+> = {
   [AcmeGuardrailEventDirection.INPUT]: "input",
   [AcmeGuardrailEventDirection.OUTPUT]: "output",
 };
 
-const ACTION_FROM_DB: Record<AcmeGuardrailEventAction, "allow" | "redact" | "block"> = {
+const ACTION_FROM_DB: Record<
+  AcmeGuardrailEventAction,
+  "allow" | "redact" | "block"
+> = {
   [AcmeGuardrailEventAction.ALLOW]: "allow",
   [AcmeGuardrailEventAction.REDACT]: "redact",
   [AcmeGuardrailEventAction.BLOCK]: "block",
@@ -97,7 +109,12 @@ const GuardrailsEventsResponseSchema = z.object({
 
 export const acmeGuardrailsRouter = createTRPCRouter({
   recentEvents: protectedProjectProcedure
-    .input(z.object({ projectId: z.string(), limit: z.number().min(1).max(200).default(50) }))
+    .input(
+      z.object({
+        projectId: z.string(),
+        limit: z.number().min(1).max(200).default(50),
+      }),
+    )
     .query(async ({ ctx, input }) => {
       throwIfNoProjectAccess({
         session: ctx.session,
@@ -222,8 +239,55 @@ export const acmeGuardrailsRouter = createTRPCRouter({
         where: { id: input.id, projectId: input.projectId },
       });
       if (!event) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Guardrail event not found." });
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Guardrail event not found.",
+        });
       }
+
+      // CHG-2026-071: for gateway traffic the event's "trace id" is LiteLLM's
+      // litellm_call_id, not a Langfuse trace id (gateway traces live in a
+      // separate project under an OTel trace id). The structured record of
+      // that call is the request-log mirror row with the same call id, in
+      // this project. Metadata only; shown to roles that may read gateway
+      // request logs.
+      const gatewayRequest =
+        event.traceId &&
+        hasProjectAccess({
+          session: ctx.session,
+          projectId: input.projectId,
+          scope: "llmGatewayLogs:read",
+        })
+          ? await prisma.acmeLitellmRequestLog.findFirst({
+              where: {
+                projectId: input.projectId,
+                OR: [
+                  { litellmCallId: event.traceId },
+                  { requestId: event.traceId },
+                ],
+              },
+              orderBy: { startTime: "asc" },
+              select: {
+                requestId: true,
+                litellmCallId: true,
+                startTime: true,
+                endTime: true,
+                status: true,
+                callType: true,
+                model: true,
+                modelGroup: true,
+                provider: true,
+                keyAlias: true,
+                endUser: true,
+                promptTokens: true,
+                completionTokens: true,
+                totalTokens: true,
+                spend: true,
+                cacheHit: true,
+                errorClass: true,
+              },
+            })
+          : null;
 
       return {
         id: event.id,
@@ -237,10 +301,22 @@ export const acmeGuardrailsRouter = createTRPCRouter({
         direction: DIRECTION_FROM_DB[event.direction],
         action: ACTION_FROM_DB[event.action],
         policyTriggered: event.policyTriggered,
-        source: event.source === null ? null : event.source === "PUSH" ? "push" : "pull",
+        source:
+          event.source === null
+            ? null
+            : event.source === "PUSH"
+              ? "push"
+              : "pull",
         redactedText: event.redactedText,
         piiFindings: event.piiFindings,
         hasEncryptedContent: event.rawContentEncrypted !== null,
+        gatewayRequest: gatewayRequest
+          ? {
+              ...gatewayRequest,
+              startTime: gatewayRequest.startTime.toISOString(),
+              endTime: gatewayRequest.endTime?.toISOString() ?? null,
+            }
+          : null,
       };
     }),
 
@@ -267,7 +343,9 @@ export const acmeGuardrailsRouter = createTRPCRouter({
         signal: AbortSignal.timeout(5_000),
       });
       if (!res.ok) {
-        throw new Error(`rayin-guardrails returned ${res.status} fetching /v1/config`);
+        throw new Error(
+          `rayin-guardrails returned ${res.status} fetching /v1/config`,
+        );
       }
 
       const parsed = ConfigResponseSchema.parse(await res.json());
@@ -319,7 +397,9 @@ export const acmeGuardrailsRouter = createTRPCRouter({
       });
       if (!res.ok) {
         const detail = await res.text().catch(() => "");
-        throw new Error(`rayin-guardrails rejected the config update (${res.status}): ${detail}`);
+        throw new Error(
+          `rayin-guardrails rejected the config update (${res.status}): ${detail}`,
+        );
       }
 
       const parsed = ConfigResponseSchema.parse(await res.json());

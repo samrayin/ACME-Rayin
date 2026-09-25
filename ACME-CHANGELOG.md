@@ -4669,3 +4669,27 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 - **ADR-0011 §11:** records both decisions as Q6 and Q7.
 
 **Tests:** the role-map and policy tests are updated to the new rule. 170 of 170 pass in the RBAC suites.
+
+## 2026-09-25 — Guardrail event: gateway request instead of a broken trace link; JSON view (CHG-2026-071)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-071 · Tier 2 (UI and a read-only query) · owner: Anees Ur Rahman |
+| **Dates** | Built and tested locally. Dev: a console release · Prod: none exists |
+| **Impact** | The guardrail event dialog no longer offers a "View trace" link that always failed for gateway traffic. It shows the matching gateway request instead, and adds a JSON view. No schema, gateway or guardrails change |
+| **Rollback** | Redeploy the previous image |
+
+**Why:**
+- For gateway traffic, the event's "trace id" is LiteLLM's `litellm_call_id`. "View trace" opened it as a Langfuse trace in the current project, and failed with "Trace not found".
+- Gateway traces live in the "Gateway traces" project under a different, OpenTelemetry id. The structured record of the call is the request-log mirror row (CHG-2026-008) with the same call id.
+
+**What:**
+- **Gateway request.** `acmeGuardrails.eventDetail` returns the request-log row in the same project whose `litellm_call_id` (or `request_id`) matches, as metadata only. It is looked up only for roles holding `llmGatewayLogs:read`. The dialog shows its model, status, key, tokens, cost and call id.
+- **No match yet** (the mirror lags up to about 7 minutes): the dialog shows the call id and where the request will appear. "View trace" is kept only for ids shaped like a Langfuse trace id (32 hex characters, as SDK-sent ids are).
+- **Show JSON.** A new toggle shows the whole event and its gateway request as JSON. The encrypted blocked content is never sent to the browser; only a flag is.
+
+**Tests:** 4 new (`acmeGuardrailEventDetail.servertest.ts`):
+- the call id resolves in the same project only;
+- no encrypted content reaches the response;
+- no lookup for roles without `llmGatewayLogs:read`;
+- mirror lag.
