@@ -4693,3 +4693,19 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 - no encrypted content reaches the response;
 - no lookup for roles without `llmGatewayLogs:read`;
 - mirror lag.
+
+## 2026-09-25 — Members table shows CAIRO project access instead of "N/A on plan" (CHG-2026-072)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-072 · Tier 2 (UI and a read-only query) · owner choice 2026-09-25: "Link to Project access" · owner: Anees Ur Rahman |
+| **Dates** | Built and tested locally. Dev: a console release · Prod: none exists |
+| **Impact** | Project settings > Members: the "Project Role" column read "N/A on plan" because it is Langfuse's Enterprise project-roles selector (`rbac-project-roles`), which CAIRO does not enable (ADR-0011 §2). Without that entitlement, the column is now "Project access" and shows CAIRO's own limit for each member. No entitlement change, and no `ProjectMembership` writes |
+| **Rollback** | Redeploy the previous image |
+
+**What:**
+- **Column:** it shows each member's limit, "Limited to <role>" or "No access". Members without a limit show "Organization role". Owners and Admins get a "Change" link to Organization settings > Project access. The column tooltip explains the limit narrows the organization role and never widens it.
+- **New read-only procedure** `acmeProjectAccess.forProject`: the limits set in one project, for anyone with `projectMembers:read`. It is added to the Auditor allow-list, because Auditors read project members.
+- **With the Enterprise entitlement present,** the upstream selector renders unchanged.
+
+**Tests:** 5 new in `acmeProjectAccess.servertest.ts`: Owner, Admin and Auditor read the limits; Business Analyst and Security Analyst are refused before any query. `contentFreeRoles` confirms the new allow-list entry exists and is a query.

@@ -92,6 +92,8 @@ const AUDITOR_ROLE_ALLOWED_PROCEDURES: ReadonlySet<string> = new Set([
   "members.byProjectId",
   "members.allFromProject",
   "members.allInvitesFromProject",
+  // CHG-2026-072: per-project access limits shown in the Members table.
+  "acmeProjectAccess.forProject",
 ]);
 
 const ALLOW_LISTS: Partial<Record<Role, ReadonlySet<string>>> = {
