@@ -13,7 +13,9 @@ import { type PrismaClient } from "@langfuse/shared/src/db";
 import {
   createTRPCRouter,
   protectedOrganizationProcedure,
+  protectedProjectProcedure,
 } from "@/src/server/api/trpc";
+import { throwIfNoProjectAccess } from "@/src/features/rbac/utils/checkProjectAccess";
 import { throwIfNoOrganizationAccess } from "@/src/features/rbac/utils/checkOrganizationAccess";
 import { orderedRoles } from "@/src/features/rbac/constants/orderedRoles";
 import { auditLog } from "@/src/features/audit-logs/server";
@@ -169,6 +171,28 @@ export const acmeProjectAccessRouter = createTRPCRouter({
         after,
       });
       return after;
+    }),
+
+  /**
+   * CHG-2026-072: the limits set in one project, for the project Members
+   * table. Read-only, for anyone who may read the project's members.
+   */
+  forProject: protectedProjectProcedure
+    .input(z.object({ projectId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      throwIfNoProjectAccess({
+        session: ctx.session,
+        projectId: input.projectId,
+        scope: "projectMembers:read",
+      });
+      const rows = await ctx.prisma.acmeProjectAccess.findMany({
+        where: { projectId: input.projectId },
+        select: { userId: true, ceilingRole: true },
+      });
+      return {
+        enabled: isProjectAccessPolicyEnabled(),
+        limits: rows,
+      };
     }),
 
   remove: protectedOrganizationProcedure

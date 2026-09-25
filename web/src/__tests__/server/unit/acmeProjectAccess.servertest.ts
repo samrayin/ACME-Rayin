@@ -292,3 +292,65 @@ describe("project access router", () => {
     );
   });
 });
+
+// CHG-2026-072: the project Members table reads the limits set in a project.
+describe("project access router: forProject (Members table)", () => {
+  const PROJECT_ID = "proj-members";
+
+  function projectCaller(role: Role, rows: unknown[] = []) {
+    const session = {
+      expires: "1",
+      user: {
+        id: "caller",
+        admin: false,
+        featureFlags: {},
+        organizations: [
+          {
+            id: ORG,
+            name: "org",
+            role,
+            plan: "oss",
+            projects: [{ id: PROJECT_ID, name: "p", role, deletedAt: null }],
+          },
+        ],
+      },
+      environment: {},
+    } as unknown as Session;
+    const findMany = vi.fn(async () => rows);
+    const ctx = createInnerTRPCContext({ session, headers: {} });
+    return {
+      findMany,
+      caller: router.createCaller({
+        ...ctx,
+        prisma: {
+          acmeProjectAccess: { findMany },
+        } as unknown as typeof ctx.prisma,
+      }).acmeProjectAccess,
+    };
+  }
+
+  it.each([Role.OWNER, Role.ADMIN, Role.AUDITOR])(
+    "%s reads the limits in the project",
+    async (role) => {
+      const { caller, findMany } = projectCaller(role, [
+        { userId: "u1", ceilingRole: Role.VIEWER },
+      ]);
+      const out = await caller.forProject({ projectId: PROJECT_ID });
+      expect(out.limits).toEqual([{ userId: "u1", ceilingRole: Role.VIEWER }]);
+      expect(findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { projectId: PROJECT_ID } }),
+      );
+    },
+  );
+
+  it.each([Role.ANALYST, Role.SECURITY])(
+    "%s cannot read the limits",
+    async (role) => {
+      const { caller, findMany } = projectCaller(role);
+      await expect(
+        caller.forProject({ projectId: PROJECT_ID }),
+      ).rejects.toThrow();
+      expect(findMany).not.toHaveBeenCalled();
+    },
+  );
+});

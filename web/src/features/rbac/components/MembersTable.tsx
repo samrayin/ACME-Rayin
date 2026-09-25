@@ -25,7 +25,10 @@ import { Alert } from "@/src/components/design-system/Alert/Alert";
 import { useHasEntitlement } from "@/src/features/entitlements";
 import { showSuccessToast } from "@/src/features/notifications";
 import { useHasProjectAccess } from "@/src/features/rbac/utils/checkProjectAccess";
-import { RoleSelectItem } from "@/src/features/rbac/components/RoleSelectItem";
+import {
+  RoleSelectItem,
+  formatRole,
+} from "@/src/features/rbac/components/RoleSelectItem";
 import {
   HoverCard,
   HoverCardContent,
@@ -155,6 +158,19 @@ export function MembersTable({
   });
 
   const projectRolesEntitlement = useHasEntitlement("rbac-project-roles");
+  // ACME (ADR-0011, CHG-2026-072): CAIRO does not enable the Enterprise
+  // project-roles selector. Without it, this column shows CAIRO's own
+  // project access limit (narrowing only) and links Owners/Admins to the
+  // Project access page where it is set.
+  const acmeProjectLimits = api.acmeProjectAccess.forProject.useQuery(
+    { projectId: project?.id ?? "" },
+    {
+      enabled:
+        project !== undefined &&
+        !projectRolesEntitlement &&
+        hasProjectViewAccess,
+    },
+  );
 
   const columns: LangfuseColumnDef<MembersTableRow>[] = [
     {
@@ -250,12 +266,18 @@ export function MembersTable({
           {
             accessorKey: "projectRole",
             id: "projectRole",
-            header: "Project Role",
-            headerTooltip: {
-              description:
-                "The role for this user in this specific project. This role overrides the default project role.",
-              href: "https://langfuse.com/docs/administration/rbac",
-            },
+            header: projectRolesEntitlement ? "Project Role" : "Project access",
+            headerTooltip: projectRolesEntitlement
+              ? {
+                  description:
+                    "The role for this user in this specific project. This role overrides the default project role.",
+                  href: "https://langfuse.com/docs/administration/rbac",
+                }
+              : {
+                  description:
+                    "CAIRO project access: an optional limit that narrows the member's organization role in this project (it can never widen it). Set by Owners and Admins in Organization settings > Project access.",
+                  href: `/organization/${orgId}/settings/project-access`,
+                },
             cell: ({ row }) => {
               const projectRole = row.getValue(
                 "projectRole",
@@ -264,7 +286,33 @@ export function MembersTable({
                 "meta",
               ) as MembersTableRow["meta"];
 
-              if (!projectRolesEntitlement) return "N/A on plan";
+              if (!projectRolesEntitlement) {
+                const limit = acmeProjectLimits.data?.limits.find(
+                  (l) => l.userId === userId,
+                );
+                const label = limit
+                  ? limit.ceilingRole === "NONE"
+                    ? "No access"
+                    : `Limited to ${formatRole(limit.ceilingRole)}`
+                  : "Organization role";
+                return (
+                  <span className="flex items-center gap-2">
+                    <span
+                      className={limit ? undefined : "text-muted-foreground"}
+                    >
+                      {label}
+                    </span>
+                    {hasCudAccessOrgLevel && (
+                      <Link
+                        href={`/organization/${orgId}/settings/project-access`}
+                        className="text-primary text-xs hover:underline"
+                      >
+                        Change
+                      </Link>
+                    )}
+                  </span>
+                );
+              }
 
               return (
                 <ProjectRoleDropdown
