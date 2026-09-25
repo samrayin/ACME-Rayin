@@ -134,6 +134,22 @@ describe("guardrail event detail: gateway request (CHG-2026-071)", () => {
     expect(requestLogFindFirst).not.toHaveBeenCalled();
   });
 
+  it("Security Analyst sees the event and its gateway request (owner, 2026-09-25)", async () => {
+    // Reviewing guardrail decisions is the Security Analyst's job: it holds
+    // projectGuardrails:read and llmGatewayLogs:read, and eventDetail is on
+    // its server allow-list (securityRoleAllowList.ts).
+    const out = await callerFor("SECURITY").eventDetail({
+      projectId: PROJECT,
+      id: "row-1",
+    });
+    expect(out.policyTriggered).toBe("Jailbreak Detection");
+    expect(out.gatewayRequest).toMatchObject({
+      model: "hr-assistant",
+      keyAlias: "cairo-hr-assist-direct-67201516",
+    });
+    expect(JSON.stringify(out)).not.toContain("ciphertext");
+  });
+
   it("returns null when no request row matches yet (mirror lag)", async () => {
     requestLogFindFirst.mockResolvedValue(null);
     const out = await callerFor("AUDITOR").eventDetail({
