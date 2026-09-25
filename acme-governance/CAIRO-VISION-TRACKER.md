@@ -1,7 +1,13 @@
 # CAIRO — Vision Tracker
 **Purpose:** single source of truth for "are we there yet," updated at every stage. Not a changelog — a status board. The changelog and ledger remain the detailed record; this file answers one question fast: what's done, what's next, what's blocking.
 
-**Last updated:** 2026-09-25. **The dev console carries the CAIRO name in its address and on two upstream screens.** Console `acme-v4.38.0.13`, worker `worker-acme-v4.38.0.3`, both TRACED.
+**Last updated:** 2026-09-25. **The dev console carries the CAIRO name in its address and on two upstream screens.** Console `acme-v4.38.0.14`, worker `worker-acme-v4.38.0.3`, both TRACED.
+- **Roles see only what they can use (CHG-2026-059 part d, ADR-0011 §6):** live in `acme-v4.38.0.14` since 02:34Z.
+  - An audit of every page Security Analyst, Business Analyst and Auditor can open found 12 calls their server allow-lists refuse. Each showed a "Forbidden" error; none disclosed data.
+  - Those calls are no longer made, and their controls are hidden for these roles.
+  - Three read-only procedures were added to the Auditor allow-list: prompt template graph, members and invites. They await the owner's confirmation.
+  - A test now pins each role's sidebar.
+  - **Not yet verified:** a live sign-in in each role (test users pending).
 - **Project access (CHG-2026-059 part c, ADR-0011 §5):** live in `acme-v4.38.0.13` since 2026-09-24 21:47Z.
   - **What it does:** Owners and Admins can limit what one person can do in one project. A limit can only narrow the person's organisation role, never widen it. "No access" hides the project, and a limit that no longer fits hides the project too (fails closed).
   - **Page:** Organization settings > Project access.
