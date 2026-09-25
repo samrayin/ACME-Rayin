@@ -1,6 +1,11 @@
 import { type ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/src/components/ui/card";
 import { Badge } from "@/src/components/ui/badge";
 import { Switch } from "@/src/components/ui/switch";
 import { Button } from "@/src/components/ui/button";
@@ -21,6 +26,7 @@ import {
   TableRow,
 } from "@/src/components/ui/table";
 import { api } from "@/src/utils/api";
+import { JSONView } from "@/src/components/ui/CodeJsonViewer";
 import { useHasProjectAccess } from "@/src/features/rbac";
 import { showErrorToast, showSuccessToast } from "@/src/features/notifications";
 import { cn } from "@/src/utils/tailwind";
@@ -109,12 +115,15 @@ function AcmeGuardrailEventDetail({
   const notRecorded = (
     <span className="text-muted-foreground">Not recorded</span>
   );
+  const [showJson, setShowJson] = useState(false);
+  // CHG-2026-071: a gateway event's id is LiteLLM's call id, which is not a
+  // Langfuse trace id, so it is only offered as a trace link when it has the
+  // shape of one (32 hex characters, as SDK-sent trace ids have) and no
+  // gateway request matched.
+  const looksLikeTraceId = (id: string) => /^[0-9a-f]{32}$/i.test(id);
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(isOpen) => !isOpen && onClose()}
-    >
+    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Guardrail event</DialogTitle>
@@ -170,22 +179,52 @@ function AcmeGuardrailEventDetail({
                   )}
                 </DetailRow>
               )}
-              <DetailRow label="Trace">
-                {detail.data.traceId && !canOpenTrace ? (
-                  <span className="font-mono text-xs">
-                    {detail.data.traceId}
-                  </span>
-                ) : detail.data.traceId ? (
-                  <Link
-                    href={`/project/${projectId}/traces/${detail.data.traceId}`}
-                    className="text-primary hover:underline"
-                  >
-                    View trace
-                  </Link>
-                ) : (
-                  notRecorded
-                )}
-              </DetailRow>
+              {detail.data.gatewayRequest ? (
+                <DetailRow label="Gateway request">
+                  <div className="flex flex-col gap-0.5 text-xs">
+                    <span>
+                      {detail.data.gatewayRequest.model ??
+                        detail.data.gatewayRequest.modelGroup ??
+                        "—"}{" "}
+                      · {detail.data.gatewayRequest.status}
+                      {detail.data.gatewayRequest.errorClass
+                        ? ` (${detail.data.gatewayRequest.errorClass})`
+                        : ""}
+                    </span>
+                    <span className="text-muted-foreground">
+                      key {detail.data.gatewayRequest.keyAlias ?? "—"} ·{" "}
+                      {detail.data.gatewayRequest.totalTokens ?? "—"} tokens · $
+                      {(detail.data.gatewayRequest.spend ?? 0).toFixed(6)}
+                    </span>
+                    <span className="text-muted-foreground font-mono">
+                      call {detail.data.traceId}
+                    </span>
+                  </div>
+                </DetailRow>
+              ) : (
+                <DetailRow label="Correlation">
+                  {!detail.data.traceId ? (
+                    notRecorded
+                  ) : canOpenTrace && looksLikeTraceId(detail.data.traceId) ? (
+                    <Link
+                      href={`/project/${projectId}/traces/${detail.data.traceId}`}
+                      className="text-primary hover:underline"
+                    >
+                      View trace
+                    </Link>
+                  ) : (
+                    <span className="flex flex-col gap-0.5">
+                      <span className="font-mono text-xs">
+                        {detail.data.traceId}
+                      </span>
+                      <span className="text-muted-foreground text-xs">
+                        Gateway call id. Its request row appears under LLM
+                        Gateway &gt; Requests within a few minutes.
+                      </span>
+                    </span>
+                  )}
+                </DetailRow>
+              )}
               <DetailRow label="Event ID">
                 <span className="font-mono text-xs">
                   {detail.data.eventId ?? "—"}
@@ -197,6 +236,22 @@ function AcmeGuardrailEventDetail({
                   ? "Audit push"
                   : "Dashboard backfill (metadata only)"}
               </DetailRow>
+              <div className="pt-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowJson((v) => !v)}
+                >
+                  {showJson ? "Hide JSON" : "Show JSON"}
+                </Button>
+              </div>
+              {showJson && (
+                <div className="pt-2">
+                  {/* Metadata only: the encrypted blocked content is never
+                      sent to the browser (hasEncryptedContent is a flag). */}
+                  <JSONView json={detail.data} />
+                </div>
+              )}
             </div>
           )}
         </DialogBody>
@@ -249,9 +304,12 @@ function AcmeGuardrailsAssurance({ projectId }: { projectId: string }) {
   const recentResultsV3 = api.scores.all.useQuery(recentResultsInput, {
     enabled: !isV4,
   });
-  const recentResultsV4 = api.scores.allFromEvents.useQuery(recentResultsInput, {
-    enabled: isV4,
-  });
+  const recentResultsV4 = api.scores.allFromEvents.useQuery(
+    recentResultsInput,
+    {
+      enabled: isV4,
+    },
+  );
   const recentResults = isV4 ? recentResultsV4 : recentResultsV3;
   const recentRows = recentResults.data?.scores ?? [];
 
@@ -315,16 +373,16 @@ function AcmeGuardrailsAssurance({ projectId }: { projectId: string }) {
           </p>
         ) : rows.length === 0 ? (
           <p className="text-muted-foreground text-sm">
-            No red-team runs recorded yet for this project. Once the
-            promptfoo suite (see <code>integrations/promptfoo</code>) runs
-            against rayin-guardrails and pushes its verdicts here as Scores,
-            the block-rate trend appears automatically — nothing to
-            configure on this page.
+            No red-team runs recorded yet for this project. Once the promptfoo
+            suite (see <code>integrations/promptfoo</code>) runs against
+            rayin-guardrails and pushes its verdicts here as Scores, the
+            block-rate trend appears automatically — nothing to configure on
+            this page.
           </p>
         ) : (
           <div className="flex flex-col gap-2">
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-semibold">
+              <span className="text-2xl font-bold">
                 {Math.round((latest?.avg_value ?? 0) * 100)}%
               </span>
               <span className="text-muted-foreground text-xs">
@@ -349,15 +407,15 @@ function AcmeGuardrailsAssurance({ projectId }: { projectId: string }) {
             </div>
             <p className="text-muted-foreground text-xs">
               Each bar is one day&apos;s red-team run over the last{" "}
-              {ASSURANCE_LOOKBACK_DAYS} days. A low or dropping bar is the
-              real finding, not a bug in this chart.
+              {ASSURANCE_LOOKBACK_DAYS} days. A low or dropping bar is the real
+              finding, not a bug in this chart.
             </p>
           </div>
         )}
 
         {recentRows.length > 0 && (
           <div className="mt-4 border-t pt-4">
-            <div className="text-muted-foreground mb-2 text-xs font-semibold tracking-wide uppercase">
+            <div className="text-muted-foreground mb-2 text-xs font-bold tracking-wide uppercase">
               Recent test cases
             </div>
             <Table>
@@ -375,7 +433,10 @@ function AcmeGuardrailsAssurance({ projectId }: { projectId: string }) {
                     <TableCell className="font-mono text-xs">
                       {new Date(row.timestamp).toLocaleString()}
                     </TableCell>
-                    <TableCell className="text-muted-foreground max-w-[320px] truncate text-xs">
+                    <TableCell
+                      className="text-muted-foreground max-w-[320px] truncate text-xs"
+                      title={row.comment ?? undefined}
+                    >
                       {row.comment ?? "—"}
                     </TableCell>
                     <TableCell>
@@ -437,7 +498,8 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
       });
       showSuccessToast({
         title: "Guardrails updated",
-        description: "Saved and pushed to rayin-guardrails — effective on the next request.",
+        description:
+          "Saved and pushed to rayin-guardrails — effective on the next request.",
       });
     },
     onError: (error) => {
@@ -451,7 +513,9 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
         <CardHeader>
           <CardTitle className="text-sm">Policies</CardTitle>
         </CardHeader>
-        <CardContent className="text-muted-foreground pt-0 text-sm">Loading…</CardContent>
+        <CardContent className="text-muted-foreground pt-0 text-sm">
+          Loading…
+        </CardContent>
       </Card>
     );
   }
@@ -470,7 +534,10 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
   }
 
   if (!config.data.configured) {
-    return null; // Parent already shows the "not configured" state.
+    // The parent already shows the "not configured" state; a second message
+    // here would duplicate it.
+    // eslint-disable-next-line @repo/no-null-render
+    return null;
   }
 
   const saved = config.data;
@@ -508,35 +575,41 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
       <CardHeader className="flex flex-row items-center justify-between space-y-0">
         <CardTitle className="text-sm">Policies</CardTitle>
         {!canEdit && (
-          <span className="text-muted-foreground text-xs">Owner/Admin can edit</span>
+          <span className="text-muted-foreground text-xs">
+            Owner/Admin can edit
+          </span>
         )}
       </CardHeader>
       <CardContent className="flex flex-col gap-1 pt-0">
         <div className="flex items-start justify-between gap-3 border-b py-3">
           <div>
-            <div className="text-sm font-medium">Jailbreak Detection</div>
+            <div className="text-sm">Jailbreak Detection</div>
           </div>
           <Switch
             checked={draft.jailbreakEnabled}
             disabled={!canEdit || update.isPending}
-            onCheckedChange={(checked) => setDraft({ ...draft, jailbreakEnabled: checked })}
+            onCheckedChange={(checked) =>
+              setDraft({ ...draft, jailbreakEnabled: checked })
+            }
           />
         </div>
 
         <div className="flex items-start justify-between gap-3 border-b py-3">
           <div>
-            <div className="text-sm font-medium">Topical Rail</div>
+            <div className="text-sm">Topical Rail</div>
           </div>
           <Switch
             checked={draft.topicalEnabled}
             disabled={!canEdit || update.isPending}
-            onCheckedChange={(checked) => setDraft({ ...draft, topicalEnabled: checked })}
+            onCheckedChange={(checked) =>
+              setDraft({ ...draft, topicalEnabled: checked })
+            }
           />
         </div>
 
         <div className="flex items-start justify-between gap-3 py-3">
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-medium">PII Redaction</div>
+            <div className="text-sm">PII Redaction</div>
             <div
               className={cn(
                 "mt-2 flex flex-wrap gap-1.5 transition-opacity",
@@ -552,7 +625,7 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
                     disabled={!canEdit || !piiOn || update.isPending}
                     onClick={() => toggleEntity(entity)}
                     className={cn(
-                      "rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors",
+                      "rounded-full border px-2.5 py-0.5 text-xs transition-colors",
                       on
                         ? "bg-primary text-primary-foreground border-transparent"
                         : "text-muted-foreground border-input",
@@ -657,8 +730,8 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
       <Card>
         <CardContent className="text-muted-foreground p-4 text-sm">
           Guardrails isn&apos;t configured for this deployment.
-          RAYIN_GUARDRAILS_URL is unset — this is expected for a deployment
-          that hasn&apos;t opted into the rayin-guardrails integration.
+          RAYIN_GUARDRAILS_URL is unset — this is expected for a deployment that
+          hasn&apos;t opted into the rayin-guardrails integration.
         </CardContent>
       </Card>
     );
@@ -671,41 +744,41 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-1">
-            <CardTitle className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+            <CardTitle className="text-muted-foreground text-xs font-bold tracking-wide uppercase">
               Total
             </CardTitle>
           </CardHeader>
-          <CardContent className="pt-0 text-2xl font-semibold">
+          <CardContent className="pt-0 text-2xl font-bold">
             {summary.total}
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-1">
-            <CardTitle className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+            <CardTitle className="text-muted-foreground text-xs font-bold tracking-wide uppercase">
               Blocked
             </CardTitle>
           </CardHeader>
-          <CardContent className="text-dark-red pt-0 text-2xl font-semibold">
+          <CardContent className="text-dark-red pt-0 text-2xl font-bold">
             {summary.blocked}
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-1">
-            <CardTitle className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+            <CardTitle className="text-muted-foreground text-xs font-bold tracking-wide uppercase">
               Redacted
             </CardTitle>
           </CardHeader>
-          <CardContent className="text-dark-yellow pt-0 text-2xl font-semibold">
+          <CardContent className="text-dark-yellow pt-0 text-2xl font-bold">
             {summary.redacted}
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-1">
-            <CardTitle className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+            <CardTitle className="text-muted-foreground text-xs font-bold tracking-wide uppercase">
               Allowed
             </CardTitle>
           </CardHeader>
-          <CardContent className="text-dark-green pt-0 text-2xl font-semibold">
+          <CardContent className="text-dark-green pt-0 text-2xl font-bold">
             {summary.allowed}
           </CardContent>
         </Card>
@@ -726,8 +799,8 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
         <CardContent className="pt-0">
           {recent.length === 0 ? (
             <p className="text-muted-foreground text-sm">
-              No events yet. Send a request through rayin-guardrails to see
-              it here.
+              No events yet. Send a request through rayin-guardrails to see it
+              here.
             </p>
           ) : (
             <Table>
@@ -749,11 +822,7 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
                     className={cn(
                       event.id && "hover:bg-muted/50 cursor-pointer",
                     )}
-                    onClick={
-                      event.id
-                        ? () => openEvent(event.id)
-                        : undefined
-                    }
+                    onClick={event.id ? () => openEvent(event.id) : undefined}
                   >
                     <TableCell className="font-mono text-xs">
                       {formatDateTime(event.time)}
@@ -761,7 +830,9 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
                     <TableCell>{event.user_id ?? "—"}</TableCell>
                     <TableCell>{event.client_host ?? "—"}</TableCell>
                     <TableCell>{event.agent_id}</TableCell>
-                    <TableCell className="capitalize">{event.direction}</TableCell>
+                    <TableCell className="capitalize">
+                      {event.direction}
+                    </TableCell>
                     <TableCell>{event.policy_triggered ?? "—"}</TableCell>
                     <TableCell>
                       <ActionBadge action={event.action} />
