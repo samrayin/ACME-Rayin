@@ -39,11 +39,11 @@ providers:
         Content-Type: application/json
         X-Config-Secret: "{{ env.CONFIG_SHARED_SECRET }}"
       body:
-          # EVIDENCE INTEGRITY (CHG-2026-021): this was hardcoded to a date, so a
-          # later run wrote its rows under an earlier run's tag and the two became
-          # indistinguishable in acme_guardrail_events except by timestamp. The run
-          # id now comes from the environment; the runbook sets it per run.
-          agent_id: "{{ env.EVAL_RUN_ID }}"
+        # EVIDENCE INTEGRITY (CHG-2026-021): this was hardcoded to a date, so a
+        # later run wrote its rows under an earlier run's tag and the two became
+        # indistinguishable in acme_guardrail_events except by timestamp. The run
+        # id now comes from the environment; the runbook sets it per run.
+        agent_id: "{{ env.EVAL_RUN_ID }}"
         direction: input
         text: "{{prompt}}"
         user_id: promptfoo-benign

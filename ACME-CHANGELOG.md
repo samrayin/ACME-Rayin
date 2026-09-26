@@ -4750,3 +4750,25 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 - **Updated:** the per-role sidebar pins now include UI Customization.
 
 **Depends on:** CHG-2026-073 (#202), built on top of it.
+
+## 2026-09-26 — promptfoo benign guardrail suite parses again; run guide updated (CHG-2026-075)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-075 · Tier 2 (test scaffolding and docs) · found by the 2026-09-26 guardrails baseline run · owner: Anees Ur Rahman |
+| **Dates** | Written 2026-09-26. Dev: nothing to deploy · Prod: none exists |
+| **Impact** | The benign false-positive suite can run from `main` again. No product code, no image, no cluster change |
+| **Rollback** | Revert the commit |
+
+**What:**
+- **`integrations/promptfoo/config/guardrails-benign.yaml` parses again.** CHG-2026-021 indented `agent_id` (and its comment) inside `body` wrongly, which made the file invalid YAML. Re-indented. No prompt, assertion or setting changed.
+- **`integrations/promptfoo/RUNNING-BENIGN-EVAL.md` brought up to date:**
+  - `/v1/guard` has been on the gateway's live path since 2026-09-23 (record mode), so a run shares the guard and its judge with gateway traffic. The guide said it touched no live path.
+  - Throttle the run (`-j 1 --delay 12000`) to stay under the judge key's per-minute limit. Above it, rows come back with no verdict.
+  - Mount only `CONFIG_SHARED_SECRET` through `secretKeyRef`, not the whole Secret through `envFrom`.
+  - Give the pod a 3 GiB memory limit; the promptfoo install was OOM-killed at 1.5 GiB.
+  - Removed a stray `\ \` that broke the `kubectl create configmap` command, and the stale fixed run tag.
+
+**Verified:** the corrected suite ran in-pod on 2026-09-26 (32 prompts, 0 errors). The results are recorded outside this repository.
+
+**Deployment status:** not deployed and not deployable. These files are never built into an image.
