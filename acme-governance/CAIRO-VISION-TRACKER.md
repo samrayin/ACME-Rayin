@@ -1,7 +1,11 @@
 # CAIRO — Vision Tracker
 **Purpose:** single source of truth for "are we there yet," updated at every stage. Not a changelog — a status board. The changelog and ledger remain the detailed record; this file answers one question fast: what's done, what's next, what's blocking.
 
-**Last updated:** 2026-09-26. **The dev console carries the CAIRO name in its address and on two upstream screens.** Console `acme-v4.38.0.17`, worker `worker-acme-v4.38.0.3`, both TRACED.
+**Last updated:** 2026-09-26. **The dev console carries the CAIRO name in its address and on two upstream screens.** Console `acme-v4.38.0.18`, worker `worker-acme-v4.38.0.3`, both TRACED.
+- **Sidebar and theme (CHG-2026-073, CHG-2026-074):** live in `acme-v4.38.0.18` since 13:35Z.
+  - **AI Controls:** a section holding Guardrails, LLM Gateway and Assurance.
+  - **Security > Logs:** one page with tabs for the audit log, guardrail events, and the gateway change record and requests, moved out of their old pages.
+  - **UI Customization for every role:** a personal theme per user, and the project default for Owners and Admins.
 - **Members table shows CAIRO project access (CHG-2026-072):** live in `acme-v4.38.0.17` since 2026-09-25 22:52Z.
   - The column used to read "N/A on plan": it is the Enterprise project-roles selector, which CAIRO does not enable.
   - It now shows each member's CAIRO project access limit, with a "Change" link for Owners and Admins.
