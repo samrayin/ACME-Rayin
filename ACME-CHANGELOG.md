@@ -4709,3 +4709,23 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 - **With the Enterprise entitlement present,** the upstream selector renders unchanged.
 
 **Tests:** 5 new in `acmeProjectAccess.servertest.ts`: Owner, Admin and Auditor read the limits; Business Analyst and Security Analyst are refused before any query. `contentFreeRoles` confirms the new allow-list entry exists and is a query.
+
+## 2026-09-26 — Sidebar: "AI Controls" and "Security > Logs" (CHG-2026-073)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-073 · Tier 2 (UI only) · owner decisions 2026-09-26: name "AI Controls", move the logs rather than copy them · owner: Anees Ur Rahman |
+| **Dates** | Built and tested locally. Dev: a console release · Prod: none exists |
+| **Impact** | The sidebar gains two sections. The logs move out of the Guardrails and LLM Gateway pages into one Logs page. The same procedures and scopes apply, so nobody gains access; Security Analyst no longer sees an LLM Gateway page, because the only things it held for them were the logs, which moved |
+| **Rollback** | Redeploy the previous image |
+
+**What:**
+- **AI Controls** (new sidebar section): Guardrails, LLM Gateway and Assurance (Preview).
+- **Security > Logs** (new sidebar section and page, `/project/<id>/acme-enhancements/security-logs`), with one tab per log. Each tab appears only for its scope; `?tab=` deep-links:
+  - **Audit logs** (`projectAuditLogs:read`);
+  - **Guardrail events** (`projectGuardrails:read`; the list and event dialog moved from the Guardrails page, which keeps its totals, policies and assurance);
+  - **Gateway changes** and **Gateway requests** (`llmGatewayLogs:read`; moved from the LLM Gateway page, which keeps keys, teams, models and spend).
+- **Old links:** the "Audit Logs" item under ACME Enhancements is removed, and its old URL redirects to Security > Logs > Audit logs. The guardrail event dialog now points to Security > Logs > Gateway requests.
+- **LLM Gateway item:** it no longer shows for `llmGatewayLogs:read` alone.
+
+**Tests:** `acme-role-navigation.clienttest.tsx` pins the new sidebar per role (Security Analyst: Guardrails, Assurance, Logs; Auditor: adds LLM Gateway, Prompts and the approval pages). A new test pins the section membership.

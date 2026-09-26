@@ -20,12 +20,12 @@ import {
   ClipboardPen,
   Clock,
   Beaker,
-  ShieldCheck,
   ShieldAlert,
   Palette,
   Gauge,
   CalendarClock,
   CheckCircle2,
+  ScrollText,
 } from "lucide-react";
 import { type ReactNode } from "react";
 import { type Entitlement } from "@/src/features/entitlements/constants/entitlements";
@@ -49,6 +49,9 @@ export enum RouteSection {
 }
 
 export enum RouteGroup {
+  // ACME (CHG-2026-073): CAIRO's runtime controls, and its security logs.
+  AiControls = "AI Controls",
+  Security = "Security",
   Observability = "Observability",
   PromptManagement = "Prompt Management",
   Evaluation = "Evaluation",
@@ -136,6 +139,7 @@ export const ROUTES: Route[] = [
     icon: ShieldAlert,
     projectRbacScopes: ["projectGuardrails:read"],
     section: RouteSection.Main,
+    group: RouteGroup.AiControls,
   },
   {
     // ACME addition (ADR-0003, CHG-2026-005): CAIRO as the only control plane
@@ -147,12 +151,14 @@ export const ROUTES: Route[] = [
     pathname: `/project/[projectId]/acme-enhancements/llm-gateway`,
     projectRbacScopes: [
       "llmGateway:read",
-      "llmGatewayLogs:read",
-      // ACME (ADR-0011): Spend tab only / read-only evidence.
+      // ACME (ADR-0011): Spend tab only / read-only evidence. The logs scope
+      // is not here: the change record and request log moved to Security >
+      // Logs (CHG-2026-073).
       "llmGatewaySpend:read",
       "evidence:read",
     ],
     section: RouteSection.Main,
+    group: RouteGroup.AiControls,
     menuNode: <AcmeLitellmGatewayNavItem />,
   },
   {
@@ -166,6 +172,21 @@ export const ROUTES: Route[] = [
     icon: Gauge,
     projectRbacScopes: ["projectGuardrails:read"],
     section: RouteSection.Main,
+    group: RouteGroup.AiControls,
+  },
+  {
+    // ACME (CHG-2026-073): Security > Logs -- the audit log, guardrail
+    // decisions, and the gateway change record and request log, one tab each.
+    title: "Logs",
+    pathname: `/project/[projectId]/acme-enhancements/security-logs`,
+    icon: ScrollText,
+    projectRbacScopes: [
+      "projectAuditLogs:read",
+      "projectGuardrails:read",
+      "llmGatewayLogs:read",
+    ],
+    section: RouteSection.Main,
+    group: RouteGroup.Security,
   },
   {
     title: "Tracing",
@@ -284,18 +305,6 @@ export const ROUTES: Route[] = [
     icon: Beaker,
     featureFlag: "experimentsV4Enabled",
     group: RouteGroup.Evaluation,
-    section: RouteSection.Main,
-  },
-  {
-    // ACME addition: read-only audit log viewer, no Enterprise entitlement
-    // required — see acmeAuditLogsRouter.ts for why this is a separate
-    // route/router rather than reusing Langfuse's own (EE-licensed,
-    // entitlement-gated) audit log viewer.
-    title: "Audit Logs",
-    pathname: `/project/[projectId]/acme-enhancements/audit-logs`,
-    icon: ShieldCheck,
-    projectRbacScopes: ["projectAuditLogs:read"],
-    group: RouteGroup.AcmeEnhancements,
     section: RouteSection.Main,
   },
   {

@@ -55,6 +55,8 @@ function groupNavigationItems(items: NavigationItem[]): GroupedNavigation {
   const groupedResult = Object.keys(grouped).length > 0 ? grouped : null;
   const groupedItems = groupedResult
     ? [
+        ...(grouped[RouteGroup.AiControls] || []),
+        ...(grouped[RouteGroup.Security] || []),
         ...(grouped[RouteGroup.Observability] || []),
         ...(grouped[RouteGroup.PromptManagement] || []),
         ...(grouped[RouteGroup.Evaluation] || []),

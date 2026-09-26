@@ -218,8 +218,8 @@ function AcmeGuardrailEventDetail({
                         {detail.data.traceId}
                       </span>
                       <span className="text-muted-foreground text-xs">
-                        Gateway call id. Its request row appears under LLM
-                        Gateway &gt; Requests within a few minutes.
+                        Gateway call id. Its request row appears under Security
+                        &gt; Logs &gt; Gateway requests within a few minutes.
                       </span>
                     </span>
                   )}
@@ -698,13 +698,6 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
     projectId,
     scope: "projectData:read",
   });
-  const [selectedEvent, setSelectedEvent] = useState<{
-    id: string;
-    open: boolean;
-  } | null>(null);
-  const openEvent = (id: string | null) => {
-    if (id) setSelectedEvent({ id, open: true });
-  };
   const events = api.acmeGuardrails.recentEvents.useQuery(
     { projectId, limit: 50 },
     // Polling, not a subscription -- the source itself (rayin-guardrails'
@@ -737,7 +730,7 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
     );
   }
 
-  const { summary, events: recent } = events.data;
+  const { summary } = events.data;
 
   return (
     <div className="flex flex-col gap-4">
@@ -787,10 +780,52 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
       <AcmeGuardrailsPolicies projectId={projectId} />
 
       {canReadProjectData && <AcmeGuardrailsAssurance projectId={projectId} />}
+    </div>
+  );
+}
 
+/**
+ * CHG-2026-073: guardrail decisions as a log, shown under Security > Logs
+ * (moved out of the Guardrails page, which keeps the totals and policies).
+ */
+export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
+  const [selectedEvent, setSelectedEvent] = useState<{
+    id: string;
+    open: boolean;
+  } | null>(null);
+  const openEvent = (id: string | null) => {
+    if (id) setSelectedEvent({ id, open: true });
+  };
+  const events = api.acmeGuardrails.recentEvents.useQuery(
+    { projectId, limit: 50 },
+    // Polling: the source (rayin-guardrails' buffer) has no push mechanism.
+    { refetchInterval: 10_000 },
+  );
+
+  if (events.isPending) {
+    return <div className="text-muted-foreground p-4 text-sm">Loading…</div>;
+  }
+  if (events.isError) {
+    return (
+      <div className="text-muted-foreground p-4 text-sm">
+        Could not reach rayin-guardrails: {events.error.message}
+      </div>
+    );
+  }
+  if (!events.data.configured) {
+    return (
+      <div className="text-muted-foreground p-4 text-sm">
+        Guardrails isn&apos;t configured for this deployment.
+      </div>
+    );
+  }
+  const recent = events.data.events;
+
+  return (
+    <div className="flex flex-col gap-4">
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Recent events</CardTitle>
+          <CardTitle className="text-sm">Guardrail events</CardTitle>
           <p className="text-muted-foreground text-xs">
             Stored in the audit trail as each decision is made — most recent
             first. Select a row for details.
