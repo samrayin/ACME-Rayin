@@ -4818,3 +4818,28 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 - **`RUNNING-BENIGN-EVAL.md`:** the reading guide matches the new scoring.
 
 **Deployment status:** not deployed and not deployable. These files are never built into an image.
+
+## 2026-09-27 — Guardrails page: the Bahrain CPR number entity (CHG-2026-078)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-078 · Tier 1, together with the `rayin-guardrails` change it pairs with · owner: Anees Ur Rahman |
+| **Dates** | Written 2026-09-27. Dev: not deployed · Prod: none exists |
+| **Impact** | The Guardrails page shows the new PII toggle as "Bahrain CPR number", and saving the page keeps it on. Before this, the page and its config endpoint accepted only the six original entity types, so a save would have switched the new one off without warning |
+| **Rollback** | Revert the commit. The guardrails service keeps working; the page then drops the entity again on the next save |
+
+**What:**
+- `acmeGuardrailsRouter.ts`: `BH_CPR` added to the entity list the config update accepts.
+- `AcmeGuardrailsTable.tsx`: `BH_CPR` added to the list the save keeps, with the label "Bahrain CPR number".
+
+**Pairs with:** the `rayin-guardrails` change under the same ID, which adds the entity and its detection.
+
+**Deploy order:** either order works; this one first is best.
+- **Console first:** the page offers only the entities the service reports, so it never sends `BH_CPR` to a service that doesn't know it.
+- **Service first:** the entity is on after the service restarts, but a save from the older page switches it off until this deploys.
+
+**Tests:** CI's typecheck and lint. There's no unit test for these lists.
+
+**Follow-up:** the page keeps its own copy of the service's entity list. Validating against the list the service reports would remove this step for the next new entity.
+
+**Deployment status:** not deployed.
