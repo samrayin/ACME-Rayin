@@ -4772,3 +4772,24 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 **Verified:** the corrected suite ran in-pod on 2026-09-26 (32 prompts, 0 errors). The results are recorded outside this repository.
 
 **Deployment status:** not deployed and not deployable. These files are never built into an image.
+
+## 2026-09-26 — Upstream security fixes adopted: API-key revocation and SCIM organization scoping (CHG-2026-076)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-076 · Tier 1 (authentication) · design note ADR-0012 · owner: Anees Ur Rahman |
+| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Dates** | Built 2026-09-26. Dev: not deployed (a console release after merge, owner-approved) · Prod: none exists |
+| **Impact** | A revoked API key stops authenticating within about 60 s (default cache TTL 300 s → 60 s, no TTL refresh on read, eviction after the delete). SCIM `Users/{id}` `PUT` and `DELETE` check the caller's organization, as `GET` already did. SCIM stays gated off in CAIRO (admin-api entitlement) |
+| **Rollback** | Revert the two cherry-pick commits and redeploy the previous image. No schema or data change |
+
+**What:**
+- **API-key revocation** (upstream langfuse/langfuse#17651, v4.40.0): cherry-picked unchanged as upstream commit `24c949d8`. It touches `packages/shared/src/server/auth/apiKeys.ts`, `web/src/features/public-api/server/apiAuth.ts`, `web/src/env.mjs`, `.env.prod.example` and the API-auth tests.
+- **SCIM organization scoping** (upstream langfuse/langfuse#17828, v4.43.0): cherry-picked unchanged as upstream commit `e6d58f6d`. It touches `web/src/pages/api/public/scim/Users/[id].ts` and adds 5 cross-organization tests. ACME's own edits to this file (CHG-2026-058, CHG-2026-059 b) are in different functions and are untouched.
+- **Design note:** `acme-governance/adr/ADR-0012-upstream-security-fixes.md`.
+
+**Why now, not at the next full sync:** CAIRO is 12 upstream releases behind, and upstream shipped both fixes without security advisories. Waiting for a full sync would leave revoked keys working longer than intended.
+
+**Tests:** upstream's own tests come with the commits and run in CI. They can't run on the build workstation, which has no container runtime. A post-deploy check in dev (revoke a key, confirm it's rejected within 60 s) follows an owner-approved deploy.
+
+**Deployment status:** not deployed.
