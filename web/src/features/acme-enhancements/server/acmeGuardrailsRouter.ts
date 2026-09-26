@@ -73,6 +73,9 @@ const ALL_PII_ENTITIES = [
   "PERSON",
   "IBAN_CODE",
   "IP_ADDRESS",
+  // Bahrain CPR number (rayin-guardrails, CHG-2026-078). Keep in step with the
+  // service's ALL_PII_ENTITIES: an entity missing here can't be saved.
+  "BH_CPR",
 ] as const;
 
 const ConfigResponseSchema = z.object({

@@ -40,6 +40,9 @@ const ALL_PII_ENTITIES = [
   "PERSON",
   "IBAN_CODE",
   "IP_ADDRESS",
+  // Bahrain CPR number (rayin-guardrails, CHG-2026-078). An entity missing
+  // here is dropped on save (see the filter in the save handler).
+  "BH_CPR",
 ] as const;
 type PiiEntity = (typeof ALL_PII_ENTITIES)[number];
 
@@ -50,6 +53,7 @@ const ENTITY_LABELS: Record<string, string> = {
   PERSON: "Person names",
   IBAN_CODE: "IBAN",
   IP_ADDRESS: "IP address",
+  BH_CPR: "Bahrain CPR number",
 };
 
 function ActionBadge({ action }: { action: "allow" | "redact" | "block" }) {
