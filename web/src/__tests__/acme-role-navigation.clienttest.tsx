@@ -81,6 +81,7 @@ const EXPECTED: Record<"SECURITY" | "ANALYST" | "AUDITOR", string[]> = {
     "Settings",
     "Settings",
     "Support",
+    "UI Customization",
   ],
   ANALYST: [
     "Contact ACME Support",
@@ -92,6 +93,7 @@ const EXPECTED: Record<"SECURITY" | "ANALYST" | "AUDITOR", string[]> = {
     "Settings",
     "Settings",
     "Support",
+    "UI Customization",
   ],
   AUDITOR: [
     "Assurance (Preview)",
@@ -107,6 +109,7 @@ const EXPECTED: Record<"SECURITY" | "ANALYST" | "AUDITOR", string[]> = {
     "Settings",
     "Settings",
     "Support",
+    "UI Customization",
   ],
 };
 
