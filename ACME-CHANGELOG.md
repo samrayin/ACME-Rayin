@@ -4793,3 +4793,28 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 **Tests:** upstream's own tests come with the commits and run in CI. They can't run on the build workstation, which has no container runtime. A post-deploy check in dev (revoke a key, confirm it's rejected within 60 s) follows an owner-approved deploy.
 
 **Deployment status:** not deployed.
+
+## 2026-09-27 — promptfoo docs and suite scoring aligned with the guardrails since CHG-2026-045 (CHG-2026-077)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-077 · Tier 2 (test scaffolding and docs) · owner: Anees Ur Rahman |
+| **Dates** | Written 2026-09-27. Dev: nothing to deploy · Prod: none exists |
+| **Impact** | The suites score results correctly for today's guardrails, and the README no longer describes blockers that are already resolved. No product code, no image, no cluster change |
+| **Rollback** | Revert the commit |
+
+**What:**
+- **Scoring.** Since CHG-2026-045 (`rayin-guardrails` v0.2.0 and later), the rails run on the redacted text. A `redact` on an attack prompt now means the rail ran and did not block, so `guardrails-redteam.yaml` and the benign suite's controls score it as a **miss**, not inconclusive. On a benign prompt it is recorded as a PII false positive, not a false block.
+- **`integrations/promptfoo/README.md`:**
+  - The status line is current.
+  - Blockers 1 (rail-flow path) and 2 (PII short-circuit) are marked resolved, with the change that resolved each.
+  - Guardrails suites run in-pod, with no guard secret in a workstation shell.
+  - The gateway-eval note records that the hook went live in record mode on 2026-09-23.
+  - The red-team section points to the in-pod method, with a contracted attacker model.
+  - The read-off explains that the refusal-text comparison is internal to NeMo's output, not the attacker's wording.
+  - The judge key isn't reused for tests.
+  - The status log is brought up to date.
+- **Hygiene:** environment host names in the README replaced with `<your-cairo-host>` placeholders.
+- **`RUNNING-BENIGN-EVAL.md`:** the reading guide matches the new scoring.
+
+**Deployment status:** not deployed and not deployable. These files are never built into an image.

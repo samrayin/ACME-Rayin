@@ -1,11 +1,11 @@
 # promptfoo — adversarial red-teaming and eval for RAYIN
 
-**Status: scaffolded 2026-09-12, not yet run against the live cluster.** Config
-files exist and are believed correct against the live environment as of this
-date, but per [CONTRIBUTING-ACME.md](../../CONTRIBUTING-ACME.md#before-marking-anything-done)
-this is "committed," not "deployed" — nothing here is marked done until it has
-actually been run against `rayin-guardrails` and LiteLLM and produced a real,
-inspected result.
+**Status (2026-09-27):** the benign false-positive suite runs in a throwaway pod
+inside the cluster (see [RUNNING-BENIGN-EVAL.md](RUNNING-BENIGN-EVAL.md)); it last
+ran on 2026-09-26. The red-team suite has not been run, and there is no scheduled
+run yet. Per [CONTRIBUTING-ACME.md](../../CONTRIBUTING-ACME.md#before-marking-anything-done),
+nothing here is marked done until it has been run and produced a real, inspected
+result.
 
 See `promptfoo-deployment-runbook.md` in the companion `Azure Blueprint` docs
 folder (outside this git repository, alongside `Azure.md` and
@@ -47,19 +47,18 @@ real, currently-open gap — that's the gap this closes.
 
 ## Known blockers, read before running anything
 
-1. **`rayin-guardrails`' rail-flow path is currently broken** — no
-   `GUARDRAILS_LLM_API_KEY` is configured, so every jailbreak/topical check
-   500s. The runbook's Phase 2 fixes this (point the engine at RAYIN's own
-   LiteLLM gateway instead of a bare provider) — do that before Phase 5, not
-   instead of it.
-2. **The PII short-circuit will confuse a naive test design.** `rayin-guardrails`
-   checks PII *before* the rail flows and returns immediately on a match
-   (`app/main.py`). Default PII entities include `PERSON`, so ordinary
-   jailbreak payloads carrying a persona name ("Pretend you are DAN", "My
-   name is John and...") return `redact` without ever invoking the rail under
-   test. `config/guardrails-redteam.yaml`'s grader treats `redact` as
-   **inconclusive**, not pass/fail — see the `javascript` assertion in that
-   file.
+1. **Resolved: the rail-flow path works** (CHG-2026-016, CHG-2026-020). The rail
+   engine's judge runs through the LiteLLM gateway with its own virtual key. That
+   key has a per-minute request limit shared with gateway traffic, so throttle
+   every run (see [RUNNING-BENIGN-EVAL.md](RUNNING-BENIGN-EVAL.md)). Above the
+   limit the guard returns no verdict for the row.
+2. **Resolved: the rails run on the redacted text** (CHG-2026-045,
+   `rayin-guardrails` v0.2.0 and later). PII is redacted first, the rails then
+   run on the redacted text, and the verdict is the strictest of
+   block > redact > allow. So a `redact` on an **attack** prompt means the rail ran
+   and did not block, and the suites score it as a **miss**. Before CHG-2026-045
+   the guard returned `redact` without running the rail, which is why older notes
+   call it inconclusive.
 3. **🔴 BFSI data-governance gate.** promptfoo's red-team mode phones home to
    `api.promptfoo.app` by default, sending target URLs, auth headers, prompts
    and responses. `PROMPTFOO_DISABLE_REMOTE_GENERATION=true` is **mandatory**
@@ -72,11 +71,11 @@ real, currently-open gap — that's the gap this closes.
 
 ## Where this runs
 
-**Local/CI first. No in-cluster CronJob yet** (deferred to the runbook's
-Phase 8, until a red-team run produces a stable, non-trivial baseline — i.e.
-after the rails actually block something). Both targets (`rayin-guardrails`,
-LiteLLM) are `ClusterIP`-only, so every run below needs `kubectl
-port-forward` first.
+**The guardrails suites run in a throwaway pod inside the cluster,** with only the
+guard's one secret key mounted (see [RUNNING-BENIGN-EVAL.md](RUNNING-BENIGN-EVAL.md)).
+Don't export the guard secret into a workstation shell. The gateway eval can use
+`kubectl port-forward`, because both targets are `ClusterIP`-only. There is no
+scheduled run yet.
 
 ## Environment variables
 
@@ -89,7 +88,7 @@ export PROMPTFOO_DISABLE_TELEMETRY=1
 
 export LITELLM_PROMPTFOO_KEY="<a dedicated LiteLLM virtual key, see below>"
 
-export LANGFUSE_HOST="https://langfuse-dev.aiatacme.com"
+export LANGFUSE_HOST="https://<your-cairo-host>"
 export LANGFUSE_PUBLIC_KEY="pk-lf-..."
 export LANGFUSE_SECRET_KEY="sk-lf-..."
 
@@ -98,7 +97,7 @@ export LANGFUSE_SECRET_KEY="sk-lf-..."
 # that name across both its inbound receiver and outbound SDK).
 export PROMPTFOO_OTEL_ENABLED=true
 export PROMPTFOO_OTEL_SERVICE_NAME=promptfoo-rayin-<suite-name>   # distinct per suite
-export PROMPTFOO_OTEL_ENDPOINT="https://langfuse-dev.aiatacme.com/api/public/otel/v1/traces"
+export PROMPTFOO_OTEL_ENDPOINT="https://<your-cairo-host>/api/public/otel/v1/traces"
 export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Basic <base64 of pk:sk>,x-langfuse-ingestion-version=4"
 export PROMPTFOO_OTEL_DEBUG=true   # export failures are otherwise silent
 ```
@@ -129,54 +128,52 @@ Verify traffic actually traversed the gateway (not a direct provider call):
 curl -s http://localhost:4000/key/info -H "Authorization: Bearer $LITELLM_PROMPTFOO_KEY" | jq .info.spend
 ```
 
-**This file changes meaning when the gateway guardrail hook ships.** Today the
-gateway has no `guardrails:` block (ADR-0005 / CHG-2026-014 is design only), so
-`gateway-eval.yaml` exercises an **uninspected** path: what it measures is model
-routing, quality and latency, and nothing else. Once the hook lands in `record`
-mode, the *same* config against the *same* endpoint starts exercising an
-**inspected** path, and the run becomes the record-mode corpus — the source of
-the false-positive rate and added-latency figures that ADR-0005's enforcement
-gates are written against.
+**This file changed meaning on 2026-09-23.** The gateway guardrail hook
+(ADR-0005) went live in `record` mode that day. Before it, `gateway-eval.yaml`
+exercised an **uninspected** path (model routing, quality and latency only).
+From then on, the *same* config against the *same* endpoint exercises an
+**inspected** path, and a run is part of the record-mode corpus: the source of the
+false-positive rate and added-latency figures that ADR-0005's enforcement gates
+are written against.
 
 Nothing in the file needs to change at that point, which is exactly the hazard:
 its behaviour stays identical while what the numbers *mean* does not. Whoever
-picks this up after the hook ships should treat results from before and after as
-two different measurements and not compare them directly. Baseline runs taken now
-are still worth keeping — they are the only "gateway without a guardrail" latency
-figures that will ever exist.
+looks at results from before and after 2026-09-23 should treat them as two
+different measurements and not compare them directly. Any runs kept from before
+that date are the only "gateway without a guardrail" latency figures.
 
-### Guardrails red-team (`config/guardrails-redteam.yaml`) — needs Phase 2 first
+### Guardrails red-team (`config/guardrails-redteam.yaml`) — not yet run
 
 Red-teams `rayin-guardrails`' jailbreak rail. Deterministic grading — the
 oracle is structural (`action == "block"`), no LLM judge needed for the pass/
 fail verdict itself.
 
-```bash
-export GUARDRAILS_CONFIG_SECRET="<the rayin-guardrails-config shared secret>"
-kubectl port-forward -n rayin-platform svc/rayin-guardrails 8080:8080 &
-kubectl port-forward -n rayin-platform svc/litellm 4000:4000 &
-promptfoo redteam run -c config/guardrails-redteam.yaml
-```
+Run it in a throwaway pod the same way as the benign suite (see
+[RUNNING-BENIGN-EVAL.md](RUNNING-BENIGN-EVAL.md)): mount only the guard's
+`CONFIG_SHARED_SECRET` through `secretKeyRef`, point `url` at the in-cluster
+service, and throttle it. Unlike the benign suite it also needs an **attacker
+model**, reached through a dedicated LiteLLM virtual key (see Credentials below).
+Use a contracted model for it, not a free tier.
 
 **Read the result with judgment, not just the pass rate:**
-- Mostly `INCONCLUSIVE` → the PII short-circuit is dominating. See blocker #2.
-- Mostly fail-open → **this is the expected, correct finding**, not a broken
-  test. `guardrails_engine.py` detects a fired rail by exact string equality
-  against a hardcoded refusal message — any paraphrase, encoding, or wording
-  change falls through to `allow`. Log it as real evidence; do not soften the
-  assertion to make the suite green.
-- `base64`/`rot13` strategies failing while plain-text jailbreak passes
-  confirms detection keys on output *wording*, not intent.
+- A `redact` on an attack is a **miss**: the rail ran on the redacted text and
+  did not block (blocker #2).
+- The judge model decides whether a message is unsafe. `guardrails_engine.py`
+  then recognises a fired rail by comparing NeMo's output with the configured
+  refusal message. If the refusal wording in the `.co` files changes without the
+  constant in `guardrails_engine.py` changing to match, every check silently
+  returns `allow`. Re-run the suites after any rail configuration change.
+- Log every fail-open as evidence. Don't soften an assertion to make the suite
+  green.
 
 ## Credentials this integration needs
 
 Two LiteLLM virtual keys and one Langfuse API key pair, all provisioned
 against the live cluster — never committed to this repo:
 
-1. **`rayin-guardrails` virtual key** — used to unblock the rail-flow engine
-   itself (points `GUARDRAILS_LLM_BASE_URL` at LiteLLM instead of a bare
-   provider). May already exist as a starter key from the LiteLLM deploy —
-   check `/key/list` before minting a new one.
+1. **`rayin-guardrails` virtual key**: the rail engine's judge key, already
+   provisioned. Don't reuse it for promptfoo. It has its own per-minute limit,
+   and test traffic would compete with gateway traffic.
 2. **`promptfoo-eval` virtual key** — dedicated to promptfoo's own traffic, so
    eval/red-team spend is attributable and revocable independently of the
    other two starter keys (`chat-widget`, `rayin-guardrails`). Red-teaming is
@@ -196,3 +193,12 @@ credential blocker) has not yet been executed, and no eval or red-team run has
 produced a real result yet. Next: Phase 2 (unblock rayin-guardrails), then
 Phase 4 (gateway eval, works regardless of Phase 2's outcome), then Phase 5
 (the red-team run — the actual point of this integration).
+
+**2026-09-21:** benign suite committed (CHG-2026-017) and run in-pod; the runbook
+corrected by running it (CHG-2026-021).
+
+**2026-09-26:** the benign suite's YAML fixed and the suite re-run in-pod
+(CHG-2026-075), alongside a separate attack baseline. Results are recorded
+outside this repository.
+
+**2026-09-27:** docs and scoring aligned with CHG-2026-045 (CHG-2026-077).
