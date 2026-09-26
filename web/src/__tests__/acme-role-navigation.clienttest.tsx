@@ -69,13 +69,14 @@ const CONTENT_ROUTES = [
 // Pinned. A change to routes.tsx or to a role's scopes that alters what a
 // content-free role sees must update this list on purpose.
 const EXPECTED: Record<"SECURITY" | "ANALYST" | "AUDITOR", string[]> = {
+  // CHG-2026-073: the gateway logs moved to Security > Logs, so Security
+  // Analyst no longer sees the LLM Gateway page (it held only the logs).
   SECURITY: [
     "Assurance (Preview)",
-    "Audit Logs",
     "Contact ACME Support",
     "Go to...",
     "Guardrails",
-    "LLM Gateway",
+    "Logs",
     "Projects",
     "Settings",
     "Settings",
@@ -94,11 +95,11 @@ const EXPECTED: Record<"SECURITY" | "ANALYST" | "AUDITOR", string[]> = {
   ],
   AUDITOR: [
     "Assurance (Preview)",
-    "Audit Logs",
     "Contact ACME Support",
     "Go to...",
     "Guardrails",
     "LLM Gateway",
+    "Logs",
     "Projects",
     "Prompt Approvals",
     "Prompt Reviews",
@@ -129,5 +130,16 @@ describe("sidebar per role (ADR-0011 §6)", () => {
 
   it("control: a Prompt Analyst (MEMBER) does see Tracing", () => {
     expect(visibleTitles(Role.MEMBER)).toContain("Tracing");
+  });
+});
+
+describe("sidebar sections (CHG-2026-073)", () => {
+  it("Guardrails, LLM Gateway and Assurance sit under AI Controls; Logs under Security", () => {
+    const byTitle = new Map(ROUTES.map((r) => [r.title, r.group]));
+    expect(byTitle.get("Guardrails")).toBe("AI Controls");
+    expect(byTitle.get("LLM Gateway")).toBe("AI Controls");
+    expect(byTitle.get("Assurance (Preview)")).toBe("AI Controls");
+    expect(byTitle.get("Logs")).toBe("Security");
+    expect(byTitle.has("Audit Logs")).toBe(false);
   });
 });

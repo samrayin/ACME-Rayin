@@ -63,7 +63,6 @@ import {
 import { api, type RouterOutputs } from "@/src/utils/api";
 import { useHasProjectAccess } from "@/src/features/rbac";
 import { showErrorToast, showSuccessToast } from "@/src/features/notifications";
-import { AcmeLitellmRequestLogs } from "@/src/features/acme-enhancements/components/AcmeLitellmRequestLogs";
 import { GatewayModelsCard } from "@/src/features/acme-enhancements/components/AcmeLitellmModelManager";
 
 export type KeyRow = RouterOutputs["acmeLitellm"]["keys"]["keys"][number];
@@ -1603,7 +1602,8 @@ function SpendTab({ projectId }: { projectId: string }) {
 // Change record
 // ---------------------------------------------------------------------------
 
-function EventsTab({ projectId }: { projectId: string }) {
+// CHG-2026-073: shown under Security > Logs as "Gateway changes".
+export function EventsTab({ projectId }: { projectId: string }) {
   const [page, setPage] = useState(0);
   const limit = 50;
   const events = api.acmeLitellm.events.useQuery({ projectId, page, limit });
@@ -1772,11 +1772,6 @@ export function AcmeLitellmGateway({ projectId }: { projectId: string }) {
     projectId,
     scope: "llmGatewayModels:CUD",
   });
-  const canReadLogs = useHasProjectAccess({
-    projectId,
-    scope: "llmGatewayLogs:read",
-  });
-
   if (status.isLoading)
     return <p className="text-muted-foreground text-sm">Loading…</p>;
   if (status.error) {
@@ -1810,7 +1805,7 @@ export function AcmeLitellmGateway({ projectId }: { projectId: string }) {
       </Banner>
     );
   }
-  if (!canRead && !canReadSpend && !canReadLogs) {
+  if (!canRead && !canReadSpend) {
     return (
       <Banner
         tone="info"
@@ -1825,7 +1820,8 @@ export function AcmeLitellmGateway({ projectId }: { projectId: string }) {
   // record's writer connection the server refuses every change anyway; say so
   // up front instead of letting each button fail.
   const writable = s.reachable === true && s.auditConfigured;
-  const firstTab = canRead ? "keys" : canReadSpend ? "spend" : "record";
+  // CHG-2026-073: the change record and request log moved to Security > Logs.
+  const firstTab = canRead ? "keys" : "spend";
 
   return (
     <div className="flex flex-col gap-4">
@@ -1863,12 +1859,6 @@ export function AcmeLitellmGateway({ projectId }: { projectId: string }) {
           {canReadSpend ? (
             <TabsBarTrigger value="spend">Spend</TabsBarTrigger>
           ) : null}
-          {canReadLogs ? (
-            <TabsBarTrigger value="record">Change record</TabsBarTrigger>
-          ) : null}
-          {canReadLogs && s.requestLogsEnabled ? (
-            <TabsBarTrigger value="requests">Requests</TabsBarTrigger>
-          ) : null}
         </TabsBarList>
         {canRead ? (
           <>
@@ -1900,16 +1890,6 @@ export function AcmeLitellmGateway({ projectId }: { projectId: string }) {
         {canReadSpend ? (
           <TabsBarContent value="spend" className="mt-6">
             <SpendTab projectId={projectId} />
-          </TabsBarContent>
-        ) : null}
-        {canReadLogs ? (
-          <TabsBarContent value="record" className="mt-6">
-            <EventsTab projectId={projectId} />
-          </TabsBarContent>
-        ) : null}
-        {canReadLogs && s.requestLogsEnabled ? (
-          <TabsBarContent value="requests" className="mt-6">
-            <AcmeLitellmRequestLogs projectId={projectId} />
           </TabsBarContent>
         ) : null}
       </TabsBar>
