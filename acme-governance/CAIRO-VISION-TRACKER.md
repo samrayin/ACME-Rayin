@@ -1,7 +1,10 @@
 # CAIRO — Vision Tracker
 **Purpose:** single source of truth for "are we there yet," updated at every stage. Not a changelog — a status board. The changelog and ledger remain the detailed record; this file answers one question fast: what's done, what's next, what's blocking.
 
-**Last updated:** 2026-09-25. **The dev console carries the CAIRO name in its address and on two upstream screens.** Console `acme-v4.38.0.16`, worker `worker-acme-v4.38.0.3`, both TRACED.
+**Last updated:** 2026-09-26. **The dev console carries the CAIRO name in its address and on two upstream screens.** Console `acme-v4.38.0.17`, worker `worker-acme-v4.38.0.3`, both TRACED.
+- **Members table shows CAIRO project access (CHG-2026-072):** live in `acme-v4.38.0.17` since 2026-09-25 22:52Z.
+  - The column used to read "N/A on plan": it is the Enterprise project-roles selector, which CAIRO does not enable.
+  - It now shows each member's CAIRO project access limit, with a "Change" link for Owners and Admins.
 - **Guardrail event detail (CHG-2026-071):** live in `acme-v4.38.0.16` since 10:28Z.
   - **Fixed:** "View trace" failed with "Trace not found" for gateway traffic, because the event's id is LiteLLM's call id, not a trace id.
   - **Now:** the event shows its matching gateway request (model, status, key, tokens, cost), with a Show JSON view. The encrypted content is never sent.
