@@ -325,7 +325,8 @@ export const ROUTES: Route[] = [
     title: "UI Customization",
     pathname: `/project/[projectId]/acme-enhancements/ui-customization`,
     icon: Palette,
-    projectRbacScopes: ["project:update"],
+    // CHG-2026-074: every user picks a personal theme here; Owners and
+    // Admins also set the project default (the page enforces that).
     group: RouteGroup.AcmeEnhancements,
     section: RouteSection.Main,
   },

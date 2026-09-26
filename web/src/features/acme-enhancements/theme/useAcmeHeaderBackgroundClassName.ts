@@ -1,5 +1,9 @@
 import { api } from "@/src/utils/api";
 import useProjectIdFromURL from "@/src/hooks/useProjectIdFromURL";
+import {
+  effectiveTheme,
+  usePersonalTheme,
+} from "@/src/features/acme-enhancements/theme/usePersonalTheme";
 
 /**
  * Tailwind background class for PageHeader's top strip, driven by the
@@ -24,7 +28,9 @@ export function useAcmeHeaderBackgroundClassName(): string {
     },
   );
 
-  switch (theme.data?.headerBackground) {
+  // CHG-2026-074: the user's personal theme, if any, overrides the project's.
+  const { personal } = usePersonalTheme();
+  switch (effectiveTheme(theme.data, personal)?.headerBackground) {
     case "tinted":
       return "bg-[hsl(var(--primary)/0.06)]";
     case "gradient":

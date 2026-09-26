@@ -1,6 +1,9 @@
 import { api } from "@/src/utils/api";
-import { useQueryProject } from "@/src/features/projects/hooks";
 import { ACME_ACCENT_COLOR_PRESETS } from "@/src/features/acme-enhancements/theme/acmeThemePresets";
+import {
+  effectiveTheme,
+  usePersonalTheme,
+} from "@/src/features/acme-enhancements/theme/usePersonalTheme";
 
 /**
  * Applies the project's chosen accent-color preset (see
@@ -12,11 +15,7 @@ import { ACME_ACCENT_COLOR_PRESETS } from "@/src/features/acme-enhancements/them
  * No risk of CSS injection: the stored value is one of four fixed preset
  * keys (validated server-side against an enum), never free-form user text.
  */
-export function AcmeThemeStyleInjector({
-  projectId,
-}: {
-  projectId: string;
-}) {
+export function AcmeThemeStyleInjector({ projectId }: { projectId: string }) {
   const theme = api.acmeTheme.get.useQuery(
     { projectId },
     {
@@ -26,9 +25,15 @@ export function AcmeThemeStyleInjector({
     },
   );
 
-  if (!theme.data) return null;
+  // CHG-2026-074: the user's personal theme, if any, overrides the project's.
+  const { personal } = usePersonalTheme();
+  const effective = effectiveTheme(theme.data, personal);
+  // Nothing to inject until a theme is known; this component only adds a
+  // <style> tag, so rendering nothing is its normal idle state.
+  // eslint-disable-next-line @repo/no-null-render
+  if (!effective) return null;
 
-  const preset = ACME_ACCENT_COLOR_PRESETS[theme.data.accentColor];
+  const preset = ACME_ACCENT_COLOR_PRESETS[effective.accentColor];
 
   return (
     <style

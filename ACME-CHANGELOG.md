@@ -4729,3 +4729,24 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 - **LLM Gateway item:** it no longer shows for `llmGatewayLogs:read` alone.
 
 **Tests:** `acme-role-navigation.clienttest.tsx` pins the new sidebar per role (Security Analyst: Guardrails, Assurance, Logs; Auditor: adds LLM Gateway, Prompts and the approval pages). A new test pins the section membership.
+
+## 2026-09-26 — UI Customization for every user: a personal theme (CHG-2026-074)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-074 · Tier 2 (UI only) · owner decision 2026-09-26: "Personal theme per user" · owner: Anees Ur Rahman |
+| **Dates** | Built and tested locally. Dev: a console release · Prod: none exists |
+| **Impact** | UI Customization shows for every role. Each user can pick their own accent and top-bar colour, which applies only to them. Owners and Admins still set the project default, which applies to everyone who has not chosen. No one can change what someone else sees |
+| **Rollback** | Redeploy the previous image. Personal choices sit only in each browser's local storage and are ignored by older images |
+
+**What:**
+- **"Your theme" (everyone):** stored in the browser (`cairo.personalTheme.v1`), never sent to the server. It applies in every project, and a "Use the project default" button clears it.
+- **"Project default" (Owners/Admins edit, others read):** unchanged (`acmeTheme.update` still needs `project:update`).
+- **Where it applies:** the theme style injector and the top-bar background use the personal choice where one is set. Stored values are checked against the fixed preset keys, so a hand-edited value is ignored and cannot inject CSS.
+- **Sidebar:** UI Customization no longer needs `project:update`. `acmeTheme.get` is already on every content-free allow-list.
+
+**Tests:**
+- **New:** `acme-personal-theme.clienttest.ts` covers override, partial override, loading, and rejection of unknown values.
+- **Updated:** the per-role sidebar pins now include UI Customization.
+
+**Depends on:** CHG-2026-073 (#202), built on top of it.
