@@ -95,6 +95,7 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | CHG-2026-073 | 2 | Sidebar: a new "AI Controls" section holding Guardrails, LLM Gateway and Assurance; a new "Security" section with "Logs" holding Audit logs, Guardrail events, Gateway change record and Gateway requests, moved out of the Guardrails and LLM Gateway pages (owner decisions 2026-09-26: name "AI Controls", move not copy). UI only; same procedures and scopes | Anees Ur Rahman | `feat/chg-2026-073-sidebar-sections` | Merged (#202); live in dev as `acme-v4.38.0.18` |
 | CHG-2026-074 | 2 | UI Customization for every user: each user can pick a personal theme (accent and top-bar colour) that applies only to them; Owners/Admins keep setting the project default that applies to everyone who has not chosen (owner decision 2026-09-26). The nav item shows for all roles. UI only | Anees Ur Rahman | `feat/chg-2026-074-personal-theme` | Merged (#204); live in dev as `acme-v4.38.0.18` |
 | CHG-2026-075 | 2 | promptfoo benign guardrail suite: fix the invalid YAML in `integrations/promptfoo/config/guardrails-benign.yaml` (the CHG-2026-021 edit indented `agent_id` wrongly, so the suite could not parse), and bring `RUNNING-BENIGN-EVAL.md` up to date: the guard is now on the gateway's live path, mount only the one secret key the suite needs, and throttle under the judge's rate limit. Test scaffolding and docs only; nothing is built into an image | Anees Ur Rahman | `fix/chg-2026-075-promptfoo-benign-yaml` | Claimed |
+| CHG-2026-076 | 1 | Adopt two upstream Langfuse security fixes by cherry-pick, unchanged: evict the API-key cache after the key's row is deleted and stop read-refreshing its TTL, default TTL 60 s (upstream #17651, in v4.40.0); and scope SCIM `Users/{id}` reads and changes to the caller's organization (upstream #17828, in v4.43.0). Authentication path; design note ADR-0012. No schema change, no ACME edits to the upstream code | Anees Ur Rahman | `fix/chg-2026-076-upstream-auth-fixes` | Claimed |
 
 ## ADR numbers
 
@@ -112,6 +113,7 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | ADR-0009 | CHG-2026-040 | Guardrail health events: dedicated table, the three §3d metrics, the credential and its scope, and what production-grade completion actually costs | Claimed — design only |
 | ADR-0010 | CHG-2026-056 | Gateway model management and the complexity auto router: where models and provider credentials are stored, encryption key (salt) handling, endpoint restrictions, audit, permissions, and how it is turned off | Claimed |
 | ADR-0011 | CHG-2026-059 | CAIRO roles and the ACME project access policy: role set, permission matrix, narrowing-only project policy, what each role must not see, and the Enterprise boundary | Claimed |
+| ADR-0012 | CHG-2026-076 | Adopting upstream Langfuse security fixes ahead of a full version sync: API-key cache eviction and SCIM organization scoping | Claimed |
 
 The rows above for CHG-2026-001 to -003 and ADR-0000 to -0002 were reconstructed
 on 2026-09-19 from `main` and every branch on the remote; they were not claimed
