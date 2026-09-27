@@ -8,26 +8,30 @@ import { Layer } from "@/src/components/design-system/Layer/Layer";
 import { api } from "@/src/utils/api";
 import { cn } from "@/src/utils/tailwind";
 import { useHasProjectAccess } from "@/src/features/rbac";
+import { useAcmeChatPanel } from "@/src/features/acme-enhancements/components/acmeChatPanelStore";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
 /**
- * ACME AI — floating chat widget, embedded natively in the console.
+ * ACME AI — chat panel, embedded natively in the console. Opened from its
+ * launcher in the top bar (AcmeChatLauncher, ADR-0015); rendered here, in the
+ * persistent layout, so the conversation survives navigation.
  *
  * Uses the "panel" layer band (docked/side surfaces) rather than "agent"
  * (Langfuse's own in-app assistant window) to avoid two persistent floating
  * windows visually competing for the same stacking band.
  */
 export function AcmeChatWidget({ projectId }: { projectId: string }) {
-  const [open, setOpen] = useState(false);
+  const { open, setOpen } = useAcmeChatPanel();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // UX-only: hides the launcher for roles that lack "projectAiAssistant:use"
-  // (VIEWER) so it doesn't sit there as a button that always errors. The
-  // real boundary is the server-side throwIfNoProjectAccess check in
-  // acmeChatRouter.ts -- this check is not what makes the feature safe.
+  // UX-only: no panel for roles that lack "projectAiAssistant:use" (VIEWER),
+  // matching the launcher, which is hidden for them. The real boundary is the
+  // server-side throwIfNoProjectAccess check in acmeChatRouter.ts -- this
+  // check is not what makes the feature safe.
   const canUse = useHasProjectAccess({
     projectId,
     scope: "projectAiAssistant:use",
@@ -38,6 +42,17 @@ export function AcmeChatWidget({ projectId }: { projectId: string }) {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages, sendMessage.isPending]);
+
+  // On open, focus the input and let Escape close the panel.
+  useEffect(() => {
+    if (!open) return;
+    inputRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [open, setOpen]);
 
   const handleSend = () => {
     const text = input.trim();
@@ -51,7 +66,10 @@ export function AcmeChatWidget({ projectId }: { projectId: string }) {
       { projectId, history, message: text },
       {
         onSuccess: (result) => {
-          setMessages((m) => [...m, { role: "assistant", content: result.reply }]);
+          setMessages((m) => [
+            ...m,
+            { role: "assistant", content: result.reply },
+          ]);
         },
         onError: (err) => {
           setMessages((m) => [
@@ -66,15 +84,22 @@ export function AcmeChatWidget({ projectId }: { projectId: string }) {
     );
   };
 
-  if (!canUse) return null;
-
+  // Always mounted, so the conversation survives closing the panel and
+  // navigating; only the panel itself comes and goes.
   return (
     <Layer name="panel">
       <div className="pointer-events-none fixed inset-0">
-        {open ? (
-          <div className="pointer-events-auto fixed bottom-20 right-6 flex h-[520px] w-96 flex-col overflow-hidden rounded-lg border bg-background shadow-xl">
+        {/* Just below the top bar's first row, right-aligned under the
+            launcher, and never taller than the space left on screen. */}
+        {canUse && open ? (
+          <div
+            id="acme-ai-panel"
+            role="dialog"
+            aria-label="ACME AI"
+            className="bg-background pointer-events-auto fixed top-[calc(var(--banner-offset)_+_3.25rem)] right-4 flex h-[min(520px,calc(100dvh_-_var(--banner-offset)_-_4.5rem))] w-96 max-w-[calc(100vw_-_2rem)] flex-col overflow-hidden rounded-lg border shadow-xl"
+          >
             <div className="flex items-center justify-between border-b px-4 py-3">
-              <div className="flex items-center gap-2 font-semibold">
+              <div className="flex items-center gap-2 font-bold">
                 <MessageCircle className="h-4 w-4" />
                 ACME AI
               </div>
@@ -104,10 +129,10 @@ export function AcmeChatWidget({ projectId }: { projectId: string }) {
                   <div
                     key={i}
                     className={cn(
-                      "whitespace-pre-wrap rounded-md px-3 py-2",
+                      "rounded-md px-3 py-2 whitespace-pre-wrap",
                       m.role === "user"
-                        ? "ml-8 bg-primary text-primary-foreground"
-                        : "mr-8 bg-muted",
+                        ? "bg-primary text-primary-foreground ml-8"
+                        : "bg-muted mr-8",
                     )}
                   >
                     {m.content}
@@ -115,7 +140,7 @@ export function AcmeChatWidget({ projectId }: { projectId: string }) {
                 ))
               )}
               {sendMessage.isPending ? (
-                <div className="mr-8 rounded-md bg-muted px-3 py-2 text-muted-foreground">
+                <div className="bg-muted text-muted-foreground mr-8 rounded-md px-3 py-2">
                   Thinking…
                 </div>
               ) : null}
@@ -131,6 +156,7 @@ export function AcmeChatWidget({ projectId }: { projectId: string }) {
                     handleSend();
                   }
                 }}
+                ref={inputRef}
                 placeholder="Ask ACME AI…"
                 className="min-h-9 resize-none"
                 rows={1}
@@ -146,15 +172,6 @@ export function AcmeChatWidget({ projectId }: { projectId: string }) {
             </div>
           </div>
         ) : null}
-
-        <Button
-          className="pointer-events-auto fixed bottom-6 right-6 h-12 w-12 rounded-full shadow-lg"
-          size="icon"
-          onClick={() => setOpen((o) => !o)}
-          aria-label={open ? "Close ACME AI" : "Open ACME AI"}
-        >
-          {open ? <X className="h-5 w-5" /> : <MessageCircle className="h-5 w-5" />}
-        </Button>
       </div>
     </Layer>
   );

@@ -1158,9 +1158,6 @@ export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
             </Table>
           )}
 
-          {/* Left-aligned: the ACME AI launcher (AcmeChatWidget) is fixed
-              over the bottom-right corner of every page, so a right-aligned
-              pager at the end of the list would sit under it. */}
           {(cursors.length > 0 || nextCursor) && (
             <div className="flex items-center justify-start gap-2 text-sm">
               <Button

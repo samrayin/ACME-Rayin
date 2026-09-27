@@ -10,6 +10,10 @@ import { InAppAiAgentButton } from "@/src/components/nav/in-app-ai-agent-button"
 import { EnvLabelBadge } from "@/src/components/EnvLabelBadge";
 import { useEnvLabel } from "@/src/hooks/useEnvLabel";
 import { useIsInAppAgentLauncherVisible } from "@/src/features/in-app-agent/components/InAppAiAgentProvider";
+import {
+  AcmeChatLauncher,
+  useIsAcmeChatLauncherVisible,
+} from "@/src/features/acme-enhancements/components/AcmeChatLauncher";
 
 /**
  * Slim mobile top chrome for the minimal-chrome shell: hamburger · centered
@@ -33,6 +37,7 @@ export const MobileTopBar = ({
   const hasAppSidebar = useHasAppSidebar();
   const envLabel = useEnvLabel();
   const isInAppAgentLauncherVisible = useIsInAppAgentLauncherVisible();
+  const isAcmeChatLauncherVisible = useIsAcmeChatLauncherVisible();
   const showHamburger = showSidebarTrigger && hasAppSidebar;
 
   return (
@@ -65,6 +70,8 @@ export const MobileTopBar = ({
           so the brand stays centered. */}
       <div className="flex min-w-0 flex-1 items-center justify-end gap-1">
         {isInAppAgentLauncherVisible && <InAppAiAgentButton prominent />}
+        {/* ACME (ADR-0015): the ACME AI launcher, icon only. */}
+        {isAcmeChatLauncherVisible && <AcmeChatLauncher compact />}
         {session.data?.user && <TopbarAccount user={session.data.user} />}
       </div>
     </div>
