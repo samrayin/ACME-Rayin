@@ -118,6 +118,7 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | ADR-0011 | CHG-2026-059 | CAIRO roles and the ACME project access policy: role set, permission matrix, narrowing-only project policy, what each role must not see, and the Enterprise boundary | Claimed |
 | ADR-0012 | CHG-2026-076 | Adopting upstream Langfuse security fixes ahead of a full version sync: API-key cache eviction and SCIM organization scoping | Claimed |
 | ADR-0013 | CHG-2026-079 | Guardrail event history: read path, paging, filters, who may export, what an export contains, and how the export itself is audited | Claimed |
+| ADR-0014 | CHG-2026-078 | Bahrain and Arabic-language coverage in the guardrails, written retrospectively: staged CPR detection, Arabic names and the English name model on Arabic text, and the input policy's banking-conduct and personal-data rules | Claimed |
 
 The rows above for CHG-2026-001 to -003 and ADR-0000 to -0002 were reconstructed
 on 2026-09-19 from `main` and every branch on the remote; they were not claimed
