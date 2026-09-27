@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Card,
@@ -34,7 +34,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/src/components/ui/select";
-import { api } from "@/src/utils/api";
+import { api, type RouterOutputs } from "@/src/utils/api";
+import { type LangfuseColumnDef } from "@/src/components/table/types";
+import {
+  ACME_LOG_DEFAULT_PAGE_SIZE,
+  ACME_LOG_PAGE_SIZES,
+  AcmeLogTable,
+  DetailRow,
+  asyncTableData,
+  nextCursorPage,
+  nextPaginationState,
+} from "@/src/features/acme-enhancements/components/AcmeLogTable";
 import { JSONView } from "@/src/components/ui/CodeJsonViewer";
 import {
   downloadCsvFile,
@@ -85,21 +95,6 @@ function formatDateTime(iso: string) {
     minute: "2-digit",
     second: "2-digit",
   });
-}
-
-function DetailRow({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="grid grid-cols-[140px_1fr] gap-3 border-b py-2 text-sm last:border-b-0">
-      <div className="text-muted-foreground">{label}</div>
-      <div className="min-w-0 break-words">{children}</div>
-    </div>
-  );
 }
 
 // Detail panel for one guardrail decision -- CAIRO roadmap Phase 1,
@@ -236,8 +231,9 @@ function AcmeGuardrailEventDetail({
                         {detail.data.traceId}
                       </span>
                       <span className="text-muted-foreground text-xs">
-                        Gateway call id. Its request row appears under Security
-                        &gt; Logs &gt; Gateway requests within a few minutes.
+                        Gateway call id. Its request row appears under Reports /
+                        Logs &gt; Logs &gt; Gateway requests within a few
+                        minutes.
                       </span>
                     </span>
                   )}
@@ -817,8 +813,6 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
   );
 }
 
-const HISTORY_PAGE_SIZE = 50;
-
 type HistoryFilterForm = {
   from: string;
   to: string;
@@ -858,20 +852,71 @@ function toHistoryFilter(form: HistoryFilterForm) {
   };
 }
 
+type GuardrailEventRow = Extract<
+  RouterOutputs["acmeGuardrails"]["eventHistory"],
+  { configured: true }
+>["events"][number];
+
+const GUARDRAIL_EVENT_COLUMNS: LangfuseColumnDef<GuardrailEventRow>[] = [
+  {
+    accessorKey: "time",
+    header: "Date & time",
+    size: 190,
+    cell: ({ row }) => (
+      <span className="font-mono text-xs">
+        {formatDateTime(row.original.time)}
+      </span>
+    ),
+  },
+  {
+    accessorKey: "user_id",
+    header: "User",
+    headerTooltip: {
+      description:
+        "As reported by the calling application. CAIRO does not verify it.",
+    },
+    cell: ({ row }) => row.original.user_id ?? "—",
+  },
+  {
+    accessorKey: "client_host",
+    header: "Machine",
+    cell: ({ row }) => row.original.client_host ?? "—",
+  },
+  { accessorKey: "agent_id", header: "Agent" },
+  {
+    accessorKey: "direction",
+    header: "Direction",
+    cell: ({ row }) => (
+      <span className="capitalize">{row.original.direction}</span>
+    ),
+  },
+  {
+    accessorKey: "policy_triggered",
+    header: "Policy",
+    cell: ({ row }) => row.original.policy_triggered ?? "—",
+  },
+  {
+    accessorKey: "action",
+    header: "Action",
+    cell: ({ row }) => <ActionBadge action={row.original.action} />,
+  },
+];
+
 /**
- * CHG-2026-073: guardrail decisions as a log, shown under Security > Logs
- * (moved out of the Guardrails page, which keeps the totals and policies).
- * ADR-0013: the whole stored history, filtered, a page at a time, with a
- * CSV export of everything the filter matches.
+ * CHG-2026-073: guardrail decisions as a log, shown under Reports / Logs >
+ * Logs (moved out of the Guardrails page, which keeps the totals and
+ * policies). ADR-0013: the whole stored history, filtered, a page at a time,
+ * with a CSV export of everything the filter matches.
+ *
+ * CHG-2026-084 (ADR-0018): rendered through AcmeLogTable, like every Logs tab.
+ * The keyset paging drives the shared footer in cursor mode: no page jumps,
+ * and changing the page size starts again from the newest page.
  */
 export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
   const [selectedEvent, setSelectedEvent] = useState<{
     id: string;
     open: boolean;
   } | null>(null);
-  const openEvent = (id: string | null) => {
-    if (id) setSelectedEvent({ id, open: true });
-  };
   // Export writes the audit log, so it is not open to the read-only roles
   // (Security Analyst, Auditor); the server refuses them too.
   const canExport = !useIsContentFreeRole(projectId);
@@ -880,6 +925,7 @@ export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
     useState<HistoryFilterForm>(EMPTY_HISTORY_FILTER);
   // Cursor of each page after the first; the last one is the page shown.
   const [cursors, setCursors] = useState<string[]>([]);
+  const [pageSize, setPageSize] = useState(ACME_LOG_DEFAULT_PAGE_SIZE);
   const cursor = cursors[cursors.length - 1];
   const filter = useMemo(() => toHistoryFilter(applied), [applied]);
 
@@ -890,7 +936,7 @@ export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
   };
 
   const events = api.acmeGuardrails.eventHistory.useQuery(
-    { projectId, cursor, pageSize: HISTORY_PAGE_SIZE, filter },
+    { projectId, cursor, pageSize, filter },
     {
       // Only the first page follows new events; older pages stay put.
       refetchInterval: cursor ? false : 10_000,
@@ -915,59 +961,25 @@ export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
     onError: (error) => showErrorToast("Export failed", error.message),
   });
 
-  if (events.isPending) {
-    return <div className="text-muted-foreground p-4 text-sm">Loading…</div>;
-  }
-  if (events.isError) {
-    return (
-      <div className="text-muted-foreground p-4 text-sm">
-        Could not load guardrail events: {events.error.message}
-      </div>
-    );
-  }
-  if (!events.data.configured) {
+  if (events.data && !events.data.configured) {
     return (
       <div className="text-muted-foreground p-4 text-sm">
         Guardrails isn&apos;t configured for this deployment.
       </div>
     );
   }
-  const {
-    events: recent,
-    counts,
-    hiddenTestEvents,
-    liveSync,
-    nextCursor,
-    testTrafficPrefixes,
-  } = events.data;
+  const history = events.data?.configured ? events.data : undefined;
+  const counts = history?.counts;
   const filtered =
     JSON.stringify(applied) !== JSON.stringify(EMPTY_HISTORY_FILTER);
+  const page = { pageIndex: cursors.length, pageSize };
 
   return (
-    <div className="flex flex-col gap-4">
-      <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div>
-              <CardTitle className="text-sm">Guardrail events</CardTitle>
-              <p className="text-muted-foreground text-xs">
-                Every decision stored in the audit trail, most recent first.
-                Select a row for details.
-              </p>
-            </div>
-            {canExport && (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={counts.total === 0 || exportHistory.isPending}
-                onClick={() => exportHistory.mutate({ projectId, filter })}
-              >
-                {exportHistory.isPending ? "Exporting…" : "Export CSV"}
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4 pt-0">
+    <>
+      <AcmeLogTable
+        tableName="acmeGuardrailEvents"
+        description="Every guardrail decision stored in the audit trail, newest first. Select a row for details."
+        filters={
           <form
             className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7"
             onSubmit={(e) => {
@@ -1076,22 +1088,27 @@ export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
               </Button>
             </div>
           </form>
-
-          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-            <p>
-              <span className="font-bold">
-                {counts.total} {counts.total === 1 ? "event" : "events"}
-                {filtered ? " match" : ""}
+        }
+        summary={
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+            {counts ? (
+              <span>
+                <span className="font-bold">
+                  {counts.total} {counts.total === 1 ? "event" : "events"}
+                  {filtered ? " match" : ""}
+                </span>
+                <span className="text-muted-foreground">
+                  {" "}
+                  · {counts.blocked} blocked · {counts.redacted} redacted ·{" "}
+                  {counts.allowed} allowed
+                  {applied.hideTestTraffic &&
+                  history &&
+                  history.hiddenTestEvents > 0
+                    ? ` · ${history.hiddenTestEvents} test events hidden`
+                    : ""}
+                </span>
               </span>
-              <span className="text-muted-foreground">
-                {" "}
-                · {counts.blocked} blocked · {counts.redacted} redacted ·{" "}
-                {counts.allowed} allowed
-                {applied.hideTestTraffic && hiddenTestEvents > 0
-                  ? ` · ${hiddenTestEvents} test events hidden`
-                  : ""}
-              </span>
-            </p>
+            ) : null}
             <label className="flex items-center gap-2 text-xs">
               <Switch
                 checked={applied.hideTestTraffic}
@@ -1099,92 +1116,67 @@ export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
                   applyFilter({ ...applied, hideTestTraffic: checked })
                 }
               />
-              Hide test traffic (agent names starting{" "}
-              {testTrafficPrefixes.join(" or ")})
+              Hide test traffic
+              {history
+                ? ` (agent names starting ${history.testTrafficPrefixes.join(" or ")})`
+                : ""}
             </label>
           </div>
-
-          {liveSync === "unavailable" && (
+        }
+        actions={
+          canExport ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!counts?.total || exportHistory.isPending}
+              onClick={() => exportHistory.mutate({ projectId, filter })}
+            >
+              {exportHistory.isPending ? "Exporting…" : "Export CSV"}
+            </Button>
+          ) : null
+        }
+        notice={
+          history?.liveSync === "unavailable" ? (
             <p className="text-muted-foreground text-xs">
               rayin-guardrails did not answer, so events whose push failed in
               the last few minutes may be missing. Stored events are shown.
             </p>
-          )}
-
-          {recent.length === 0 ? (
-            <p className="text-muted-foreground text-sm">
-              {filtered
-                ? "No events match these filters."
-                : "No events yet. Send a request through rayin-guardrails to see it here."}
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-44">Date &amp; time</TableHead>
-                  <TableHead>User</TableHead>
-                  <TableHead>Machine</TableHead>
-                  <TableHead>Agent</TableHead>
-                  <TableHead>Direction</TableHead>
-                  <TableHead>Policy</TableHead>
-                  <TableHead>Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {recent.map((event, i) => (
-                  <TableRow
-                    key={event.id ?? `${event.time}-${i}`}
-                    className={cn(
-                      event.id && "hover:bg-muted/50 cursor-pointer",
-                    )}
-                    onClick={event.id ? () => openEvent(event.id) : undefined}
-                  >
-                    <TableCell className="font-mono text-xs">
-                      {formatDateTime(event.time)}
-                    </TableCell>
-                    <TableCell>{event.user_id ?? "—"}</TableCell>
-                    <TableCell>{event.client_host ?? "—"}</TableCell>
-                    <TableCell>{event.agent_id}</TableCell>
-                    <TableCell className="capitalize">
-                      {event.direction}
-                    </TableCell>
-                    <TableCell>{event.policy_triggered ?? "—"}</TableCell>
-                    <TableCell>
-                      <ActionBadge action={event.action} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-
-          {(cursors.length > 0 || nextCursor) && (
-            <div className="flex items-center justify-start gap-2 text-sm">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={cursors.length === 0}
-                onClick={() => setCursors(cursors.slice(0, -1))}
-              >
-                Newer
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!nextCursor}
-                onClick={() =>
-                  nextCursor && setCursors([...cursors, nextCursor])
-                }
-              >
-                Older
-              </Button>
-              <span className="text-muted-foreground">
-                Page {cursors.length + 1}
-              </span>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          ) : null
+        }
+        columns={GUARDRAIL_EVENT_COLUMNS}
+        data={asyncTableData({
+          isPending: events.isPending,
+          isError: events.isError,
+          error: events.error,
+          data: history?.events,
+        })}
+        isFetching={events.isFetching && !events.isPending}
+        pagination={{
+          totalCount: counts?.total ?? null,
+          hasNextPage: Boolean(history?.nextCursor),
+          canJumpPages: false,
+          state: page,
+          options: ACME_LOG_PAGE_SIZES,
+          onChange: (update) => {
+            const next = nextCursorPage({
+              next: nextPaginationState(update, page),
+              current: page,
+              cursors,
+              nextCursor: history?.nextCursor,
+            });
+            setPageSize(next.pageSize);
+            setCursors(next.cursors);
+          },
+        }}
+        onRowClick={(row) => {
+          if (row.id) setSelectedEvent({ id: row.id, open: true });
+        }}
+        noResultsMessage={
+          filtered
+            ? "No events match these filters."
+            : "No events yet. Send a request through rayin-guardrails to see it here."
+        }
+      />
 
       <AcmeGuardrailEventDetail
         projectId={projectId}
@@ -1196,6 +1188,6 @@ export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
           )
         }
       />
-    </div>
+    </>
   );
 }

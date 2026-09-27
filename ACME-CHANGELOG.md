@@ -4983,3 +4983,40 @@ Documentation only (Tier 2).
 ## 2026-09-27 — ADR-0016: Contact ACME Support stays in the Support section (CHG-2026-081)
 
 Documentation only (Tier 2). ADR-0016 §10 left open whether Contact ACME Support belongs in Settings or Support. The owner decided on 2026-09-27 that it stays in Support, where CHG-2026-081 put it. No code change.
+
+## 2026-09-27 — Logs page: all four tabs on one table pattern (CHG-2026-084)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-084 · Tier 1 (client-visible) · ADR-0018 · owner: Anees Ur Rahman |
+| **Dates** | Written 2026-09-27. Dev: not deployed · Prod: none exists |
+| **Impact** | Audit logs, Guardrail events, Gateway changes and Gateway requests share one layout: the shared table and toolbar, row height, a standard paging footer, and a details panel on row click |
+| **Rollback** | Revert the commit and redeploy the previous console image. No data change |
+
+**Why:** the owner's request of 2026-09-27. Audit logs used the shared table; the other three were hand-built tables with their own Newer and Older buttons, and one expanded rows in place.
+
+**What:**
+- **`AcmeLogTable`:** the pattern, used by all four tabs. It stacks a description, optional filters, the shared toolbar (summary left; actions and row height right), an optional notice, and the shared table in its card with the standard paging footer.
+- **Paging:** each procedure pages as before, now through the shared footer.
+  - Guardrail events keeps its keyset paging (ADR-0013), in cursor mode.
+  - The other tabs use page numbers.
+  - Every tab offers 20, 50 or 100 rows a page.
+- **Row details:**
+  - Guardrail events keeps its details dialog.
+  - Gateway changes and Gateway requests open a shared details panel, with the raw JSON on request.
+  - Gateway changes no longer expands rows in place.
+- **Gateway requests:**
+  - One table, with a switch between this project's keys and keys CAIRO did not issue (owners only).
+  - The second line each cell carried moved into the details panel.
+- **Errors show:** the shared table used to draw loading rows forever when a load failed. Every tab now shows the error in the table.
+- **Small fixes:**
+  - The User and End user columns say the value is reported by the caller and not verified.
+  - The Audit logs Actor tooltip no longer says "within Langfuse".
+  - The guardrail details dialog's "Security > Logs" text now reads "Reports / Logs > Logs".
+
+**Tests:** new `AcmeLogTable.clienttest.tsx` (11) covers:
+- the paging helpers;
+- rendering, row click, the error and empty states;
+- the details panel.
+
+**Deployment status:** not deployed.
