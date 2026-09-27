@@ -184,7 +184,7 @@ export function IntroSection({ onStartForm }: { onStartForm: () => void }) {
               feedback with the community.
             </p>
             {/* ACME's direct support contact now lives as its own nav item
-                under ACME Enhancements (see routes.tsx), not duplicated
+                in the Support section (see routes.tsx), not duplicated
                 here. */}
             <Button variant="outline" asChild>
               <a

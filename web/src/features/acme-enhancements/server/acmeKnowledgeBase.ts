@@ -15,8 +15,8 @@ export const ACME_KNOWLEDGE_BASE = `
   co-branding, not full white-label — the customer's logo sits alongside Langfuse's,
   it doesn't replace it.
 - Audit logs are always being written, license or not — only the in-app viewer/export
-  UI is gated. See this project's own "Audit Logs" page under ACME Enhancements for a
-  license-free viewer.
+  UI is gated. See the "Audit logs" tab of this project's Logs page, under Reports / Logs,
+  for a license-free viewer.
 
 ## Common failure modes worth recognizing quickly
 - A cloud provider's "static" IP can still change if the underlying resource is

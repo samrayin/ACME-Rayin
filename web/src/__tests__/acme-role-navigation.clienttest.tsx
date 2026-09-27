@@ -1,7 +1,13 @@
 import { describe, it, expect } from "vitest";
 import type { Session } from "next-auth";
 import { Role } from "@langfuse/shared";
-import { ROUTES, type Route } from "@/src/components/layouts/routes";
+import {
+  ROUTES,
+  ROUTE_GROUP_ORDER,
+  RouteGroup,
+  RouteSection,
+  type Route,
+} from "@/src/components/layouts/routes";
 import { applyNavigationFilters } from "@/src/components/layouts/app-layout/utils/navigationFilters";
 
 const PROJECT = "proj-nav";
@@ -136,13 +142,46 @@ describe("sidebar per role (ADR-0011 §6)", () => {
   });
 });
 
-describe("sidebar sections (CHG-2026-073)", () => {
-  it("Guardrails, LLM Gateway and Assurance sit under AI Controls; Logs under Security", () => {
-    const byTitle = new Map(ROUTES.map((r) => [r.title, r.group]));
-    expect(byTitle.get("Guardrails")).toBe("AI Controls");
-    expect(byTitle.get("LLM Gateway")).toBe("AI Controls");
-    expect(byTitle.get("Assurance (Preview)")).toBe("AI Controls");
-    expect(byTitle.get("Logs")).toBe("Security");
-    expect(byTitle.has("Audit Logs")).toBe(false);
+describe("sidebar sections (CHG-2026-073, CHG-2026-081)", () => {
+  const groupsOf = (title: string) =>
+    ROUTES.filter((r) => r.title === title).map((r) => r.group);
+
+  it("sections appear in the owner's order", () => {
+    expect(ROUTE_GROUP_ORDER).toEqual([
+      "Governance Controls",
+      "Observability",
+      "Evaluation",
+      "Prompt Management",
+      "Reports / Logs",
+      "Settings",
+      "Support",
+    ]);
+  });
+
+  it("every section has a place in the order", () => {
+    expect([...ROUTE_GROUP_ORDER].sort()).toEqual(
+      Object.values(RouteGroup).sort(),
+    );
+  });
+
+  it("each route sits in its section", () => {
+    expect(groupsOf("Guardrails")).toEqual(["Governance Controls"]);
+    expect(groupsOf("LLM Gateway")).toEqual(["Governance Controls"]);
+    expect(groupsOf("Assurance (Preview)")).toEqual(["Governance Controls"]);
+    expect(groupsOf("Logs")).toEqual(["Reports / Logs"]);
+    // Project and organization settings: one or the other shows, by context.
+    expect(groupsOf("Settings")).toEqual(["Settings", "Settings"]);
+    expect(groupsOf("UI Customization")).toEqual(["Settings"]);
+    expect(groupsOf("Support")).toEqual(["Support"]);
+    expect(groupsOf("Contact ACME Support")).toEqual(["Support"]);
+    expect(groupsOf("Audit Logs")).toEqual([]);
+  });
+
+  it("Settings and Support are no longer in the bottom (secondary) section", () => {
+    for (const title of ["Settings", "Support"]) {
+      for (const route of ROUTES.filter((r) => r.title === title)) {
+        expect(route.section).toBe(RouteSection.Main);
+      }
+    }
   });
 });

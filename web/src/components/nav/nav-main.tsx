@@ -15,7 +15,7 @@ import {
   CollapsibleTrigger,
 } from "@/src/components/ui/collapsible";
 import Link from "next/link";
-import { type ReactNode } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { type RouteGroup } from "@/src/components/layouts/routes";
 import useLocalStorage from "@/src/components/useLocalStorage";
 
@@ -64,7 +64,7 @@ export function NavMain({
     ungrouped: NavMainItem[];
   };
   /** Extra content rendered at the end of a specific group's menu, inside
-      its collapsible body (e.g. the version label under ACME Enhancements). */
+      its collapsible body (e.g. the version label under Settings). */
   groupExtraContent?: Partial<Record<RouteGroup, ReactNode>>;
 }) {
   // Keyed by group name; a group missing from the map is expanded by default.
@@ -72,6 +72,25 @@ export function NavMain({
   const [collapsedGroups, setCollapsedGroups] = useLocalStorage<
     Record<string, boolean>
   >(COLLAPSED_GROUPS_STORAGE_KEY, {});
+
+  // ACME (CHG-2026-081): the group holding the current page opens once when
+  // the user arrives in it, so its entry is visible, but the user's own
+  // toggle always wins after that. It used to be forced open, which meant it
+  // could never be collapsed.
+  const activeGroup = items.grouped
+    ? Object.entries(items.grouped).find(([, groupItems]) =>
+        groupItems.some((item) => item.isActive),
+      )?.[0]
+    : undefined;
+  const openedOnArrival = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (activeGroup === openedOnArrival.current) return;
+    openedOnArrival.current = activeGroup;
+    if (!activeGroup) return;
+    setCollapsedGroups((prev) =>
+      prev[activeGroup] ? { ...prev, [activeGroup]: false } : prev,
+    );
+  }, [activeGroup, setCollapsedGroups]);
 
   return (
     <>
@@ -101,11 +120,7 @@ export function NavMain({
       </SidebarGroup>
       {items.grouped &&
         Object.entries(items.grouped).map(([group, items]) => {
-          // A group containing the active page always renders expanded, even
-          // if the user previously collapsed it — hiding the current page's
-          // own nav entry would be confusing.
-          const hasActiveItem = items.some((item) => item.isActive);
-          const isOpen = hasActiveItem || !collapsedGroups[group];
+          const isOpen = !collapsedGroups[group];
 
           return (
             <Collapsible
@@ -118,9 +133,13 @@ export function NavMain({
             >
               <SidebarGroup>
                 <CollapsibleTrigger asChild>
-                  <SidebarGroupLabel className="cursor-pointer">
-                    {group}
-                    <ChevronRight className="ml-auto size-3.5 shrink-0 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                  {/* A real button (not the label's default div), so the
+                      section toggles from the keyboard too. */}
+                  <SidebarGroupLabel asChild className="w-full cursor-pointer">
+                    <button type="button">
+                      {group}
+                      <ChevronRight className="ml-auto size-3.5 shrink-0 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                    </button>
                   </SidebarGroupLabel>
                 </CollapsibleTrigger>
                 <CollapsibleContent>

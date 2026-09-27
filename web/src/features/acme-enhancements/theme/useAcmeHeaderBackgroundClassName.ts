@@ -4,6 +4,7 @@ import {
   effectiveTheme,
   usePersonalTheme,
 } from "@/src/features/acme-enhancements/theme/usePersonalTheme";
+import { acmeHeaderBackgroundClass } from "@/src/features/acme-enhancements/theme/acmeThemePresets";
 
 /**
  * Tailwind background class for PageHeader's top strip, driven by the
@@ -30,13 +31,7 @@ export function useAcmeHeaderBackgroundClassName(): string {
 
   // CHG-2026-074: the user's personal theme, if any, overrides the project's.
   const { personal } = usePersonalTheme();
-  switch (effectiveTheme(theme.data, personal)?.headerBackground) {
-    case "tinted":
-      return "bg-[hsl(var(--primary)/0.06)]";
-    case "gradient":
-      return "bg-gradient-to-b from-[hsl(var(--primary)/0.12)] to-background";
-    case "plain":
-    default:
-      return "bg-background";
-  }
+  return acmeHeaderBackgroundClass(
+    effectiveTheme(theme.data, personal)?.headerBackground,
+  );
 }

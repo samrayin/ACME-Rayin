@@ -105,9 +105,31 @@ export const ACME_HEADER_BACKGROUND_PRESETS: Record<
   },
   gradient: {
     label: "Gradient",
-    description: "Accent color fading to transparent behind the top bar.",
+    description: "Accent color fading into the page background.",
   },
 };
+
+/**
+ * Tailwind background class for PageHeader's top strip.
+ *
+ * ACME (CHG-2026-081): every preset is opaque. The header is sticky, so a
+ * translucent one let the rows of a long page (the Logs tabs) show through it
+ * as they scrolled underneath. The tint is now an image layered over the
+ * solid page background: it looks the same, and nothing shows through.
+ */
+export function acmeHeaderBackgroundClass(
+  key: AcmeHeaderBackgroundKey | undefined,
+): string {
+  switch (key) {
+    case "tinted":
+      return "bg-background bg-[image:linear-gradient(hsl(var(--primary)/0.06),hsl(var(--primary)/0.06))]";
+    case "gradient":
+      return "bg-background bg-[image:linear-gradient(to_bottom,hsl(var(--primary)/0.12),transparent)]";
+    case "plain":
+    default:
+      return "bg-background";
+  }
+}
 
 export type AcmeTheme = {
   accentColor: AcmeAccentColorKey;

@@ -52,8 +52,15 @@ export const LangfuseLogo = ({
           alt="ACME Logo"
         />
       </div>
-      <span className="ml-2 truncate text-base font-extrabold tracking-wide text-white group-data-[collapsible=icon]:hidden">
-        CAI<span className="text-sidebar-accent-foreground">RO</span>
+      {/* ACME (CHG-2026-081): "AI" in the accent colour, C and RO in white.
+          The wordmark keeps its extra-bold logo weight: it is lettering, not
+          body type. */}
+      <span
+        title="CAIRO"
+        // eslint-disable-next-line @repo/no-raw-font-weight
+        className="ml-2 truncate text-base font-extrabold tracking-wide text-white group-data-[collapsible=icon]:hidden"
+      >
+        C<span className="text-sidebar-accent-foreground">AI</span>RO
       </span>
       <div className="hidden scale-120 group-data-[collapsible=icon]:block">
         <LangfuseIcon size={28} />
