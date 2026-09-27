@@ -4967,3 +4967,15 @@ Documentation only (Tier 2). The owner accepted **ADR-0013** (guardrail event hi
 **Tests:** new client tests cover collapsing and the button labels (`nav-main.clienttest.tsx`; all 5 fail against the old code), the section order and the flattened list (`groupNavigationItems.clienttest.ts`), and an opaque top bar for every preset (`acmeThemePresets.clienttest.ts`). The pinned sections test in `acme-role-navigation.clienttest.tsx` now checks the new names and membership; each role's entries are unchanged.
 
 **Deployment status:** not deployed.
+
+## 2026-09-27 — Console navigation live in dev; ADR-0016 accepted by the owner (CHG-2026-081)
+
+Documentation only (Tier 2).
+- **Released:** CHG-2026-081 (#225) is live in dev as console `acme-v4.38.0.23`.
+- **Gate C passed 2026-09-27**, read-only at desktop and phone widths:
+  - the seven sidebar sections are in the new order, and every section collapses and reopens, including the one holding the current page;
+  - the section labels work from the keyboard;
+  - on all four Logs tabs, scrolled to the end, the top bar stays opaque;
+  - Settings, UI Customization, Support and the Ctrl K menu work;
+  - the wordmark colours "AI".
+- **Accepted:** the owner accepted **ADR-0016** on 2026-09-27. The ADR header, the ADR index and the register say so.
