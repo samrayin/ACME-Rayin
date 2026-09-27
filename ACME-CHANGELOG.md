@@ -5044,3 +5044,7 @@ Documentation only (Tier 2). ADR-0016 §10 left open whether Contact ACME Suppor
 ## 2026-09-27 — Sidebar section names in white (CHG-2026-081 b)
 
 Tier 1 part b of CHG-2026-081 (ADR-0016 §11). The sidebar's section names (Governance Controls, Observability, Evaluation, Prompt Management, Reports / Logs, Settings, Support) are drawn in the full sidebar text colour, white, instead of the label component's 70% grey, on the owner's request of 2026-09-27. Only `nav-main.tsx` changes; a client test checks the class. Rollback: revert the commit and redeploy the previous console image. **Deployment status:** not deployed.
+
+## 2026-09-27 — Sidebar section names actually white (CHG-2026-081 c)
+
+Tier 1 part c of CHG-2026-081 (ADR-0016 §11). **Correction:** part b (`acme-v4.38.0.24`) gave the section names the full sidebar text colour, which the check after release found to be a light slate grey in this theme (`hsl(212 20% 78%)`), not white; its entry above says white, and that is wrong. Part c sets the section names to white (`text-white`, as the CAIRO wordmark), readable on the dark sidebar in both themes. Only `nav-main.tsx` changes; the client test checks the class. Rollback: revert the commit and redeploy the previous console image. **Deployment status:** not deployed.

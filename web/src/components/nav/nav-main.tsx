@@ -134,12 +134,14 @@ export function NavMain({
               <SidebarGroup>
                 <CollapsibleTrigger asChild>
                   {/* A real button (not the label's default div), so the
-                      section toggles from the keyboard too. CHG-2026-081 b:
-                      the section names in the full sidebar text colour
-                      (white), not the label's default 70% grey. */}
+                      section toggles from the keyboard too. CHG-2026-081 c:
+                      section names in white, as the owner asked. The sidebar
+                      text colour (part b) is a light slate grey, not white;
+                      the sidebar is dark in both themes, as for the
+                      wordmark. */}
                   <SidebarGroupLabel
                     asChild
-                    className="text-sidebar-foreground w-full cursor-pointer"
+                    className="w-full cursor-pointer text-white"
                   >
                     <button type="button">
                       {group}

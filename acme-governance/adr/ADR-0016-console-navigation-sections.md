@@ -139,12 +139,20 @@ it.
 - **The Logs tables' own scroll box** (keeping tabs and filters in view) is left for a
   separate change if wanted.
 
-## 11. Addendum 2026-09-27: part b, section names in white
+## 11. Addendum 2026-09-27: parts b and c, section names in white
 
 The owner asked on 2026-09-27, from a screenshot of the sidebar, for the section names to
 be white instead of grey. The shared label component draws them in the sidebar text colour
-at 70% opacity; the sidebar now gives its section labels the full sidebar text colour
-(white on the sidebar), so they read as clearly as the entries under them. The expand and
-collapse arrow follows the same colour. Only the ACME sidebar code changes (`nav-main.tsx`);
-the shared label component is untouched, so other labels keep their style. A client test
-checks the class. Part b of CHG-2026-081; no other decision in this ADR changes.
+at 70% opacity.
+
+- **Part b** gave the labels the full sidebar text colour. The check after release
+  (`acme-v4.38.0.24`) found that colour is a light slate grey in this theme
+  (`hsl(212 20% 78%)`), the same as the entries under it, not white. The earlier wording of
+  this section, and the part b changelog entry, called it white; that was wrong.
+- **Part c** sets the section names to white (`text-white`), as the CAIRO wordmark already
+  is. The sidebar is dark in both themes (navy in light, near-black in dark), so white reads
+  in both. The expand and collapse arrow follows the same colour.
+
+Only the ACME sidebar code changes (`nav-main.tsx`); the shared label component is
+untouched, so other labels keep their style. A client test checks the class. No other
+decision in this ADR changes.
