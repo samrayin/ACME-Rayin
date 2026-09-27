@@ -1158,11 +1158,11 @@ export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
             </Table>
           )}
 
+          {/* Left-aligned: the ACME AI launcher (AcmeChatWidget) is fixed
+              over the bottom-right corner of every page, so a right-aligned
+              pager at the end of the list would sit under it. */}
           {(cursors.length > 0 || nextCursor) && (
-            <div className="flex items-center justify-end gap-2 text-sm">
-              <span className="text-muted-foreground">
-                Page {cursors.length + 1}
-              </span>
+            <div className="flex items-center justify-start gap-2 text-sm">
               <Button
                 variant="outline"
                 size="sm"
@@ -1181,6 +1181,9 @@ export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
               >
                 Older
               </Button>
+              <span className="text-muted-foreground">
+                Page {cursors.length + 1}
+              </span>
             </div>
           )}
         </CardContent>
