@@ -4895,3 +4895,11 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 **Tests:** none added. The change is one alignment class, and a test would only restate it. It is checked in dev after deploy: at 1440×900, scrolled to the end, the element under **Older**'s centre must be the button itself.
 
 **Deployment status:** not deployed.
+
+## 2026-09-27 — Retrospective ADR-0014 for CHG-2026-078; register statuses brought up to date
+
+Documentation only (Tier 2).
+- **ADR-0014** records CHG-2026-078 (Bahrain and Arabic-language coverage in the guardrails), which was built and deployed as Tier 1 without the ADR that `CHANGE-PROCEDURE.md` §1 requires. The ADR says so plainly. The exact detection rules, known limits and test results stay in the private service repository and deployment record.
+- **Register:**
+  - CHG-2026-078: merged and in dev.
+  - CHG-2026-079: parts a and b merged and in dev as `acme-v4.38.0.21`.
