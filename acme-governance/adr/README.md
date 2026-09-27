@@ -23,3 +23,4 @@ are marked as such and never claim approvals that were not recorded at the time.
 | [ADR-0015](ADR-0015-acme-ai-entry-point-top-bar.md) | The ACME AI entry point moves from a floating corner button to the top bar (CHG-2026-080) | Forward | Accepted 2026-09-27 by the owner | 2026-09-27 |
 | [ADR-0016](ADR-0016-console-navigation-sections.md) | Console navigation: section names, order, collapsing, and an opaque top bar (CHG-2026-081) | Forward | Accepted 2026-09-27 by the owner | 2026-09-27 |
 | [ADR-0017](ADR-0017-remove-assurance-preview.md) | Removing the Assurance (Preview) demo (CHG-2026-083) | Forward | Proposed | 2026-09-27 |
+| [ADR-0018](ADR-0018-logs-one-table-pattern.md) | One table pattern for the Logs page (CHG-2026-084) | Forward | Proposed | 2026-09-27 |

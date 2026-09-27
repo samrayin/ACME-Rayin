@@ -8,7 +8,8 @@
  *    in the URL or in any query cache (mutation results are not cached).
  *  - Nothing else the server returns contains key material.
  */
-import { Fragment, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { type PaginationState } from "@tanstack/react-table";
 import { useSession } from "next-auth/react";
 import {
   Card,
@@ -61,6 +62,15 @@ import {
   TabsBarTrigger,
 } from "@/src/components/ui/tabs-bar";
 import { api, type RouterOutputs } from "@/src/utils/api";
+import { type LangfuseColumnDef } from "@/src/components/table/types";
+import {
+  ACME_LOG_DEFAULT_PAGE_SIZE,
+  ACME_LOG_PAGE_SIZES,
+  AcmeLogDetailDialog,
+  AcmeLogTable,
+  asyncTableData,
+  nextPaginationState,
+} from "@/src/features/acme-enhancements/components/AcmeLogTable";
 import { useHasProjectAccess } from "@/src/features/rbac";
 import { showErrorToast, showSuccessToast } from "@/src/features/notifications";
 import { GatewayModelsCard } from "@/src/features/acme-enhancements/components/AcmeLitellmModelManager";
@@ -1602,144 +1612,171 @@ function SpendTab({ projectId }: { projectId: string }) {
 // Change record
 // ---------------------------------------------------------------------------
 
-// CHG-2026-073: shown under Security > Logs as "Gateway changes".
+type GatewayChangeRow =
+  RouterOutputs["acmeLitellm"]["events"]["events"][number];
+
+function PhaseBadge({ row }: { row: GatewayChangeRow }) {
+  if (row.phase === "INTENT") return <Badge variant="outline">Intent</Badge>;
+  if (row.outcome === "SUCCESS") {
+    return <Badge variant="success">Succeeded</Badge>;
+  }
+  if (row.outcome === "PARTIAL") return <Badge variant="error">Partial</Badge>;
+  return <Badge variant="error">Failed</Badge>;
+}
+
+const actorName = (row: GatewayChangeRow) =>
+  row.actor.name ?? row.actor.email ?? row.actor.id;
+const targetLabel = (row: GatewayChangeRow) =>
+  row.resourceType === "litellmTeam" ? "team" : "key";
+
+const GATEWAY_CHANGE_COLUMNS: LangfuseColumnDef<GatewayChangeRow>[] = [
+  {
+    accessorKey: "eventTime",
+    header: "Time",
+    size: 180,
+    cell: ({ row }) => when(row.original.eventTime),
+  },
+  {
+    accessorKey: "actor",
+    header: "Who",
+    cell: ({ row }) => actorName(row.original),
+  },
+  {
+    accessorKey: "actorProjectRole",
+    header: "Role",
+    cell: ({ row }) =>
+      row.original.actorProjectRole ?? row.original.actorOrgRole ?? "—",
+  },
+  {
+    accessorKey: "action",
+    header: "Action",
+    cell: ({ row }) => (
+      <span className="font-mono text-xs">{row.original.action}</span>
+    ),
+  },
+  {
+    accessorKey: "phase",
+    header: "Phase",
+    cell: ({ row }) => <PhaseBadge row={row.original} />,
+  },
+  {
+    accessorKey: "resourceId",
+    header: "Target",
+    cell: ({ row }) => (
+      <span className="font-mono text-xs">
+        {targetLabel(row.original)} {row.original.resourceId.slice(0, 8)}
+      </span>
+    ),
+  },
+  {
+    accessorKey: "correlationId",
+    header: "Correlation",
+    cell: ({ row }) => (
+      <span className="font-mono text-xs">
+        {row.original.correlationId.slice(0, 8)}
+      </span>
+    ),
+  },
+];
+
+// CHG-2026-073: shown under Reports / Logs > Logs as "Gateway changes".
+// CHG-2026-084 (ADR-0018): rendered through AcmeLogTable, like every Logs tab;
+// a row opens its details instead of expanding in place.
 export function EventsTab({ projectId }: { projectId: string }) {
-  const [page, setPage] = useState(0);
-  const limit = 50;
-  const events = api.acmeLitellm.events.useQuery({ projectId, page, limit });
-  const [open, setOpen] = useState<string | null>(null);
+  const [page, setPage] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: ACME_LOG_DEFAULT_PAGE_SIZE,
+  });
+  const events = api.acmeLitellm.events.useQuery({
+    projectId,
+    page: page.pageIndex,
+    limit: page.pageSize,
+  });
+  const [selected, setSelected] = useState<GatewayChangeRow | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const totalCount = events.data?.totalCount;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-sm">Change record</CardTitle>
-        <p className="text-muted-foreground text-xs">
-          Every change CAIRO made to the gateway for this project. An
-          &quot;intent&quot; row is written before the gateway is called and an
-          &quot;outcome&quot; row before the user sees a result; rows of one
-          operation share a correlation ID. CAIRO only adds rows here; it never
-          edits or deletes them. It never contains a key.
-        </p>
-      </CardHeader>
-      <CardContent className="pt-0">
-        {events.isLoading ? (
-          <p className="text-muted-foreground text-sm">Loading…</p>
-        ) : events.error ? (
-          <Banner tone="error" title="Could not load the change record">
-            {events.error.message}
-          </Banner>
-        ) : events.data!.events.length === 0 ? (
-          <p className="text-muted-foreground text-sm">Nothing recorded yet.</p>
-        ) : (
-          <>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Who</TableHead>
-                  <TableHead>Action</TableHead>
-                  <TableHead>Phase</TableHead>
-                  <TableHead>Target</TableHead>
-                  <TableHead>Correlation</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {events.data!.events.map((e) => (
-                  <Fragment key={e.id}>
-                    <TableRow>
-                      <TableCell className="text-xs whitespace-nowrap">
-                        {when(e.eventTime)}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {e.actor.name ?? e.actor.email ?? e.actor.id}
-                        <div className="text-muted-foreground">
-                          {e.actorProjectRole ?? e.actorOrgRole ?? ""}
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-mono text-xs">
-                        {e.action}
-                      </TableCell>
-                      <TableCell>
-                        {e.phase === "INTENT" ? (
-                          <Badge variant="outline">Intent</Badge>
-                        ) : e.outcome === "SUCCESS" ? (
-                          <Badge variant="success">Succeeded</Badge>
-                        ) : e.outcome === "PARTIAL" ? (
-                          <Badge variant="error">Partial</Badge>
-                        ) : (
-                          <Badge variant="error">Failed</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="font-mono text-xs">
-                        {e.resourceType === "litellmTeam" ? "team" : "key"}{" "}
-                        {e.resourceId.slice(0, 8)}
-                      </TableCell>
-                      <TableCell className="font-mono text-xs">
-                        {e.correlationId.slice(0, 8)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setOpen(open === e.id ? null : e.id)}
-                        >
-                          {open === e.id ? "Hide" : "Details"}
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                    {open === e.id ? (
-                      <TableRow>
-                        <TableCell colSpan={7}>
-                          <pre className="bg-muted overflow-x-auto rounded p-3 text-xs">
-                            {JSON.stringify(
-                              {
-                                correlationId: e.correlationId,
-                                resourceId: e.resourceId,
-                                error: e.errorMessage,
-                                before: e.before,
-                                after: e.after,
-                              },
-                              null,
-                              2,
-                            )}
-                          </pre>
-                        </TableCell>
-                      </TableRow>
-                    ) : null}
-                  </Fragment>
-                ))}
-              </TableBody>
-            </Table>
-            <div className="mt-3 flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">
-                {page * limit + 1}–
-                {Math.min((page + 1) * limit, events.data!.totalCount)} of{" "}
-                {events.data!.totalCount}
-              </span>
-              <span className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={page === 0}
-                  onClick={() => setPage(page - 1)}
-                >
-                  Newer
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={(page + 1) * limit >= events.data!.totalCount}
-                  onClick={() => setPage(page + 1)}
-                >
-                  Older
-                </Button>
-              </span>
-            </div>
-          </>
-        )}
-      </CardContent>
-    </Card>
+    <>
+      <AcmeLogTable
+        tableName="acmeGatewayChanges"
+        description='Every change CAIRO made to the gateway for this project. An "intent" row is written before the gateway is called and an "outcome" row before the user sees a result; rows of one operation share a correlation ID. CAIRO only adds rows here; it never edits or deletes them, and they never contain a key. Select a row for details.'
+        summary={
+          totalCount !== undefined ? (
+            <span className="text-muted-foreground text-sm">
+              {totalCount.toLocaleString()}{" "}
+              {totalCount === 1 ? "change" : "changes"}
+            </span>
+          ) : null
+        }
+        columns={GATEWAY_CHANGE_COLUMNS}
+        data={asyncTableData({
+          isPending: events.isPending,
+          isError: events.isError,
+          error: events.error,
+          data: events.data?.events,
+        })}
+        isFetching={events.isFetching && !events.isPending}
+        pagination={{
+          totalCount: totalCount ?? null,
+          state: page,
+          options: ACME_LOG_PAGE_SIZES,
+          onChange: (update) => {
+            const next = nextPaginationState(update, page);
+            setPage(
+              next.pageSize === page.pageSize
+                ? next
+                : { pageIndex: 0, pageSize: next.pageSize },
+            );
+          },
+        }}
+        onRowClick={(row) => {
+          setSelected(row);
+          setDetailOpen(true);
+        }}
+        noResultsMessage="Nothing recorded yet."
+      />
+      {selected ? (
+        <AcmeLogDetailDialog
+          open={detailOpen}
+          onClose={() => setDetailOpen(false)}
+          title="Gateway change"
+          description="One row of CAIRO's append-only change record for the gateway."
+          fields={[
+            ["Time", when(selected.eventTime)],
+            ["Who", actorName(selected)],
+            ["Role", selected.actorProjectRole ?? selected.actorOrgRole ?? "—"],
+            [
+              "Action",
+              <span key="action" className="font-mono text-xs">
+                {selected.action}
+              </span>,
+            ],
+            ["Phase", <PhaseBadge key="phase" row={selected} />],
+            [
+              "Target",
+              <span key="target" className="font-mono text-xs">
+                {targetLabel(selected)} {selected.resourceId}
+              </span>,
+            ],
+            [
+              "Correlation ID",
+              <span key="correlation" className="font-mono text-xs">
+                {selected.correlationId}
+              </span>,
+            ],
+            ["Error", selected.errorMessage ?? "—"],
+          ]}
+          json={{
+            correlationId: selected.correlationId,
+            resourceId: selected.resourceId,
+            error: selected.errorMessage,
+            before: selected.before,
+            after: selected.after,
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 

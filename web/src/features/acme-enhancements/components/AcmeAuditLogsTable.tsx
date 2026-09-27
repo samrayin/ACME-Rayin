@@ -5,26 +5,30 @@
  * web/src/ee/). Does not import anything from web/src/ee/features/
  * audit-log-viewer/, which is EE-licensed. See acmeAuditLogsRouter.ts for
  * the licensing rationale.
+ *
+ * CHG-2026-084: rendered through AcmeLogTable, the pattern every Logs tab
+ * shares. This table was the pattern the other three were brought in line with.
  */
-import { DataTable } from "@/src/components/table/data-table";
 import { type LangfuseColumnDef } from "@/src/components/table/types";
-import { api } from "@/src/utils/api";
+import { api, type RouterOutputs } from "@/src/utils/api";
 import { safeExtract } from "@/src/utils/map-utils";
 import { useQueryParams, withDefault, NumberParam } from "use-query-params";
 import { ConnectedIOTableCell } from "@/src/components/table/ConnectedIOTableCell";
 import { Avatar } from "@/src/components/design-system/Avatar/Avatar";
 import { cn } from "@/src/utils/tailwind";
-import { useRowHeightLocalStorage } from "@/src/components/table/data-table-row-height-switch";
-import { DataTableToolbar } from "@/src/components/table/data-table-toolbar";
-import { type RouterOutputs } from "@/src/utils/api";
-import { SettingsTableCard } from "@/src/components/layouts/settings-table-card";
+import { type RowHeight } from "@/src/components/table/data-table-row-height-switch";
+import {
+  ACME_LOG_DEFAULT_PAGE_SIZE,
+  ACME_LOG_PAGE_SIZES,
+  AcmeLogTable,
+} from "@/src/features/acme-enhancements/components/AcmeLogTable";
 
 type AcmeAuditLogRow = RouterOutputs["acmeAuditLogs"]["all"]["data"][number];
 
 export function AcmeAuditLogsTable({ projectId }: { projectId: string }) {
   const [paginationState, setPaginationState] = useQueryParams({
     pageIndex: withDefault(NumberParam, 0),
-    pageSize: withDefault(NumberParam, 50),
+    pageSize: withDefault(NumberParam, ACME_LOG_DEFAULT_PAGE_SIZE),
   });
 
   const auditLogs = api.acmeAuditLogs.all.useQuery({
@@ -33,12 +37,10 @@ export function AcmeAuditLogsTable({ projectId }: { projectId: string }) {
     limit: paginationState.pageSize,
   });
 
-  const [rowHeight, setRowHeight] = useRowHeightLocalStorage(
-    "acmeAuditLogs",
-    "s",
-  );
-
-  const columns: LangfuseColumnDef<AcmeAuditLogRow>[] = [
+  // Before/After show one line in small rows and wrap in taller ones.
+  const columns = (
+    rowHeight: RowHeight,
+  ): LangfuseColumnDef<AcmeAuditLogRow>[] => [
     {
       accessorKey: "createdAt",
       header: "Time",
@@ -48,7 +50,7 @@ export function AcmeAuditLogsTable({ projectId }: { projectId: string }) {
       accessorKey: "actor",
       header: "Actor",
       headerTooltip: {
-        description: "The actor within Langfuse who performed the action.",
+        description: "The user or API key that performed the action.",
       },
       cell: (row) => {
         const actor = row.getValue() as AcmeAuditLogRow["actor"];
@@ -109,43 +111,44 @@ export function AcmeAuditLogsTable({ projectId }: { projectId: string }) {
     },
   ];
 
+  const totalCount = auditLogs.data?.totalCount;
+
   return (
-    <>
-      <DataTableToolbar
-        tableName="acmeAuditLogs"
-        columns={columns}
-        rowHeight={rowHeight}
-        setRowHeight={setRowHeight}
-        className="px-0"
-      />
-      <SettingsTableCard>
-        <DataTable
-          tableName="acmeAuditLogs"
-          columns={columns}
-          data={
-            auditLogs.isPending
-              ? { isLoading: true, isError: false }
-              : auditLogs.isError
-                ? {
-                    isLoading: false,
-                    isError: true,
-                    error: auditLogs.error.message,
-                  }
-                : {
-                    isLoading: false,
-                    isError: false,
-                    data: safeExtract(auditLogs.data, "data", []),
-                  }
-          }
-          pagination={{
-            totalCount: auditLogs.data?.totalCount ?? 0,
-            onChange: setPaginationState,
-            state: paginationState,
-          }}
-          rowHeight={rowHeight}
-          cellPadding="comfortable"
-        />
-      </SettingsTableCard>
-    </>
+    <AcmeLogTable
+      tableName="acmeAuditLogs"
+      description="Changes made in this project: who made them, to what, and when. Newest first."
+      summary={
+        totalCount !== undefined ? (
+          <span className="text-muted-foreground text-sm">
+            {totalCount.toLocaleString()}{" "}
+            {totalCount === 1 ? "entry" : "entries"}
+          </span>
+        ) : null
+      }
+      columns={columns}
+      data={
+        auditLogs.isPending
+          ? { isLoading: true, isError: false }
+          : auditLogs.isError
+            ? {
+                isLoading: false,
+                isError: true,
+                error: auditLogs.error.message,
+              }
+            : {
+                isLoading: false,
+                isError: false,
+                data: safeExtract(auditLogs.data, "data", []),
+              }
+      }
+      isFetching={auditLogs.isFetching && !auditLogs.isPending}
+      pagination={{
+        totalCount: totalCount ?? 0,
+        onChange: setPaginationState,
+        state: paginationState,
+        options: ACME_LOG_PAGE_SIZES,
+      }}
+      noResultsMessage="Nothing recorded yet."
+    />
   );
 }
