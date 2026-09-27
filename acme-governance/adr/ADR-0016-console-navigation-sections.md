@@ -4,13 +4,13 @@
 |---|---|
 | **Change ID** | CHG-2026-081 · Tier 1 (client-visible on every console page) |
 | **Owner** | Anees Ur Rahman |
-| **Affected release** | Not yet released |
-| **Status** | Proposed |
+| **Affected release** | `acme-v4.38.0.23` |
+| **Status** | Accepted 2026-09-27 by the owner, Anees Ur Rahman ("update the register and mark ADR-0016 accepted") |
 | **Type** | Forward |
 | **Date** | 2026-09-27 |
 | **Author** | Claude session (Opus 5.5) for Anees Ur Rahman |
-| **Approval** | Pending. The owner asked for the change on 2026-09-27; merging and the dev deploy stay with the owner |
-| **Commits / tag** | See the PR |
+| **Approval** | The owner asked for the change on 2026-09-27, merged #225, approved the dev deploy ("merged #225, deploy to dev and run the checks"), and accepted the ADR on 2026-09-27 |
+| **Commits / tag** | `45d63243d` (#225) · `acme-v4.38.0.23` |
 
 ## 1. Purpose
 
@@ -130,7 +130,7 @@ it.
 |---|---|---|
 | A: leave dev | Passed on the build workstation | `tsc --noEmit`: only the 2 known errors in unmodified Enterprise files. ESLint `--max-warnings 0` and Prettier on every changed file: clean. `knip`: only the 2 findings already on `main`. Client tests: `nav-main.clienttest.tsx` 5 (all 5 fail against the old sidebar code), `groupNavigationItems.clienttest.ts` 3, `acmeThemePresets.clienttest.ts` 4, `acme-role-navigation.clienttest.tsx` 11 (each role's entries unchanged). Not caused by this change, and the same on `main`: `app-shell-chrome.clienttest.tsx` 3 (no tRPC context) and one case in `V4MigrationEntryPoints.clienttest.tsx`, which looks for a route titled "Upgrade Plan" that is titled "Upgrade" |
 | B: staging | `Staging: not available.` | No database change |
-| C: post-deploy (dev) | Planned | Read-only, in the owner's session: the section names and order; each section collapses and expands, including the one holding the current page, by mouse and keyboard; Settings, UI Customization, Support (opens the help drawer) and Contact ACME Support work; each Logs tab scrolled to its end with nothing showing through the top bar, and the top bar's computed background opaque; the wordmark's colours; the same at phone width |
+| C: post-deploy (dev) | Passed 2026-09-27 on `acme-v4.38.0.23` | Read-only in the owner's session at 1440×900 and 375×812; the sidebar's own collapse state was restored afterwards. **Sidebar:** the seven sections in the order above, each with the entries in §3, and nothing left at the bottom. Every label is a `button`. All seven collapse and reopen, including Reports / Logs while on the Logs page. On that section, a mouse click collapsed it, Enter reopened it, Space collapsed it, and Tab moved to the next section. After a reload, the section holding the current page reopened, and a section collapsed by hand stayed collapsed. **Logs:** each of the four tabs was scrolled to its end. The top bar's computed background is fully opaque, and it paints over the content at the breadcrumb and title. **Entries:** Settings, UI Customization and Support (the help drawer) work. Contact ACME Support is a mail link; it was not clicked. The Ctrl K menu follows the new order and includes UI Customization. **Wordmark:** "AI" is in the accent colour; "C" and "RO" are white in the sidebar and in the text colour on the white mobile top bar. **Phone:** the mobile top bar is opaque, and the sidebar sheet shows the seven sections, which collapse and reopen |
 
 ## 10. Assumptions and open questions
 
