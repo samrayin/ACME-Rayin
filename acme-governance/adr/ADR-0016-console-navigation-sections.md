@@ -134,7 +134,7 @@ it.
 
 ## 10. Assumptions and open questions
 
-- **Contact ACME Support** is placed in Support, not Settings. The owner can move it.
+- **Contact ACME Support stays in Support.** Decided by the owner on 2026-09-27 ("keep Contact ACME Support under Support").
 - **The version label** stays in the renamed Settings section.
 - **The Logs tables' own scroll box** (keeping tabs and filters in view) is left for a
   separate change if wanted.

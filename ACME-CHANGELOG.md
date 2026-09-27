@@ -4979,3 +4979,7 @@ Documentation only (Tier 2).
   - Settings, UI Customization, Support and the Ctrl K menu work;
   - the wordmark colours "AI".
 - **Accepted:** the owner accepted **ADR-0016** on 2026-09-27. The ADR header, the ADR index and the register say so.
+
+## 2026-09-27 — ADR-0016: Contact ACME Support stays in the Support section (CHG-2026-081)
+
+Documentation only (Tier 2). ADR-0016 §10 left open whether Contact ACME Support belongs in Settings or Support. The owner decided on 2026-09-27 that it stays in Support, where CHG-2026-081 put it. No code change.
