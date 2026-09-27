@@ -5297,3 +5297,18 @@ Test only, no product code. The pre-merge review of #259 named two cases without
 - an instance admin whose project role is Security Analyst, and who is listed, gets `canEdit` true from `getConfig`, and `updateConfig` lets the call through to the save. Instance admins skip the content-free allow-lists, so the card and the server agree.
 
 Rollback: revert the commit.
+
+## 2026-10-02 — Continuous Assurance card hidden (CHG-2026-082)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-082 · Tier 2 (removes one card; no procedure, scope or data change) · owner: Anees Ur Rahman |
+| **Dates** | Written 2026-09-27, rebased on main 2026-10-02. Dev: not deployed · Prod: none exists |
+| **Impact** | The Guardrails page no longer shows the Continuous Assurance card |
+| **Rollback** | Set `SHOW_CONTINUOUS_ASSURANCE` back to `true` and redeploy, or redeploy the previous console image. No data change |
+
+**Why:** the card says the jailbreak rail's promptfoo red-team suite is "checked on a schedule", but nothing runs promptfoo on a schedule. The two runs so far (2026-09-20 and -21) were manual, used the benign corpus with score export switched off on purpose, and wrote their results inside a pod that was then deleted. No `promptfoo-pass` score has ever reached CAIRO, so the card could only show "Loading…" or an empty state. A card that promises a measurement nobody makes is worse than no card (owner request 2026-09-27).
+
+**What:** `AcmeGuardrailsTable.tsx` gains a `SHOW_CONTINUOUS_ASSURANCE` constant, set to `false`, that gates the card. The card's code and its queries are kept, and they no longer run while it is hidden. It returns by setting the constant to `true` once a scheduled run pushes its scores to the project.
+
+**Deployment status:** not deployed.
