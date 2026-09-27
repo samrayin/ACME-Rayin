@@ -18,7 +18,7 @@ const headerProps = {
   title: "Logs",
   help: {
     description:
-      "Security > Logs: the project's audit log, guardrail decisions, and the " +
+      "Reports / Logs > Logs: the project's audit log, guardrail decisions, and the " +
       "LLM gateway's change record and request log, in one place.",
   },
 };
@@ -26,9 +26,9 @@ const headerProps = {
 const TABS = ["audit", "guardrails", "gateway-changes", "gateway-requests"];
 
 /**
- * ACME (CHG-2026-073): Security > Logs. One page, one tab per log, each tab
- * shown only to roles that may read it. The same components and procedures
- * as before; only their home moved.
+ * ACME (CHG-2026-073): Logs, one page with one tab per log, each tab shown
+ * only to roles that may read it. The same components and procedures as
+ * before; only their home moved. Under Reports / Logs since CHG-2026-081.
  */
 function AcmeSecurityLogs({ projectId }: { projectId: string }) {
   const router = useRouter();

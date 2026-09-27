@@ -249,7 +249,7 @@ export function AppSidebar({
         <NavMain
           items={navItems}
           groupExtraContent={{
-            [RouteGroup.AcmeEnhancements]: (
+            [RouteGroup.Settings]: (
               <div className="px-2 pt-1 pb-2 group-data-[collapsible=icon]:hidden">
                 <VersionLabel state={versionState} />
               </div>

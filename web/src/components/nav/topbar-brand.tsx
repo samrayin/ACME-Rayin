@@ -68,8 +68,11 @@ export const TopbarBrand = ({
               alt="ACME Logo"
             />
           </div>
+          {/* ACME (CHG-2026-081): "AI" coloured, as in the sidebar wordmark,
+              which keeps its extra-bold logo weight. */}
+          {/* eslint-disable-next-line @repo/no-raw-font-weight */}
           <span className="text-foreground text-sm font-extrabold tracking-wide">
-            CAI<span className="text-primary">RO</span>
+            C<span className="text-primary">AI</span>RO
           </span>
         </>
       ) : (

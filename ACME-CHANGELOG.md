@@ -4942,3 +4942,28 @@ Documentation only (Tier 2).
 ## 2026-09-27 — ADR-0013 and ADR-0015 accepted by the owner
 
 Documentation only (Tier 2). The owner accepted **ADR-0013** (guardrail event history, CHG-2026-079) and **ADR-0015** (ACME AI in the top bar, CHG-2026-080) on 2026-09-27. Each ADR's header now records its status, approval, affected release, and commits and tags, and the ADR index and the register say Accepted. ADR-0013's gate C check 4 (the Security Analyst view) is still open.
+
+## 2026-09-27 — Console navigation: sections renamed and reordered, every section collapses, opaque top bar (CHG-2026-081)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-081 · Tier 1 (client-visible on every console page) · ADR-0016 · owner: Anees Ur Rahman |
+| **Dates** | Written 2026-09-27. Dev: not deployed · Prod: none exists |
+| **Impact** | The sidebar's sections are renamed and reordered, Settings and Support become sections, every section collapses, the page top bar no longer lets a long page show through, and the CAIRO wordmark colours "AI" |
+| **Rollback** | Revert the commit and redeploy the previous console image (`acme-v4.38.0.22`). No data change |
+
+**Why:** the owner's request of 2026-09-27. The Security section would not collapse, because the sidebar forced the section holding the current page open. On three of the four Logs tabs, rows scrolling up showed through the organization and project names, because the "Soft tint" and "Gradient" top bar presets were mostly transparent.
+
+**What:**
+- **Sections, top to bottom:** Governance Controls (was AI Controls), Observability, Evaluation, Prompt Management, Reports / Logs (was Security), Settings (was ACME Enhancements) and Support (new). The order is set explicitly in `ROUTE_GROUP_ORDER`.
+- **Settings section:** the default Settings entry moves in from the bottom of the sidebar, beside UI Customization and the version label.
+- **Support section:** the default Support entry moves in from the bottom of the sidebar. Contact ACME Support moves here from the old ACME Enhancements section.
+- **Collapsing:** the user's toggle always wins. The section holding the current page opens once on arrival and can then be collapsed. Each section label is a real button, so it also works from the keyboard.
+- **Ctrl K menu:** its list follows the same order and now covers every section, so UI Customization appears there.
+- **Top bar:** the tinted and gradient presets are drawn over the solid page background, so they look the same and nothing shows through.
+- **Wordmark:** "C" and "RO" in white, "AI" in colour.
+- **Text:** the Logs help text, the old audit-logs redirect notice and the ACME AI knowledge base name the new sections.
+
+**Tests:** new client tests cover collapsing and the button labels (`nav-main.clienttest.tsx`; all 5 fail against the old code), the section order and the flattened list (`groupNavigationItems.clienttest.ts`), and an opaque top bar for every preset (`acmeThemePresets.clienttest.ts`). The pinned sections test in `acme-role-navigation.clienttest.tsx` now checks the new names and membership; each role's entries are unchanged.
+
+**Deployment status:** not deployed.
