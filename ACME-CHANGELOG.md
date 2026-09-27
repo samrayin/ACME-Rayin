@@ -4924,3 +4924,17 @@ Documentation only (Tier 2).
 **Tests:** a new client test (`AcmeChatLauncher.clienttest.tsx`) covers opening from the launcher, focus, closing by Escape and by the launcher, and hiding the launcher from roles without access.
 
 **Deployment status:** not deployed.
+
+## 2026-09-27 — Register statuses brought up to date for CHG-2026-075 to -080
+
+Documentation only (Tier 2).
+- **Register:**
+  - CHG-2026-075 and -077: merged; test scaffolding and docs only.
+  - CHG-2026-076: merged and live in dev as `.19`; gate C with the owner.
+  - CHG-2026-078: merged and live in dev (`rayin-guardrails` `v0.3.0`, console `.19`).
+  - CHG-2026-079: parts a and b live in dev as `.20` and `.21`.
+  - CHG-2026-080: live in dev as `.22`.
+  - ADR-0012 to -0015: written and merged. None is marked Accepted: acceptance is the owner's to record.
+- **Gate C evidence:**
+  - ADR-0013: passed, except the Security Analyst check, which needs that role's sign-in.
+  - ADR-0015: the repeated 27-page sweep passed.
