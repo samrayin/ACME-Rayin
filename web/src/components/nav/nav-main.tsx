@@ -134,8 +134,13 @@ export function NavMain({
               <SidebarGroup>
                 <CollapsibleTrigger asChild>
                   {/* A real button (not the label's default div), so the
-                      section toggles from the keyboard too. */}
-                  <SidebarGroupLabel asChild className="w-full cursor-pointer">
+                      section toggles from the keyboard too. CHG-2026-081 b:
+                      the section names in the full sidebar text colour
+                      (white), not the label's default 70% grey. */}
+                  <SidebarGroupLabel
+                    asChild
+                    className="text-sidebar-foreground w-full cursor-pointer"
+                  >
                     <button type="button">
                       {group}
                       <ChevronRight className="ml-auto size-3.5 shrink-0 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />

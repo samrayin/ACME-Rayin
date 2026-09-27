@@ -5040,3 +5040,7 @@ Documentation only (Tier 2). ADR-0016 §10 left open whether Contact ACME Suppor
 - the details panel.
 
 **Deployment status:** not deployed.
+
+## 2026-09-27 — Sidebar section names in white (CHG-2026-081 b)
+
+Tier 1 part b of CHG-2026-081 (ADR-0016 §11). The sidebar's section names (Governance Controls, Observability, Evaluation, Prompt Management, Reports / Logs, Settings, Support) are drawn in the full sidebar text colour, white, instead of the label component's 70% grey, on the owner's request of 2026-09-27. Only `nav-main.tsx` changes; a client test checks the class. Rollback: revert the commit and redeploy the previous console image. **Deployment status:** not deployed.

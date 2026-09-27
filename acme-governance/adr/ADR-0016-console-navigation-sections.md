@@ -138,3 +138,13 @@ it.
 - **The version label** stays in the renamed Settings section.
 - **The Logs tables' own scroll box** (keeping tabs and filters in view) is left for a
   separate change if wanted.
+
+## 11. Addendum 2026-09-27: part b, section names in white
+
+The owner asked on 2026-09-27, from a screenshot of the sidebar, for the section names to
+be white instead of grey. The shared label component draws them in the sidebar text colour
+at 70% opacity; the sidebar now gives its section labels the full sidebar text colour
+(white on the sidebar), so they read as clearly as the entries under them. The expand and
+collapse arrow follows the same colour. Only the ACME sidebar code changes (`nav-main.tsx`);
+the shared label component is untouched, so other labels keep their style. A client test
+checks the class. Part b of CHG-2026-081; no other decision in this ADR changes.

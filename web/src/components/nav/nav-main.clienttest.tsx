@@ -71,6 +71,13 @@ describe("sidebar sections collapse and expand (CHG-2026-081)", () => {
     expect(section("Reports / Logs")).toHaveAttribute("type", "button");
   });
 
+  it("section names use the full sidebar text colour, not the 70% grey (CHG-2026-081 b)", () => {
+    renderNav();
+    const label = section("Governance Controls");
+    expect(label).toHaveClass("text-sidebar-foreground");
+    expect(label).not.toHaveClass("text-sidebar-foreground/70");
+  });
+
   it("arriving on a page opens its section, even if it was left collapsed", () => {
     localStorage.setItem(
       "sidebarCollapsedGroups",
