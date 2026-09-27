@@ -98,7 +98,7 @@ round button in the bottom-right corner. Nothing on any page is hidden behind it
 |---|---|---|
 | A: leave dev | See the PR | Typecheck, ESLint `--max-warnings 0`, Prettier and `knip` on the build workstation; a client test (`AcmeChatLauncher.clienttest.tsx`) for opening, focus, Escape, the launcher's state and hiding it from roles without access |
 | B: staging | `Staging: not available.` | No database change |
-| C: post-deploy (dev) | Pending | Repeat the 27-page sweep at 1440×900: nothing may be covered in the bottom-right corner, and in particular Gateway changes' and Gateway requests' **Older**, the Playground settings menu and LLM Gateway's **Revoke** must be clickable. Open, use, close and reopen the panel, and navigate with it open: the conversation is kept |
+| C: post-deploy (dev) | Passed 2026-09-27 on `acme-v4.38.0.22` | The 27-page sweep was repeated at 1440×900, read-only, in the owner's session. The launcher is in the top bar on all 26 project pages, with no floating button, and nothing in the bottom-right corner is covered. The four controls it used to block (Older on Gateway changes and Gateway requests, the Playground settings menu, Revoke on LLM Gateway) are clickable. The panel opens under the launcher, focuses the message box and closes on Escape. A typed draft survived an in-app navigation and reopening; no message was sent |
 
 ## 10. Assumptions and open questions
 

@@ -123,7 +123,7 @@ link to the history.
 |---|---|---|
 | A: leave dev | Passed on the build workstation | `pnpm run typecheck`: passed (2 known, tolerated errors in unmodified Enterprise files). ESLint `--max-warnings 0` on every changed file: clean. `knip`: only the 2 findings already on `main`. Unit tests: `acmeGuardrailsHistory` 6, `securityRoleAllowList` 34, `contentFreeRoles` 25 (65 passed); `guardrailEventsCsv` 3 passed. The router against a real Postgres couldn't run locally (no container runtime) |
 | B: staging | `Staging: not available.` | No migration, so no rehearsal. Rollback is a redeploy of the previous tag |
-| C: post-deploy (dev, after an owner-approved deploy) | Pending | 1. The history pages through every stored event, and the counts match a read-only SQL count. 2. Each filter narrows the list, and "hide test traffic" shows how many it hid. 3. An export as Admin downloads the rows and adds an `export` entry to the audit log. 4. A Security Analyst sees the history but no export button |
+| C: post-deploy (dev, after an owner-approved deploy) | Passed 2026-09-27 on `acme-v4.38.0.20`, except check 4 | Run in the owner's signed-in session against a read-only SQL count. 1. The history paged through every stored event, and every count matched. 2. Each filter narrowed the list, and "hide test traffic" reported how many it hid. 3. An owner-approved export as Admin downloaded the rows and wrote an `export` entry to the audit log with the filter and row count. 4. The Security Analyst check needs that role's sign-in and is with the owner. Found: the ACME AI launcher covered the pager's **Older** button at the end of the list, fixed in CHG-2026-079 b (`.21`) and removed at its cause in CHG-2026-080 (ADR-0015) |
 
 ## 10. Assumptions and open questions
 
