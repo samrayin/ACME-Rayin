@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Card,
@@ -25,9 +25,23 @@ import {
   TableHeader,
   TableRow,
 } from "@/src/components/ui/table";
+import { Input } from "@/src/components/ui/input";
+import { Label } from "@/src/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/src/components/ui/select";
 import { api } from "@/src/utils/api";
 import { JSONView } from "@/src/components/ui/CodeJsonViewer";
+import {
+  downloadCsvFile,
+  guardrailEventsToCsv,
+} from "@/src/features/acme-enhancements/utils/guardrailEventsCsv";
 import { useHasProjectAccess } from "@/src/features/rbac";
+import { useIsContentFreeRole } from "@/src/features/rbac/hooks/useIsSecurityAnalyst";
 import { showErrorToast, showSuccessToast } from "@/src/features/notifications";
 import { cn } from "@/src/utils/tailwind";
 import { useReadPath } from "@/src/features/events/hooks/useReadPath";
@@ -695,6 +709,8 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
   );
 }
 
+const SUMMARY_WINDOW_DAYS = 30;
+
 export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
   // The Continuous Assurance card reads scores (trace data) -- not shown to
   // roles without projectData:read, e.g. the Security Analyst.
@@ -702,11 +718,15 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
     projectId,
     scope: "projectData:read",
   });
-  const events = api.acmeGuardrails.recentEvents.useQuery(
-    { projectId, limit: 50 },
-    // Polling, not a subscription -- the source itself (rayin-guardrails'
-    // in-memory buffer) has no push mechanism, so this is what "live" means
-    // here.
+  // The totals count every stored decision in the window, not a page of
+  // them. The window start is fixed per page load so the query stays the
+  // same between polls.
+  const [since] = useState(
+    () => new Date(Date.now() - SUMMARY_WINDOW_DAYS * 24 * 60 * 60 * 1000),
+  );
+  const events = api.acmeGuardrails.eventHistory.useQuery(
+    { projectId, pageSize: 1, filter: { from: since } },
+    // Polling: rayin-guardrails has no push channel to the browser.
     { refetchInterval: 10_000 },
   );
 
@@ -717,7 +737,7 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
   if (events.isError) {
     return (
       <div className="text-muted-foreground p-4 text-sm">
-        Could not reach rayin-guardrails: {events.error.message}
+        Could not load guardrail events: {events.error.message}
       </div>
     );
   }
@@ -734,10 +754,19 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
     );
   }
 
-  const { summary } = events.data;
+  const summary = events.data.counts;
 
   return (
     <div className="flex flex-col gap-4">
+      <p className="text-muted-foreground text-sm">
+        Guardrail decisions in the last {SUMMARY_WINDOW_DAYS} days.{" "}
+        <Link
+          href={`/project/${projectId}/acme-enhancements/security-logs?tab=guardrails`}
+          className="underline"
+        >
+          View every event
+        </Link>
+      </p>
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-1">
@@ -788,9 +817,52 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
   );
 }
 
+const HISTORY_PAGE_SIZE = 50;
+
+type HistoryFilterForm = {
+  from: string;
+  to: string;
+  action: "all" | "block" | "redact" | "allow";
+  direction: "all" | "input" | "output";
+  agent: string;
+  user: string;
+  hideTestTraffic: boolean;
+};
+
+const EMPTY_HISTORY_FILTER: HistoryFilterForm = {
+  from: "",
+  to: "",
+  action: "all",
+  direction: "all",
+  agent: "",
+  user: "",
+  hideTestTraffic: false,
+};
+
+/** Start of a `yyyy-mm-dd` date input's day, in the viewer's time zone. */
+function startOfLocalDay(value: string, addDays = 0) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year ?? 1970, (month ?? 1) - 1, (day ?? 1) + addDays);
+}
+
+/** The form as the history query's filter; "To" includes that whole day. */
+function toHistoryFilter(form: HistoryFilterForm) {
+  return {
+    from: form.from ? startOfLocalDay(form.from) : undefined,
+    to: form.to ? startOfLocalDay(form.to, 1) : undefined,
+    actions: form.action === "all" ? undefined : [form.action],
+    direction: form.direction === "all" ? undefined : form.direction,
+    agent: form.agent.trim() || undefined,
+    user: form.user.trim() || undefined,
+    hideTestTraffic: form.hideTestTraffic,
+  };
+}
+
 /**
  * CHG-2026-073: guardrail decisions as a log, shown under Security > Logs
  * (moved out of the Guardrails page, which keeps the totals and policies).
+ * ADR-0013: the whole stored history, filtered, a page at a time, with a
+ * CSV export of everything the filter matches.
  */
 export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
   const [selectedEvent, setSelectedEvent] = useState<{
@@ -800,11 +872,48 @@ export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
   const openEvent = (id: string | null) => {
     if (id) setSelectedEvent({ id, open: true });
   };
-  const events = api.acmeGuardrails.recentEvents.useQuery(
-    { projectId, limit: 50 },
-    // Polling: the source (rayin-guardrails' buffer) has no push mechanism.
-    { refetchInterval: 10_000 },
+  // Export writes the audit log, so it is not open to the read-only roles
+  // (Security Analyst, Auditor); the server refuses them too.
+  const canExport = !useIsContentFreeRole(projectId);
+  const [draft, setDraft] = useState<HistoryFilterForm>(EMPTY_HISTORY_FILTER);
+  const [applied, setApplied] =
+    useState<HistoryFilterForm>(EMPTY_HISTORY_FILTER);
+  // Cursor of each page after the first; the last one is the page shown.
+  const [cursors, setCursors] = useState<string[]>([]);
+  const cursor = cursors[cursors.length - 1];
+  const filter = useMemo(() => toHistoryFilter(applied), [applied]);
+
+  const applyFilter = (next: HistoryFilterForm) => {
+    setDraft(next);
+    setApplied(next);
+    setCursors([]);
+  };
+
+  const events = api.acmeGuardrails.eventHistory.useQuery(
+    { projectId, cursor, pageSize: HISTORY_PAGE_SIZE, filter },
+    {
+      // Only the first page follows new events; older pages stay put.
+      refetchInterval: cursor ? false : 10_000,
+      placeholderData: (previous) => previous,
+    },
   );
+
+  const exportHistory = api.acmeGuardrails.exportEventHistory.useMutation({
+    onSuccess: (result) => {
+      const day = new Date().toISOString().slice(0, 10);
+      downloadCsvFile(
+        guardrailEventsToCsv(result.rows),
+        `guardrail-events-${projectId}-${day}.csv`,
+      );
+      showSuccessToast({
+        title: `Exported ${result.rows.length} events`,
+        description: result.truncated
+          ? `Only the newest ${result.maxRows} are included. Narrow the dates to export the rest.`
+          : "The export is recorded in the audit log.",
+      });
+    },
+    onError: (error) => showErrorToast("Export failed", error.message),
+  });
 
   if (events.isPending) {
     return <div className="text-muted-foreground p-4 text-sm">Loading…</div>;
@@ -812,7 +921,7 @@ export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
   if (events.isError) {
     return (
       <div className="text-muted-foreground p-4 text-sm">
-        Could not reach rayin-guardrails: {events.error.message}
+        Could not load guardrail events: {events.error.message}
       </div>
     );
   }
@@ -823,23 +932,190 @@ export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
       </div>
     );
   }
-  const recent = events.data.events;
+  const {
+    events: recent,
+    counts,
+    hiddenTestEvents,
+    liveSync,
+    nextCursor,
+    testTrafficPrefixes,
+  } = events.data;
+  const filtered =
+    JSON.stringify(applied) !== JSON.stringify(EMPTY_HISTORY_FILTER);
 
   return (
     <div className="flex flex-col gap-4">
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Guardrail events</CardTitle>
-          <p className="text-muted-foreground text-xs">
-            Stored in the audit trail as each decision is made — most recent
-            first. Select a row for details.
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <CardTitle className="text-sm">Guardrail events</CardTitle>
+              <p className="text-muted-foreground text-xs">
+                Every decision stored in the audit trail, most recent first.
+                Select a row for details.
+              </p>
+            </div>
+            {canExport && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={counts.total === 0 || exportHistory.isPending}
+                onClick={() => exportHistory.mutate({ projectId, filter })}
+              >
+                {exportHistory.isPending ? "Exporting…" : "Export CSV"}
+              </Button>
+            )}
+          </div>
         </CardHeader>
-        <CardContent className="pt-0">
+        <CardContent className="flex flex-col gap-4 pt-0">
+          <form
+            className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7"
+            onSubmit={(e) => {
+              e.preventDefault();
+              applyFilter(draft);
+            }}
+          >
+            <div>
+              <Label htmlFor="guardrail-history-from">From</Label>
+              <Input
+                id="guardrail-history-from"
+                type="date"
+                className="mt-1.5"
+                value={draft.from}
+                onChange={(e) => setDraft({ ...draft, from: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="guardrail-history-to">To</Label>
+              <Input
+                id="guardrail-history-to"
+                type="date"
+                className="mt-1.5"
+                value={draft.to}
+                onChange={(e) => setDraft({ ...draft, to: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="guardrail-history-action">Action</Label>
+              <Select
+                value={draft.action}
+                onValueChange={(v) =>
+                  setDraft({
+                    ...draft,
+                    action: v as HistoryFilterForm["action"],
+                  })
+                }
+              >
+                <SelectTrigger id="guardrail-history-action" className="mt-1.5">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All actions</SelectItem>
+                  <SelectItem value="block">Blocked</SelectItem>
+                  <SelectItem value="redact">Redacted</SelectItem>
+                  <SelectItem value="allow">Allowed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="guardrail-history-direction">Direction</Label>
+              <Select
+                value={draft.direction}
+                onValueChange={(v) =>
+                  setDraft({
+                    ...draft,
+                    direction: v as HistoryFilterForm["direction"],
+                  })
+                }
+              >
+                <SelectTrigger
+                  id="guardrail-history-direction"
+                  className="mt-1.5"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Both directions</SelectItem>
+                  <SelectItem value="input">Input</SelectItem>
+                  <SelectItem value="output">Output</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="guardrail-history-agent">Agent contains</Label>
+              <Input
+                id="guardrail-history-agent"
+                className="mt-1.5"
+                maxLength={200}
+                value={draft.agent}
+                onChange={(e) => setDraft({ ...draft, agent: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="guardrail-history-user">User contains</Label>
+              <Input
+                id="guardrail-history-user"
+                className="mt-1.5"
+                maxLength={200}
+                value={draft.user}
+                onChange={(e) => setDraft({ ...draft, user: e.target.value })}
+              />
+            </div>
+            <div className="flex items-end gap-2">
+              <Button type="submit" size="sm">
+                Apply
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={!filtered}
+                onClick={() => applyFilter(EMPTY_HISTORY_FILTER)}
+              >
+                Reset
+              </Button>
+            </div>
+          </form>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+            <p>
+              <span className="font-bold">
+                {counts.total} {counts.total === 1 ? "event" : "events"}
+                {filtered ? " match" : ""}
+              </span>
+              <span className="text-muted-foreground">
+                {" "}
+                · {counts.blocked} blocked · {counts.redacted} redacted ·{" "}
+                {counts.allowed} allowed
+                {applied.hideTestTraffic && hiddenTestEvents > 0
+                  ? ` · ${hiddenTestEvents} test events hidden`
+                  : ""}
+              </span>
+            </p>
+            <label className="flex items-center gap-2 text-xs">
+              <Switch
+                checked={applied.hideTestTraffic}
+                onCheckedChange={(checked) =>
+                  applyFilter({ ...applied, hideTestTraffic: checked })
+                }
+              />
+              Hide test traffic (agent names starting{" "}
+              {testTrafficPrefixes.join(" or ")})
+            </label>
+          </div>
+
+          {liveSync === "unavailable" && (
+            <p className="text-muted-foreground text-xs">
+              rayin-guardrails did not answer, so events whose push failed in
+              the last few minutes may be missing. Stored events are shown.
+            </p>
+          )}
+
           {recent.length === 0 ? (
             <p className="text-muted-foreground text-sm">
-              No events yet. Send a request through rayin-guardrails to see it
-              here.
+              {filtered
+                ? "No events match these filters."
+                : "No events yet. Send a request through rayin-guardrails to see it here."}
             </p>
           ) : (
             <Table>
@@ -880,6 +1156,32 @@ export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
                 ))}
               </TableBody>
             </Table>
+          )}
+
+          {(cursors.length > 0 || nextCursor) && (
+            <div className="flex items-center justify-end gap-2 text-sm">
+              <span className="text-muted-foreground">
+                Page {cursors.length + 1}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={cursors.length === 0}
+                onClick={() => setCursors(cursors.slice(0, -1))}
+              >
+                Newer
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!nextCursor}
+                onClick={() =>
+                  nextCursor && setCursors([...cursors, nextCursor])
+                }
+              >
+                Older
+              </Button>
+            </div>
           )}
         </CardContent>
       </Card>

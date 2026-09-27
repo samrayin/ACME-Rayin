@@ -25,6 +25,10 @@ const SECURITY_ROLE_ALLOWED_PROCEDURES: ReadonlySet<string> = new Set([
   // Guardrail events and policies (updateConfig stays blocked: it isn't here,
   // and it also requires project:update, which SECURITY does not hold).
   "acmeGuardrails.recentEvents",
+  // ADR-0013: the stored history. Its CSV export is not here: the export
+  // writes the audit log, so it is a mutation, and these roles are limited
+  // to read-only procedures.
+  "acmeGuardrails.eventHistory",
   "acmeGuardrails.eventDetail",
   "acmeGuardrails.getConfig",
   "acmeAssuranceDemo.demoAssets",
