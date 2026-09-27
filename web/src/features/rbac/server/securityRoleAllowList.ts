@@ -31,8 +31,6 @@ const SECURITY_ROLE_ALLOWED_PROCEDURES: ReadonlySet<string> = new Set([
   "acmeGuardrails.eventHistory",
   "acmeGuardrails.eventDetail",
   "acmeGuardrails.getConfig",
-  "acmeAssuranceDemo.demoAssets",
-  "acmeAssuranceDemo.liveAssurance",
   // Project audit log.
   "acmeAuditLogs.all",
   // Append-only record of LiteLLM gateway management actions (ADR-0003).

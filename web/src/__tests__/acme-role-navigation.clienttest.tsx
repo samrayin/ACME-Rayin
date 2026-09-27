@@ -78,7 +78,6 @@ const EXPECTED: Record<"SECURITY" | "ANALYST" | "AUDITOR", string[]> = {
   // CHG-2026-073: the gateway logs moved to Security > Logs, so Security
   // Analyst no longer sees the LLM Gateway page (it held only the logs).
   SECURITY: [
-    "Assurance (Preview)",
     "Contact ACME Support",
     "Go to...",
     "Guardrails",
@@ -102,7 +101,6 @@ const EXPECTED: Record<"SECURITY" | "ANALYST" | "AUDITOR", string[]> = {
     "UI Customization",
   ],
   AUDITOR: [
-    "Assurance (Preview)",
     "Contact ACME Support",
     "Go to...",
     "Guardrails",
@@ -167,7 +165,8 @@ describe("sidebar sections (CHG-2026-073, CHG-2026-081)", () => {
   it("each route sits in its section", () => {
     expect(groupsOf("Guardrails")).toEqual(["Governance Controls"]);
     expect(groupsOf("LLM Gateway")).toEqual(["Governance Controls"]);
-    expect(groupsOf("Assurance (Preview)")).toEqual(["Governance Controls"]);
+    // CHG-2026-083: the Assurance (Preview) demo is gone.
+    expect(groupsOf("Assurance (Preview)")).toEqual([]);
     expect(groupsOf("Logs")).toEqual(["Reports / Logs"]);
     // Project and organization settings: one or the other shows, by context.
     expect(groupsOf("Settings")).toEqual(["Settings", "Settings"]);
