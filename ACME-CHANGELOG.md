@@ -5049,6 +5049,12 @@ Tier 1 part b of CHG-2026-081 (ADR-0016 §11). The sidebar's section names (Gove
 
 Tier 1 part c of CHG-2026-081 (ADR-0016 §11). **Correction:** part b (`acme-v4.38.0.24`) gave the section names the full sidebar text colour, which the check after release found to be a light slate grey in this theme (`hsl(212 20% 78%)`), not white; its entry above says white, and that is wrong. Part c sets the section names to white (`text-white`, as the CAIRO wordmark), readable on the dark sidebar in both themes. Only `nav-main.tsx` changes; the client test checks the class. Rollback: revert the commit and redeploy the previous console image. **Deployment status:** not deployed.
 
+## 2026-09-27 — Register statuses and gate C evidence for CHG-2026-081 b and c, -083 and -084
+
+Documentation only (Tier 2).
+- **CHG-2026-083 and -084:** merged (#229, #230) and live in dev as `acme-v4.38.0.24`. ADR-0017 and ADR-0018 gate C passed; their headers and §9 record the results. Both ADRs stay Proposed until the owner records acceptance.
+- **CHG-2026-081:** part b (#231) went out in `.24` and part c (#232) in `.25`; ADR-0016 §11 records the part c check.
+
 ## 2026-09-28 — CAIRO in tab titles; internal environments shown as cairo-… (CHG-2026-085)
 
 | | |
