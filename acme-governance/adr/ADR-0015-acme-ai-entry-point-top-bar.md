@@ -4,13 +4,13 @@
 |---|---|
 | **Change ID** | CHG-2026-080 · Tier 1 (client-visible on every console page) |
 | **Owner** | Anees Ur Rahman |
-| **Affected release** | The next console release after merge (`acme-v4.38.0.N`) |
-| **Status** | Proposed: awaiting the owner's review |
+| **Affected release** | `acme-v4.38.0.22` |
+| **Status** | Accepted 2026-09-27 by the owner, Anees Ur Rahman ("mark ADR-0013 and ADR-0015 accepted") |
 | **Type** | Forward |
 | **Date** | 2026-09-27 |
 | **Author** | Claude session (Opus 5.5) for Anees Ur Rahman |
-| **Approval** | Pending. The owner chose the approach on 2026-09-27 ("go with option 1, move it to the top bar"); the owner reviews and merges |
-| **Commits / tag** | Recorded at merge · tag at release |
+| **Approval** | The owner chose the approach on 2026-09-27 ("go with option 1, move it to the top bar"), merged #220, approved the dev deploy, and accepted the ADR on 2026-09-27 |
+| **Commits / tag** | `4c02bb713` (#220) · `acme-v4.38.0.22` |
 
 ## 1. Purpose
 

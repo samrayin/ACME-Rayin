@@ -118,9 +118,9 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | ADR-0010 | CHG-2026-056 | Gateway model management and the complexity auto router: where models and provider credentials are stored, encryption key (salt) handling, endpoint restrictions, audit, permissions, and how it is turned off | Claimed |
 | ADR-0011 | CHG-2026-059 | CAIRO roles and the ACME project access policy: role set, permission matrix, narrowing-only project policy, what each role must not see, and the Enterprise boundary | Claimed |
 | ADR-0012 | CHG-2026-076 | Adopting upstream Langfuse security fixes ahead of a full version sync: API-key cache eviction and SCIM organization scoping | Written and merged (#209). Proposed until the owner records acceptance; gate C is with the owner |
-| ADR-0013 | CHG-2026-079 | Guardrail event history: read path, paging, filters, who may export, what an export contains, and how the export itself is audited | Written and merged (#215). Proposed until the owner records acceptance; gate C passed, except the Security Analyst check |
+| ADR-0013 | CHG-2026-079 | Guardrail event history: read path, paging, filters, who may export, what an export contains, and how the export itself is audited | Accepted 2026-09-27 by the owner (#215, #216). Gate C passed, except the Security Analyst check (with the owner) |
 | ADR-0014 | CHG-2026-078 | Bahrain and Arabic-language coverage in the guardrails, written retrospectively: staged CPR detection, Arabic names and the English name model on Arabic text, and the input policy's banking-conduct and personal-data rules | Written and merged (#218). Retrospective record, for the owner's review |
-| ADR-0015 | CHG-2026-080 | Where the ACME AI entry point lives: top bar instead of a floating corner button, and how the chat panel opens and closes | Written and merged (#220). Proposed until the owner records acceptance; gate C passed 2026-09-27 |
+| ADR-0015 | CHG-2026-080 | Where the ACME AI entry point lives: top bar instead of a floating corner button, and how the chat panel opens and closes | Accepted 2026-09-27 by the owner (#220). Gate C passed 2026-09-27 |
 
 The rows above for CHG-2026-001 to -003 and ADR-0000 to -0002 were reconstructed
 on 2026-09-19 from `main` and every branch on the remote; they were not claimed

@@ -4938,3 +4938,7 @@ Documentation only (Tier 2).
 - **Gate C evidence:**
   - ADR-0013: passed, except the Security Analyst check, which needs that role's sign-in.
   - ADR-0015: the repeated 27-page sweep passed.
+
+## 2026-09-27 — ADR-0013 and ADR-0015 accepted by the owner
+
+Documentation only (Tier 2). The owner accepted **ADR-0013** (guardrail event history, CHG-2026-079) and **ADR-0015** (ACME AI in the top bar, CHG-2026-080) on 2026-09-27. Each ADR's header now records its status, approval, affected release, and commits and tags, and the ADR index and the register say Accepted. ADR-0013's gate C check 4 (the Security Analyst view) is still open.
