@@ -4878,3 +4878,20 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 - The router against a real Postgres is checked after deploy (ADR-0013 §9, gate C).
 
 **Deployment status:** not deployed.
+
+## 2026-09-27 — Guardrail event history: the pager clear of the ACME AI button (CHG-2026-079 b)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-079 b · a UI fix found in ADR-0013's gate C (dev, 2026-09-27) · owner: Anees Ur Rahman |
+| **Dates** | Written 2026-09-27. Dev: not deployed · Prod: none exists |
+| **Impact** | The history's Newer/Older pager is left-aligned, so the floating ACME AI button no longer covers it |
+| **Rollback** | Revert the commit |
+
+**Why:** the ACME AI launcher is fixed over the bottom-right corner of every page. With the list scrolled to the end, as happens at 1440×900, the right-aligned pager sat under it, so clicking **Older** opened the chat instead of paging. The keyboard still worked.
+
+**What:** in `AcmeGuardrailsTable.tsx` the pager is left-aligned and reads "Newer · Older · Page N". Nothing else changes.
+
+**Tests:** none added. The change is one alignment class, and a test would only restate it. It is checked in dev after deploy: at 1440×900, scrolled to the end, the element under **Older**'s centre must be the button itself.
+
+**Deployment status:** not deployed.
