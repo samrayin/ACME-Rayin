@@ -13,11 +13,11 @@ import { useForceV3Experience } from "@/src/features/v4-migration/useForceV3Expe
 import {
   ROUTES,
   RouteSection,
-  RouteGroup,
   type Route,
 } from "@/src/components/layouts/routes";
 import type { NavigationItem } from "@/src/components/layouts/utilities/routes";
 import { applyNavigationFilters } from "../utils/navigationFilters";
+import { groupNavigationItems } from "../utils/groupNavigationItems";
 import type { NavigationFilterContext } from "../utils/navigationFilters.types";
 import { isPathActive } from "../utils/pathClassification";
 import { resolveRoutePathname } from "../utils/routePathname";
@@ -28,47 +28,6 @@ type Organization =
   | NonNullable<Session["user"]>["organizations"][number]
   | null
   | undefined;
-
-/** Grouped navigation structure */
-type GroupedNavigation = {
-  ungrouped: NavigationItem[];
-  grouped: Partial<Record<RouteGroup, NavigationItem[]>> | null;
-  flattened: NavigationItem[];
-};
-
-/**
- * Groups navigation items by RouteGroup
- */
-function groupNavigationItems(items: NavigationItem[]): GroupedNavigation {
-  const ungrouped = items.filter((item) => !item.group);
-  const grouped: Partial<Record<RouteGroup, NavigationItem[]>> = {};
-
-  items.forEach((item) => {
-    if (item.group) {
-      if (!grouped[item.group]) {
-        grouped[item.group] = [];
-      }
-      grouped[item.group]!.push(item);
-    }
-  });
-
-  const groupedResult = Object.keys(grouped).length > 0 ? grouped : null;
-  const groupedItems = groupedResult
-    ? [
-        ...(grouped[RouteGroup.AiControls] || []),
-        ...(grouped[RouteGroup.Security] || []),
-        ...(grouped[RouteGroup.Observability] || []),
-        ...(grouped[RouteGroup.PromptManagement] || []),
-        ...(grouped[RouteGroup.Evaluation] || []),
-      ]
-    : [];
-
-  return {
-    ungrouped,
-    grouped: groupedResult,
-    flattened: [...ungrouped, ...groupedItems],
-  };
-}
 
 /**
  * Filters and processes navigation items based on:

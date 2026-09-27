@@ -49,14 +49,30 @@ export enum RouteSection {
 }
 
 export enum RouteGroup {
-  // ACME (CHG-2026-073): CAIRO's runtime controls, and its security logs.
-  AiControls = "AI Controls",
-  Security = "Security",
+  // ACME (CHG-2026-081, ADR-0016): section names chosen by the owner. The
+  // values are the labels shown in the sidebar.
+  GovernanceControls = "Governance Controls",
   Observability = "Observability",
-  PromptManagement = "Prompt Management",
   Evaluation = "Evaluation",
-  AcmeEnhancements = "ACME Enhancements",
+  PromptManagement = "Prompt Management",
+  ReportsLogs = "Reports / Logs",
+  Settings = "Settings",
+  Support = "Support",
 }
+
+/**
+ * ACME (CHG-2026-081): the order sections appear in, top to bottom. Kept
+ * explicit rather than following the order routes happen to be listed in.
+ */
+export const ROUTE_GROUP_ORDER: RouteGroup[] = [
+  RouteGroup.GovernanceControls,
+  RouteGroup.Observability,
+  RouteGroup.Evaluation,
+  RouteGroup.PromptManagement,
+  RouteGroup.ReportsLogs,
+  RouteGroup.Settings,
+  RouteGroup.Support,
+];
 
 export type Route = {
   title: string;
@@ -139,7 +155,7 @@ export const ROUTES: Route[] = [
     icon: ShieldAlert,
     projectRbacScopes: ["projectGuardrails:read"],
     section: RouteSection.Main,
-    group: RouteGroup.AiControls,
+    group: RouteGroup.GovernanceControls,
   },
   {
     // ACME addition (ADR-0003, CHG-2026-005): CAIRO as the only control plane
@@ -152,13 +168,13 @@ export const ROUTES: Route[] = [
     projectRbacScopes: [
       "llmGateway:read",
       // ACME (ADR-0011): Spend tab only / read-only evidence. The logs scope
-      // is not here: the change record and request log moved to Security >
-      // Logs (CHG-2026-073).
+      // is not here: the change record and request log moved to Logs
+      // (CHG-2026-073), now under Reports / Logs (CHG-2026-081).
       "llmGatewaySpend:read",
       "evidence:read",
     ],
     section: RouteSection.Main,
-    group: RouteGroup.AiControls,
+    group: RouteGroup.GovernanceControls,
     menuNode: <AcmeLitellmGatewayNavItem />,
   },
   {
@@ -172,11 +188,12 @@ export const ROUTES: Route[] = [
     icon: Gauge,
     projectRbacScopes: ["projectGuardrails:read"],
     section: RouteSection.Main,
-    group: RouteGroup.AiControls,
+    group: RouteGroup.GovernanceControls,
   },
   {
-    // ACME (CHG-2026-073): Security > Logs -- the audit log, guardrail
-    // decisions, and the gateway change record and request log, one tab each.
+    // ACME (CHG-2026-073): Logs -- the audit log, guardrail decisions, and
+    // the gateway change record and request log, one tab each. Under
+    // Reports / Logs since CHG-2026-081.
     title: "Logs",
     pathname: `/project/[projectId]/acme-enhancements/security-logs`,
     icon: ScrollText,
@@ -186,7 +203,7 @@ export const ROUTES: Route[] = [
       "llmGatewayLogs:read",
     ],
     section: RouteSection.Main,
-    group: RouteGroup.Security,
+    group: RouteGroup.ReportsLogs,
   },
   {
     title: "Tracing",
@@ -307,15 +324,21 @@ export const ROUTES: Route[] = [
     group: RouteGroup.Evaluation,
     section: RouteSection.Main,
   },
+  // ACME (CHG-2026-081): the default Settings and Support entries moved from
+  // the bottom of the sidebar into their own Settings and Support sections.
   {
-    // ACME addition: direct support contact, relocated here from the
-    // generic Support drawer (see IntroSection.tsx) so it's a first-class
-    // ACME Enhancements item rather than buried behind the Support button.
-    title: "Contact ACME Support",
-    pathname: "",
-    group: RouteGroup.AcmeEnhancements,
+    title: "Settings",
+    pathname: "/project/[projectId]/settings",
+    icon: Settings,
+    group: RouteGroup.Settings,
     section: RouteSection.Main,
-    menuNode: <AcmeContactSupportNavItem />,
+  },
+  {
+    title: "Settings",
+    pathname: "/organization/[organizationId]/settings",
+    icon: Settings,
+    group: RouteGroup.Settings,
+    section: RouteSection.Main,
   },
   {
     // ACME addition: lets an owner/admin pick accent color + top-bar
@@ -327,8 +350,28 @@ export const ROUTES: Route[] = [
     icon: Palette,
     // CHG-2026-074: every user picks a personal theme here; Owners and
     // Admins also set the project default (the page enforces that).
-    group: RouteGroup.AcmeEnhancements,
+    group: RouteGroup.Settings,
     section: RouteSection.Main,
+  },
+  // ACME: upstream's "Book a call" entry (a Langfuse sales link) is removed;
+  // CAIRO support goes through "Contact ACME Support".
+  {
+    title: "Support",
+    icon: LifeBuoy,
+    group: RouteGroup.Support,
+    section: RouteSection.Main,
+    pathname: "", // Empty pathname since this is a dropdown
+    menuNode: <SupportButton />,
+  },
+  {
+    // ACME addition: direct support contact, relocated here from the
+    // generic Support drawer (see IntroSection.tsx) so it's a first-class
+    // item rather than buried behind the Support button.
+    title: "Contact ACME Support",
+    pathname: "",
+    group: RouteGroup.Support,
+    section: RouteSection.Main,
+    menuNode: <AcmeContactSupportNavItem />,
   },
   {
     // Keep Action required first in the secondary nav so it is not sandwiched
@@ -375,27 +418,6 @@ export const ROUTES: Route[] = [
     entitlements: ["cloud-billing"],
     organizationRbacScope: "langfuseCloudBilling:CRUD",
     show: ({ organization }) => organization?.plan === "cloud:hobby",
-  },
-  {
-    title: "Settings",
-    pathname: "/project/[projectId]/settings",
-    icon: Settings,
-    section: RouteSection.Secondary,
-  },
-  {
-    title: "Settings",
-    pathname: "/organization/[organizationId]/settings",
-    icon: Settings,
-    section: RouteSection.Secondary,
-  },
-  // ACME: upstream's "Book a call" entry (a Langfuse sales link) is removed;
-  // CAIRO support goes through "Contact ACME Support".
-  {
-    title: "Support",
-    icon: LifeBuoy,
-    section: RouteSection.Secondary,
-    pathname: "", // Empty pathname since this is a dropdown
-    menuNode: <SupportButton />,
   },
 ];
 

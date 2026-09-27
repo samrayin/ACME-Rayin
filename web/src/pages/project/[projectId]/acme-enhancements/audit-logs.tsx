@@ -16,7 +16,7 @@ export default function AuditLogsRedirect() {
   }, [projectId, router]);
   return (
     <p className="text-muted-foreground p-4 text-sm">
-      Audit logs moved to Security &gt; Logs. Redirecting…
+      Audit logs moved to Reports / Logs &gt; Logs. Redirecting…
     </p>
   );
 }
