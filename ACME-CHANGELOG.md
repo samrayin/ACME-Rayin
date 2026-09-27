@@ -4843,3 +4843,38 @@ register's own ADR table and the ADR files that actually exist in `acme-governan
 **Follow-up:** the page keeps its own copy of the service's entity list. Validating against the list the service reports would remove this step for the next new entity.
 
 **Deployment status:** not deployed.
+
+## 2026-09-27 — Guardrail event history: every stored event, filtered, paged and exportable (CHG-2026-079)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-079 · Tier 1 (audit data, authorisation, client-visible) · ADR-0013 · owner: Anees Ur Rahman |
+| **Dates** | Written 2026-09-27. Dev: not deployed · Prod: none exists |
+| **Impact** | Security › Logs › Guardrail events shows the whole stored history instead of the newest 50. The Guardrails page totals count the last 30 days instead of the newest 50 rows. Owners and Admins can export a filtered history as CSV, and each export is recorded in the audit log |
+| **Rollback** | Revert the commit and redeploy the previous console image. No data change |
+
+**Why:** every guardrail decision is stored in Postgres, but both guardrail screens read only the newest 50 rows. Older events could be neither viewed nor exported. On 2026-09-27 a post-deploy test run of about 100 events pushed every real event off the list.
+
+**What:**
+- **`acmeGuardrails.eventHistory`** (query) reads the stored history, newest first:
+  - a page at a time (keyset paging, 50 a page);
+  - filters: date range, action, direction, agent contains and user contains, with counts over the whole filter;
+  - an opt-in "hide test traffic" switch (agents named `promptfoo-…` or `guard-probe-…`) that shows how many it hid.
+
+  The first page still pulls the guardrails service's buffer, so events whose push failed are backfilled. If the service doesn't answer, the history is still shown, with a notice.
+- **`acmeGuardrails.exportEventHistory`** (mutation) exports what the filter matches as CSV:
+  - metadata only, capped at 10,000 rows;
+  - the audit log (`acmeGuardrailEvents` · `export`) is written before any row is returned;
+  - cells never start as spreadsheet formulas, and a UTF-8 marker keeps Arabic names readable.
+- **Who:**
+  - The history is open to Owner, Admin, Security Analyst and Auditor.
+  - The export is Owner and Admin only. It is a mutation, and the content-free roles are limited to read-only procedures (ADR-0011 §4). Opening it to them is an open owner decision in ADR-0013.
+- **Guardrails page:** its totals come from the same query (last 30 days), with a link to the history.
+- `recentEvents` keeps its behaviour and now shares the buffer and row helpers. No UI uses it.
+
+**Tests:**
+- Unit tests for the filter builder (6), the Security Analyst allow-list (34, including export blocked for Security Analyst and Auditor), the content-free roles' allow-lists (25, including "read-only procedures only") and the CSV cells (3). All pass on the build workstation.
+- Typecheck and ESLint are clean on the build workstation. `knip` shows only the 2 findings already on `main`.
+- The router against a real Postgres is checked after deploy (ADR-0013 §9, gate C).
+
+**Deployment status:** not deployed.

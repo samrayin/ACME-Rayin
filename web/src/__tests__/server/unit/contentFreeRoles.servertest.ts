@@ -168,6 +168,8 @@ describe("content-free roles: server allow-lists (ADR-0011 §4)", () => {
       "acmeLitellm.keys",
       "acmeLitellm.events",
       "acmeGuardrails.recentEvents",
+      "acmeGuardrails.eventHistory",
+      "acmeGuardrails.exportEventHistory",
       "acmeAuditLogs.all",
     ]) {
       expect(isAllowedForRole(Role.ANALYST, p)).toBe(false);
