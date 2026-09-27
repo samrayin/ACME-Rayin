@@ -4,13 +4,13 @@
 |---|---|
 | **Change ID** | CHG-2026-079 · Tier 1 (audit data, authorisation, client-visible) |
 | **Owner** | Anees Ur Rahman |
-| **Affected release** | The next console release after merge (`acme-v4.38.0.N`) |
-| **Status** | Proposed: awaiting the owner's review |
+| **Affected release** | `acme-v4.38.0.20` (part a); `acme-v4.38.0.21` (part b) |
+| **Status** | Accepted 2026-09-27 by the owner, Anees Ur Rahman ("mark ADR-0013 and ADR-0015 accepted") |
 | **Type** | Forward |
 | **Date** | 2026-09-27 |
 | **Author** | Claude session (Opus 5.5) for Anees Ur Rahman |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
-| **Commits / tag** | Recorded at merge · tag at release |
+| **Approval** | The owner merged #215 and #216 and approved each dev deploy; accepted 2026-09-27. Gate C check 4 (Security Analyst) is still open |
+| **Commits / tag** | `8e380fad7` (#215) · `acme-v4.38.0.20`; `ab24212ae` (#216) · `acme-v4.38.0.21` |
 
 ## 1. Purpose
 
