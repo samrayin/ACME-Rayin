@@ -22,7 +22,6 @@ import {
   Beaker,
   ShieldAlert,
   Palette,
-  Gauge,
   CalendarClock,
   CheckCircle2,
   ScrollText,
@@ -176,19 +175,6 @@ export const ROUTES: Route[] = [
     section: RouteSection.Main,
     group: RouteGroup.GovernanceControls,
     menuNode: <AcmeLitellmGatewayNavItem />,
-  },
-  {
-    // ACME PREVIEW — a deliberately thin demo (acmeAssuranceDemoRouter.ts),
-    // not the production Asset Inventory / Assurance features it's meant to
-    // validate the concept for. Remove this nav entry (and the demo page)
-    // once those real features ship, rather than let a demo linger as if
-    // it were the shipped thing.
-    title: "Assurance (Preview)",
-    pathname: `/project/[projectId]/acme-enhancements/assurance-demo`,
-    icon: Gauge,
-    projectRbacScopes: ["projectGuardrails:read"],
-    section: RouteSection.Main,
-    group: RouteGroup.GovernanceControls,
   },
   {
     // ACME (CHG-2026-073): Logs -- the audit log, guardrail decisions, and

@@ -4984,6 +4984,26 @@ Documentation only (Tier 2).
 
 Documentation only (Tier 2). ADR-0016 §10 left open whether Contact ACME Support belongs in Settings or Support. The owner decided on 2026-09-27 that it stays in Support, where CHG-2026-081 put it. No code change.
 
+## 2026-09-27 — Assurance (Preview) removed from the console (CHG-2026-083)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-083 · Tier 1 (client-visible) · ADR-0017 · owner: Anees Ur Rahman |
+| **Dates** | Written 2026-09-27. Dev: not deployed · Prod: none exists |
+| **Impact** | The Assurance (Preview) entry is gone from the Governance Controls section, and its page and procedures are removed |
+| **Rollback** | Revert the commit and redeploy the previous console image. No data change |
+
+**Why:** it was a thin demo added on 2026-09-15, with hand-classified IT Ops sample assets, and its own code comment said to remove it rather than let it linger. A review of the console on 2026-09-27 found it undermines the real controls beside it, and the owner asked for it to go.
+
+**What:**
+- **Removed:** the sidebar entry, the page, `AcmeAssuranceDemoPage.tsx`, `AcmeAssuranceDemoTable.tsx` and `acmeAssuranceDemoRouter.ts`.
+- **Unregistered:** the router in `root.ts`, and its two procedures in the Security Analyst allow-list.
+- **No redirect:** the old URL shows "not found".
+
+**Tests:** the per-role sidebar test no longer expects the entry, and the Security Analyst allow-list tests pass.
+
+**Deployment status:** not deployed.
+
 ## 2026-09-27 — Logs page: all four tabs on one table pattern (CHG-2026-084)
 
 | | |
