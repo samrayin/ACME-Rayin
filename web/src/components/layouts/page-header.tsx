@@ -31,6 +31,10 @@ import {
   APP_SHELL_CHROME_ROW_TEST_ID,
 } from "@/src/components/layouts/app-shell-chrome";
 import { useAcmeHeaderBackgroundClassName } from "@/src/features/acme-enhancements/theme/useAcmeHeaderBackgroundClassName";
+import {
+  AcmeChatLauncher,
+  useIsAcmeChatLauncherVisible,
+} from "@/src/features/acme-enhancements/components/AcmeChatLauncher";
 
 const containerLayoutClassName =
   "lg:mx-auto lg:w-full lg:max-w-screen-lg lg:px-8 xl:max-w-screen-xl 2xl:max-w-[1400px]";
@@ -85,6 +89,7 @@ const PageHeader = ({
   const envLabel = useEnvLabel();
   const acmeHeaderBackgroundClassName = useAcmeHeaderBackgroundClassName();
   const isInAppAgentLauncherVisible = useIsInAppAgentLauncherVisible();
+  const isAcmeChatLauncherVisible = useIsAcmeChatLauncherVisible();
   // The sidebar trigger + brand mark only make sense where a real AppSidebar
   // exists to toggle/mirror. On the sidebar-less MinimalLayout (public/shared
   // trace and session views) show the page's own leadingControl instead — no
@@ -155,6 +160,8 @@ const PageHeader = ({
             <div className="flex flex-wrap items-center gap-2">
               <PageHeaderControlsSlotTarget />
               {isInAppAgentLauncherVisible && <InAppAiAgentButton />}
+              {/* ACME (ADR-0015): the ACME AI launcher. */}
+              {isAcmeChatLauncherVisible && <AcmeChatLauncher />}
             </div>
           </div>
         </div>

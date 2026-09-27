@@ -4903,3 +4903,24 @@ Documentation only (Tier 2).
 - **Register:**
   - CHG-2026-078: merged and in dev.
   - CHG-2026-079: parts a and b merged and in dev as `acme-v4.38.0.21`.
+
+## 2026-09-27 — ACME AI opens from the top bar (CHG-2026-080)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-080 · Tier 1 (client-visible on every console page) · ADR-0015 · owner: Anees Ur Rahman |
+| **Dates** | Written 2026-09-27. Dev: not deployed · Prod: none exists |
+| **Impact** | ACME AI is opened from an "ACME AI" button in the top bar (an icon on mobile) instead of a round button fixed in the bottom-right corner, which covered page controls |
+| **Rollback** | Revert the commit and redeploy the previous console image. No data change |
+
+**Why:** a read-only sweep of 27 pages at 1440×900 found the floating button blocking controls. It blocked the **Older** pager on Gateway changes and Gateway requests (at the end of each list), the Playground's settings menu (completely), and a key row's **Revoke** on LLM Gateway. It partly covered the table pager on nine more pages. A click there opened the chat.
+
+**What:**
+- **Launcher:** `AcmeChatLauncher` in the top bar, beside the upstream assistant's launcher, with an icon-only version in the mobile top bar. It is shown to roles with `projectAiAssistant:use`, as before.
+- **Panel host:** `AcmeChatWidget` stays in the persistent layout, so conversations survive navigation. It has no floating button any more, and the panel opens under the top bar.
+- **Keyboard and accessibility:** the panel is a labelled non-modal dialog; the launcher has `aria-expanded` and `aria-controls`; focus moves to the message box on open; Escape closes the panel.
+- **Shared state:** the launcher and the panel share the open state through a small store.
+
+**Tests:** a new client test (`AcmeChatLauncher.clienttest.tsx`) covers opening from the launcher, focus, closing by Escape and by the launcher, and hiding the launcher from roles without access.
+
+**Deployment status:** not deployed.
