@@ -7,6 +7,7 @@ import { useMemo } from "react";
 import { useLangfuseCloudRegion } from "@/src/features/organizations/hooks";
 import { env } from "@/src/env.mjs";
 import type { NavigationItem } from "@/src/components/layouts/utilities/routes";
+import { acmePageTitle } from "@/src/features/acme-enhancements/utils/acmeBranding";
 
 /**
  * Generates metadata for the layout including:
@@ -28,7 +29,7 @@ export function useLayoutMetadata(
     const basePath = env.NEXT_PUBLIC_BASE_PATH ?? "";
 
     // Determine page title from active route
-    const title = activePathName ? `${activePathName} | Langfuse` : "Langfuse";
+    const title = acmePageTitle(activePathName);
 
     // Use dev favicon in DEV region for visual distinction
     // Using SVG for modern browsers with PNG fallback specified in sizes

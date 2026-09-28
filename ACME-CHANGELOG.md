@@ -5048,3 +5048,49 @@ Tier 1 part b of CHG-2026-081 (ADR-0016 §11). The sidebar's section names (Gove
 ## 2026-09-27 — Sidebar section names actually white (CHG-2026-081 c)
 
 Tier 1 part c of CHG-2026-081 (ADR-0016 §11). **Correction:** part b (`acme-v4.38.0.24`) gave the section names the full sidebar text colour, which the check after release found to be a light slate grey in this theme (`hsl(212 20% 78%)`), not white; its entry above says white, and that is wrong. Part c sets the section names to white (`text-white`, as the CAIRO wordmark), readable on the dark sidebar in both themes. Only `nav-main.tsx` changes; the client test checks the class. Rollback: revert the commit and redeploy the previous console image. **Deployment status:** not deployed.
+
+## 2026-09-28 — CAIRO in tab titles; internal environments shown as cairo-… (CHG-2026-085)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-085 · Tier 1 (client-visible) · ADR-0019 · owner: Anees Ur Rahman |
+| **Dates** | Written 2026-09-28. Dev: not deployed · Prod: none exists |
+| **Impact** | Browser tab titles read "… \| CAIRO". Langfuse's internal environments (for example `langfuse-llm-as-a-judge`) are shown as `cairo-…` wherever the console lists environments. Display only: stored values are unchanged |
+| **Rollback** | Revert the commit and redeploy the previous console image. No data change |
+
+**Why:** the owner's request of 2026-09-28, from the Home page. The tab still said "Home \| Langfuse", and the environment chip listed `langfuse-llm-as-a-judge`. The owner chose a display alias over renaming stored values.
+
+**What:**
+- **`acmeBranding.ts`:**
+  - `ACME_PRODUCT_NAME` and `acmePageTitle`;
+  - `acmeEnvironmentLabel` and `acmeEnvironmentOptions`: a name starting with the reserved `langfuse-` prefix is shown as `cairo-…`; every other name is shown unchanged.
+- **Titles:**
+  - every console page;
+  - sign in and sign up;
+  - reset and set password;
+  - onboarding;
+  - the SSO pages;
+  - the error and not-found page.
+- **The sign-in and password pages:** their description and `og:site_name` say CAIRO.
+- **The public trace page:** its home link says CAIRO.
+- **Environment labels:**
+  - the sidebar environment facet on every table;
+  - the filter builder;
+  - the Home and dashboard selectors;
+  - the Environment column;
+  - the trace environment badge.
+- **Unchanged:**
+  - stored environment names, saved views, URLs and the API;
+  - the P0-8 retention purge;
+  - pages that name Langfuse as the upstream (the API reference, "maintained by Langfuse" labels, documentation links).
+- **Not in this change:** the organisation, project and dashboard names. They are data, renamed in the dev console.
+
+**Tests:** new `acmeBranding.clienttest.tsx` (7) covers:
+- the title helper, and the sign-in and password titles;
+- the alias for every internal environment;
+- customer names left alone;
+- options keeping their values and existing labels;
+- the badge;
+- the sidebar facet.
+
+**Deployment status:** not deployed.

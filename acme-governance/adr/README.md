@@ -24,3 +24,4 @@ are marked as such and never claim approvals that were not recorded at the time.
 | [ADR-0016](ADR-0016-console-navigation-sections.md) | Console navigation: section names, order, collapsing, and an opaque top bar (CHG-2026-081) | Forward | Accepted 2026-09-27 by the owner | 2026-09-27 |
 | [ADR-0017](ADR-0017-remove-assurance-preview.md) | Removing the Assurance (Preview) demo (CHG-2026-083) | Forward | Proposed | 2026-09-27 |
 | [ADR-0018](ADR-0018-logs-one-table-pattern.md) | One table pattern for the Logs page (CHG-2026-084) | Forward | Proposed | 2026-09-27 |
+| [ADR-0019](ADR-0019-white-label-naming.md) | White-label naming: CAIRO in page titles, and a display alias for Langfuse's internal environments (CHG-2026-085) | Forward | Proposed | 2026-09-28 |

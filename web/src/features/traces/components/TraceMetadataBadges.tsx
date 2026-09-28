@@ -7,6 +7,7 @@
 import Link from "next/link";
 import { ExternalLinkIcon } from "lucide-react";
 import { Badge } from "@/src/components/design-system/Badge/Badge";
+import { acmeEnvironmentLabel } from "@/src/features/acme-enhancements/utils/acmeBranding";
 
 export function SessionBadge({
   sessionId,
@@ -66,7 +67,7 @@ export function TargetTraceBadge({
 }
 
 export function EnvironmentBadge({ environment }: { environment: string }) {
-  return <Badge text={`Env: ${environment}`} />;
+  return <Badge text={`Env: ${acmeEnvironmentLabel(environment)}`} />;
 }
 
 export function ReleaseBadge({ release }: { release: string }) {

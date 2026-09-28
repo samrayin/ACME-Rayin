@@ -69,6 +69,7 @@ import {
 import { useQueryProject } from "@/src/features/projects/hooks";
 import { useLangfuseCloudRegion } from "@/src/features/organizations/hooks";
 import { openAIFeaturesSettings } from "@/src/features/organizations/components/AIFeaturesDisabledNotice";
+import { acmeEnvironmentOptions } from "@/src/features/acme-enhancements/utils/acmeBranding";
 
 /**
  * Extended ColumnDefinition with optional alert for UI display.
@@ -1018,7 +1019,13 @@ function FilterBuilderForm({
         title="Value"
         chipsOnly={compact}
         className="min-w-[100px]"
-        options={column?.type === filter.type ? column.options : []}
+        options={
+          column?.type !== filter.type
+            ? []
+            : column.id === "environment"
+              ? acmeEnvironmentOptions(column.options)
+              : column.options
+        }
         onValueChange={(value) => handleFilterChange({ ...filter, value }, i)}
         values={Array.isArray(filter.value) ? filter.value : []}
         disabled={disabled}

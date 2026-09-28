@@ -12,6 +12,7 @@ import { Button } from "@/src/components/ui/button";
 import Link from "next/link";
 import { stripBasePath } from "@/src/utils/redirect";
 import { Badge } from "@/src/components/ui/badge";
+import { ACME_PRODUCT_NAME } from "@/src/features/acme-enhancements/utils/acmeBranding";
 
 export function TracePage({
   traceId,
@@ -64,17 +65,17 @@ export function TracePage({
         asChild
         size="sm"
         variant="outline"
-        title="Back to Langfuse"
+        title={`Back to ${ACME_PRODUCT_NAME}`}
         className="px-3"
       >
-        <Link href="/">Langfuse</Link>
+        <Link href="/">{ACME_PRODUCT_NAME}</Link>
       </Button>
     ) : (
       <Button
         asChild
         size="sm"
         variant="default"
-        title="Sign in to Langfuse"
+        title={`Sign in to ${ACME_PRODUCT_NAME}`}
         className="px-3"
       >
         <Link href={`/auth/sign-in?targetPath=${encodedTargetPath}`}>
