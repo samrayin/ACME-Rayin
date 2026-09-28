@@ -6,6 +6,7 @@ import Head from "next/head";
 import NextErrorComponent, { type ErrorProps } from "next/error";
 import type { NextPageContext } from "next";
 import { CrashModal } from "@/src/components/CrashModal/CrashModal";
+import { acmePageTitle } from "@/src/features/acme-enhancements/utils/acmeBranding";
 
 type LangfuseErrorPageProps = ErrorProps & {
   sentryEventId?: string;
@@ -37,9 +38,11 @@ const ErrorPage = ({
         hostname ? ` while loading ${hostname}` : ""
       } (see the browser console for more information).`;
 
-  const documentTitle = statusCode
-    ? `${statusCode}: ${resolvedTitle}`
-    : "Application error: a client-side exception has occurred";
+  const documentTitle = acmePageTitle(
+    statusCode
+      ? `${statusCode}: ${resolvedTitle}`
+      : "Application error: a client-side exception has occurred",
+  );
 
   return (
     <>

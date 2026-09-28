@@ -20,6 +20,7 @@ import { Input } from "@/src/components/ui/input";
 import { env } from "@/src/env.mjs";
 import { reportError } from "@/src/utils/reportError";
 import { isJsonParseSyntaxError } from "@/src/features/auth/lib/expectedAuthErrors";
+import { acmePageTitle } from "@/src/features/acme-enhancements/utils/acmeBranding";
 
 const enterpriseSsoFormSchema = z.object({
   email: z.email(),
@@ -145,7 +146,7 @@ export default function EnterpriseSsoRequiredPage() {
   return (
     <>
       <Head>
-        <title>Enterprise SSO Required | Langfuse</title>
+        <title>{acmePageTitle("Enterprise SSO Required")}</title>
       </Head>
       <div className="flex min-h-full flex-1 flex-col justify-center px-6 py-12 lg:px-8">
         <div className="sm:mx-auto sm:w-full sm:max-w-md">

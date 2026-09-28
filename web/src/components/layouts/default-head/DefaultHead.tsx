@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { useLangfuseCloudRegion } from "@/src/features/organizations/hooks";
 import { useLayoutMetadata } from "@/src/components/layouts/app-layout/hooks/useLayoutMetadata";
 import { getPageMetadata } from "./getPageMetadata";
+import { ACME_PRODUCT_NAME } from "@/src/features/acme-enhancements/utils/acmeBranding";
 
 /**
  * Rendered in `_app` outside the layout, so it is part of every server
@@ -49,7 +50,7 @@ export function DefaultHead() {
           <meta property="og:title" content={title} />
           <meta property="og:description" content={description} />
           <meta property="og:type" content="website" />
-          <meta property="og:site_name" content="Langfuse" />
+          <meta property="og:site_name" content={ACME_PRODUCT_NAME} />
         </>
       )}
       {canonicalUrl && (

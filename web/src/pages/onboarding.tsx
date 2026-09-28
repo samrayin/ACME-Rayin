@@ -2,12 +2,13 @@
 
 import Head from "next/head";
 import { ConnectedOnboardingSurvey } from "@/src/features/onboarding/components/ConnectedOnboardingSurvey";
+import { acmePageTitle } from "@/src/features/acme-enhancements/utils/acmeBranding";
 
 export default function OnboardingPage() {
   return (
     <>
       <Head>
-        <title>Onboarding | Langfuse</title>
+        <title>{acmePageTitle("Onboarding")}</title>
       </Head>
       <ConnectedOnboardingSurvey />
     </>

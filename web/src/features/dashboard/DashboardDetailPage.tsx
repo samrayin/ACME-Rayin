@@ -93,6 +93,7 @@ import {
   RouteParamsPendingFallback,
   useReadyRouteParams,
 } from "@/src/hooks/useReadyRouteParams";
+import { acmeEnvironmentOptions } from "@/src/features/acme-enhancements/utils/acmeBranding";
 
 // Position for a tile inserted "next to" an anchor tile: same size,
 // immediately to the right when that fits the 12-column grid, otherwise
@@ -916,10 +917,8 @@ function DashboardDetailView({ readPath }: { readPath: ResolvedReadPath }) {
     timeRange,
     enabled: !isContentFreeRole,
   });
-  const environmentOptions = environmentOptionsState.environmentOptions.map(
-    (value) => ({
-      value,
-    }),
+  const environmentOptions = acmeEnvironmentOptions(
+    environmentOptionsState.environmentOptions.map((value) => ({ value })),
   );
 
   // Dedicated environment selector, same as Home. The selection is a view

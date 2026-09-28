@@ -52,6 +52,7 @@ import {
   useIsContentFreeRole,
   useLandsOnGuardrails,
 } from "@/src/features/rbac/hooks/useIsSecurityAnalyst";
+import { acmeEnvironmentOptions } from "@/src/features/acme-enhancements/utils/acmeBranding";
 
 // Controller: no widget query may fire before the session resolves the v3/v4
 // read path — an unresolved session used to read as v3, fire a full wave of
@@ -349,9 +350,9 @@ function HomeDashboard({ readPath }: { readPath: ResolvedReadPath }) {
                 label="Env"
                 values={selectedEnvironments}
                 onValueChange={useDebounce(setSelectedEnvironments)}
-                options={environmentOptions.map((env) => ({
-                  value: env,
-                }))}
+                options={acmeEnvironmentOptions(
+                  environmentOptions.map((env) => ({ value: env })),
+                )}
                 className="my-0 w-auto overflow-hidden"
               />
               <PopoverFilterBuilder

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { ErrorPageWithSentry } from "@/src/components/error-page";
 import { Spinner } from "@/src/components/layouts/spinner";
+import { acmePageTitle } from "@/src/features/acme-enhancements/utils/acmeBranding";
 
 export default function SSOInitiate() {
   const router = useRouter();
@@ -44,7 +45,7 @@ export default function SSOInitiate() {
     return (
       <>
         <Head>
-          <title>Sign-in Error | Langfuse</title>
+          <title>{acmePageTitle("Sign-in Error")}</title>
         </Head>
         <ErrorPageWithSentry title="SSO Sign-in Failed" message={error} />
       </>
@@ -55,7 +56,7 @@ export default function SSOInitiate() {
   return (
     <>
       <Head>
-        <title>Signing in | Langfuse</title>
+        <title>{acmePageTitle("Signing in")}</title>
       </Head>
       <Spinner message="Redirecting to your identity provider..." />
     </>

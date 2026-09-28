@@ -2,6 +2,10 @@ import {
   type CloudRegionName,
   isRegionProduction,
 } from "@/src/features/organizations/cloudRegions";
+import {
+  ACME_PRODUCT_NAME,
+  acmePageTitle,
+} from "@/src/features/acme-enhancements/utils/acmeBranding";
 
 /**
  * Every region serves the same sign-in page, and the sign-in page is reached
@@ -32,13 +36,12 @@ const cloudAuthPages: Record<string, PageMetadata> = {
 
 const selfHostedAuthPages: Record<string, PageMetadata> = {
   "/auth/sign-in": {
-    title: "Sign in | Langfuse",
-    description:
-      "Sign in to Langfuse, the open source agent evals & observability platform.",
+    title: acmePageTitle("Sign in"),
+    description: `Sign in to ${ACME_PRODUCT_NAME}.`,
   },
   "/auth/sign-up": {
-    title: "Sign up | Langfuse",
-    description: "Create a Langfuse account.",
+    title: acmePageTitle("Sign up"),
+    description: `Create a ${ACME_PRODUCT_NAME} account.`,
   },
 };
 
@@ -47,16 +50,16 @@ const selfHostedAuthPages: Record<string, PageMetadata> = {
 // shows the user has no password yet; that cannot be known from the route.
 const passwordPages: Record<string, PageMetadata> = {
   "/auth/reset-password": {
-    title: "Reset password | Langfuse",
-    description: "Reset the password of your Langfuse account.",
+    title: acmePageTitle("Reset password"),
+    description: `Reset the password of your ${ACME_PRODUCT_NAME} account.`,
   },
   "/auth/setup-password": {
-    title: "Set password | Langfuse",
-    description: "Set the password of your Langfuse account.",
+    title: acmePageTitle("Set password"),
+    description: `Set the password of your ${ACME_PRODUCT_NAME} account.`,
   },
 };
 
-const defaultMetadata: PageMetadata = { title: "Langfuse" };
+const defaultMetadata: PageMetadata = { title: acmePageTitle() };
 
 /**
  * Metadata that must be in the server-rendered HTML. Pages own their own

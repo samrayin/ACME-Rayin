@@ -56,6 +56,7 @@ import {
   type SidebarFilterActionContext,
   type StringKeyValueFilterEntry,
 } from "../lib/sidebar-filter-actions";
+import { acmeEnvironmentOptions } from "@/src/features/acme-enhancements/utils/acmeBranding";
 
 // Re-exported so existing consumers (tests, session view) keep their path.
 export { resolveCheckboxOperator } from "../lib/sidebar-filter-actions";
@@ -1826,7 +1827,15 @@ export function useSidebarFilterPresentation(
           counts,
           displayByValue,
         } = Array.isArray(availableValuesWithOptions)
-          ? processOptions(availableValuesWithOptions)
+          ? processOptions(
+              facet.column === "environment"
+                ? acmeEnvironmentOptions(
+                    availableValuesWithOptions.map((option) =>
+                      typeof option === "string" ? { value: option } : option,
+                    ),
+                  )
+                : availableValuesWithOptions,
+            )
           : { values: [], counts: EMPTY_MAP, displayByValue: undefined };
 
         // Check if this column supports operator toggle

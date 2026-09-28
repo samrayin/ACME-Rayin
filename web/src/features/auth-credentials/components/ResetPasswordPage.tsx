@@ -27,6 +27,7 @@ import { usePostHogClientCapture } from "@/src/features/posthog-analytics";
 import { passwordSchema } from "@/src/features/auth";
 import { useLangfuseCloudRegion } from "@/src/features/organizations/hooks";
 import { PASSWORD_SETUP_EMAIL_STORAGE_KEY } from "@/src/features/auth-credentials/lib/credentialsUtils";
+import { acmePageTitle } from "@/src/features/acme-enhancements/utils/acmeBranding";
 
 const resetPasswordSchema = z
   .object({
@@ -162,7 +163,7 @@ export function ResetPasswordPage({
   return (
     <>
       <Head>
-        <title>{pageTitle} | Langfuse</title>
+        <title>{acmePageTitle(pageTitle)}</title>
       </Head>
       <div className="flex flex-1 flex-col py-6 sm:min-h-full sm:justify-center sm:px-6 sm:py-12 lg:px-8">
         <div className="sm:mx-auto sm:w-full sm:max-w-md">
