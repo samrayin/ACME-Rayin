@@ -5109,3 +5109,7 @@ Documentation only (Tier 2).
   - **Correction to the CHG-2026-085 entry above:** it lists "the error and not-found page" among the retitled pages. The not-found page was not retitled. With no `pages/404`, Next.js serves its built-in 404 page, titled "Next.js"; checked on dev after the deploy. Only the error page is retitled. The claim's custom not-found page is still needed and is proposed as part b.
   - "RayIn Home" is a built-in dashboard named in code, not a console rename; it and the four other "RayIn" built-in dashboards await the owner's decision.
 - **Dev console renames (data):** the organisation is now "ACME CAIRO" and the project "Anees - CAIRO - Demo".
+
+## 2026-09-29 — CAIRO's not-found page (CHG-2026-085 b)
+
+Tier 1 part b of CHG-2026-085 (ADR-0019 §11). The check after the `.26` release found that unknown URLs still got Next.js's built-in 404 page, titled "Next.js": the error page does not handle not-found. A new `pages/404.tsx` shows the error page's 404 (the same card, "Error 404", "This page could not be found." and Return home) with the title "404: This page could not be found | CAIRO". It is static, as Next.js requires, so it uses the shared `CrashModal` rather than the error page's export. A client test covers the title, the content and link, and the static-page rule. Rollback: revert the commit and redeploy the previous console image. **Deployment status:** not deployed.
