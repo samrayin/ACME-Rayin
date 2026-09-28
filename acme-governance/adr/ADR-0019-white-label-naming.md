@@ -70,7 +70,7 @@ Three of these are names stored as data: the organisation, the project and the d
   - the Home and dashboard selectors;
   - `createBadgeTableColumn`, which today renders only environment columns;
   - `EnvironmentBadge`.
-- **Not-found page: correction, 2026-09-28, after the `.26` deploy.** This section first said CAIRO's own error page (`_error.tsx`) also serves not-found, so the custom not-found page in the claim was not needed. **That was wrong.** With no `pages/404`, Next.js serves its built-in static 404 page, whose tab title is "Next.js". Checked on dev after the deploy: a removed page and a made-up path both return HTTP 404 with that title. `_error.tsx`, and the "| CAIRO" title this change gives it, covers the other errors only. The claim was right: a custom not-found page is still needed. It is proposed as CHG-2026-085 b and is not built.
+- **Not-found page: correction, 2026-09-28, after the `.26` deploy.** This section first said CAIRO's own error page (`_error.tsx`) also serves not-found, so the custom not-found page in the claim was not needed. **That was wrong.** With no `pages/404`, Next.js serves its built-in static 404 page, whose tab title is "Next.js". Checked on dev after the deploy: a removed page and a made-up path both return HTTP 404 with that title. `_error.tsx`, and the "| CAIRO" title this change gives it, covers the other errors only. The claim was right: a custom not-found page is still needed. It is built in part b (§11).
 - **Rejected:**
   - *Renaming the stored environments* (a migration from `langfuse-*` to `cairo-*`): Langfuse's worker, evaluators and ingestion write and match the `langfuse-` names, including the default hidden-environment list, so every upstream upgrade would need the rename redone. P0-8's purge predicate would also have to change, and it has already been verified.
   - *Aliasing inside the shared `MultiSelect` for every value:* the component serves trace names, tags, users and more, where a value starting with `langfuse-` is not an environment.
@@ -121,3 +121,24 @@ None. **Rollback:** revert the commit and redeploy the previous console image
 
 - **Organisation and project:** renamed in the dev console on 2026-09-28, separately from this change ("ACME CAIRO", "Anees - CAIRO - Demo"). Nothing in code depends on them.
 - **Dashboard "RayIn Home":** not renamed. Correction to §1: it is a built-in dashboard, named in code (`packages/shared/src/domain/home-dashboard.ts`) and seeded by the worker at startup, not a console-editable name. Four other built-in dashboards carry the same "RayIn" prefix (`worker/src/constants/langfuse-dashboards.json`). Renaming them needs a code change and a worker release; open, awaiting the owner's decision.
+
+## 11. Addendum 2026-09-29: part b, CAIRO's not-found page
+
+The check after the `.26` release found that the not-found page still shows Next.js's
+built-in 404 page, whose browser tab says "Next.js" (§3, §9). On 2026-09-29 the owner said
+to proceed with the recommended fix.
+
+- **New `pages/404.tsx`.** Next.js serves it for every unknown URL in place of its built-in
+  page.
+  - **Title:** "404: This page could not be found | CAIRO".
+  - **Body:** the error page's own 404: the same card, "Error 404", "This page could not be
+    found." and a Return home link.
+  - **Layout:** it renders without the app layout, as the error page does.
+- **Why not reuse the error page:** Next.js requires the 404 page to be static and refuses
+  one with `getInitialProps`. The error page's default export has one (for Sentry), so the
+  new page uses the shared `CrashModal` directly.
+- **Tests:** a client test checks the title, the 404 content and link, and that the page has
+  no `getInitialProps` and skips the app layout.
+- **Unchanged:** the error page itself, and every other decision in this ADR.
+- **Not in this part:** renaming the five "RayIn …" built-in dashboards (§10). That needs a
+  worker release and is still with the owner.
