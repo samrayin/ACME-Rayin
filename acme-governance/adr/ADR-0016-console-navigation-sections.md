@@ -153,6 +153,8 @@ at 70% opacity.
   is. The sidebar is dark in both themes (navy in light, near-black in dark), so white reads
   in both. The expand and collapse arrow follows the same colour.
 
+**Checked 2026-09-27 on `acme-v4.38.0.25`** (read-only, owner's session, 1440×900, light theme): all seven section names and their arrows compute to `rgb(255, 255, 255)` on the navy sidebar (`rgb(17, 38, 59)`). The owner's account is set to the light theme, so the dark theme was not seen live; its sidebar is `hsl(0 0% 2%)` in the stylesheet, where white also reads.
+
 Only the ACME sidebar code changes (`nav-main.tsx`); the shared label component is
 untouched, so other labels keep their style. A client test checks the class. No other
 decision in this ADR changes.

@@ -4,13 +4,13 @@
 |---|---|
 | **Change ID** | CHG-2026-084 · Tier 1 (client-visible: every tab of the Logs page) |
 | **Owner** | Anees Ur Rahman |
-| **Affected release** | Not yet released |
+| **Affected release** | `acme-v4.38.0.24` |
 | **Status** | Proposed |
 | **Type** | Forward |
 | **Date** | 2026-09-27 |
 | **Author** | Claude session (Opus 5.5) for Anees Ur Rahman |
-| **Approval** | Pending. The owner asked for the change on 2026-09-27; merging and the dev deploy stay with the owner |
-| **Commits / tag** | See the PR |
+| **Approval** | Pending acceptance. The owner asked for the change on 2026-09-27, merged #230 and approved the dev deploy |
+| **Commits / tag** | `8084e3de2` (#230) · `acme-v4.38.0.24` |
 
 ## 1. Purpose
 
@@ -110,7 +110,7 @@ a time, with a switch between this project's keys and keys CAIRO did not issue.
 |---|---|---|
 | A: leave dev | See the PR | Typecheck, ESLint `--max-warnings 0`, Prettier and knip on the build workstation. New `AcmeLogTable.clienttest.tsx`: the paging helpers (forward, back, page size, value or function updates), the data mapping, rendering, row click, the error and empty states, and the details panel |
 | B: staging | `Staging: not available.` | No database change |
-| C: post-deploy (dev) | Planned | Read-only, in the owner's session: each tab shows the same layout; paging forward and back (Guardrail events in cursor mode, the others with page numbers); page size; a row's details; the Guardrail events filters, counts, "hide test traffic" and Export as before; the Gateway requests scope switch; the top bar stays clear when scrolling |
+| C: post-deploy (dev) | Passed 2026-09-27 on `acme-v4.38.0.24` | Read-only in the owner's session at 1440×900; nothing exported or changed. Each tab has the description, the row-height control, the shared table (50 rows) and the "Rows per page" footer, and none has the old Newer/Older buttons. Guardrail events: next page shows older rows and previous returns exactly to page 1; a row opens its details; "hide test traffic" hid 292 test events and switched back; Export CSV is present (not clicked). Gateway changes and Gateway requests: next and previous page correctly, and a row opens its details panel with the JSON. Gateway requests: the scope switch showed the keys CAIRO did not issue, and 20 rows a page showed 20 rows |
 
 ## 10. Assumptions and open questions
 

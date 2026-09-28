@@ -4,13 +4,13 @@
 |---|---|
 | **Change ID** | CHG-2026-083 · Tier 1 (client-visible: a console page goes away) |
 | **Owner** | Anees Ur Rahman |
-| **Affected release** | Not yet released |
+| **Affected release** | `acme-v4.38.0.24` |
 | **Status** | Proposed |
 | **Type** | Forward |
 | **Date** | 2026-09-27 |
 | **Author** | Claude session (Opus 5.5) for Anees Ur Rahman |
-| **Approval** | Pending. The owner asked for the removal on 2026-09-27; merging and the dev deploy stay with the owner |
-| **Commits / tag** | See the PR |
+| **Approval** | Pending acceptance. The owner asked for the removal on 2026-09-27, merged #229 and approved the dev deploy |
+| **Commits / tag** | `6aa410d3e` (#229) · `acme-v4.38.0.24` |
 
 ## 1. Purpose
 
@@ -86,7 +86,7 @@ The Assurance (Preview) demo is removed from the Governance Controls section.
 |---|---|---|
 | A: leave dev | See the PR | Typecheck, ESLint, Prettier and knip on the build workstation. The per-role sidebar test (`acme-role-navigation.clienttest.tsx`) no longer expects the entry. The Security Analyst allow-list tests pass without the two removed procedures |
 | B: staging | `Staging: not available.` | No database change |
-| C: post-deploy (dev) | Planned | Read-only, in the owner's session: the entry is gone from the sidebar for Owner, Security Analyst and Auditor; the old URL shows "not found"; the Guardrails page and its live state are unaffected |
+| C: post-deploy (dev) | Passed 2026-09-27 on `acme-v4.38.0.24` | Read-only in the owner's session at 1440×900. Governance Controls holds Guardrails and LLM Gateway only (Owner view; the Security Analyst and Auditor views are covered by the pinned per-role test, with no live sign-in as those roles). The old URL returns 404 "This page could not be found", the generic Next.js page, titled "Next.js" (a white-label gap, not changed here). The Guardrails page shows its 30-day totals and every policy |
 
 ## 10. Assumptions and open questions
 
