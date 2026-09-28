@@ -4,12 +4,12 @@
 |---|---|
 | **Change ID** | CHG-2026-085 · Tier 1 (client-visible: every browser tab title, and environment names across the console) |
 | **Owner** | Anees Ur Rahman |
-| **Affected release** | Not yet released |
+| **Affected release** | `acme-v4.38.0.26` |
 | **Status** | Proposed |
 | **Type** | Forward |
 | **Date** | 2026-09-28 |
 | **Author** | Claude session (Opus 5.5) for Anees Ur Rahman |
-| **Approval** | Pending. The owner asked for the change on 2026-09-28 and chose the environment option; merging and the dev deploy stay with the owner |
+| **Approval** | The owner asked for the change on 2026-09-28 and chose the environment option, merged #235, and approved the dev deploy ("yes to deploy"). Acceptance of this ADR is the owner's to record |
 | **Commits / tag** | See the PR |
 
 ## 1. Purpose
@@ -34,7 +34,7 @@ Three of these are names stored as data: the organisation, the project and the d
   - reset and set password;
   - onboarding;
   - the SSO pages;
-  - the error and not-found page.
+  - the error page. **Not** the not-found page, which Next.js serves itself (see §3).
 - **The sign-in and password pages:** their meta description and `og:site_name`.
 - **The public trace page:** its home link ("Langfuse" becomes "CAIRO").
 - **How an environment name is displayed:**
@@ -70,7 +70,7 @@ Three of these are names stored as data: the organisation, the project and the d
   - the Home and dashboard selectors;
   - `createBadgeTableColumn`, which today renders only environment columns;
   - `EnvironmentBadge`.
-- **Correction to the claim:** the claim said this change would add a custom not-found page in place of the framework's. CAIRO already has its own error page (`_error.tsx`), which also serves not-found. The change only gives its title the "| CAIRO" suffix.
+- **Not-found page: correction, 2026-09-28, after the `.26` deploy.** This section first said CAIRO's own error page (`_error.tsx`) also serves not-found, so the custom not-found page in the claim was not needed. **That was wrong.** With no `pages/404`, Next.js serves its built-in static 404 page, whose tab title is "Next.js". Checked on dev after the deploy: a removed page and a made-up path both return HTTP 404 with that title. `_error.tsx`, and the "| CAIRO" title this change gives it, covers the other errors only. The claim was right: a custom not-found page is still needed. It is proposed as CHG-2026-085 b and is not built.
 - **Rejected:**
   - *Renaming the stored environments* (a migration from `langfuse-*` to `cairo-*`): Langfuse's worker, evaluators and ingestion write and match the `langfuse-` names, including the default hidden-environment list, so every upstream upgrade would need the rename redone. P0-8's purge predicate would also have to change, and it has already been verified.
   - *Aliasing inside the shared `MultiSelect` for every value:* the component serves trace names, tags, users and more, where a value starting with `langfuse-` is not an environment.
@@ -115,8 +115,9 @@ None. **Rollback:** revert the commit and redeploy the previous console image
 |---|---|---|
 | A: leave dev | See the PR | Typecheck, ESLint `--max-warnings 0` and Prettier on the build workstation. New `acmeBranding.clienttest.tsx` (7 tests) covers: the title helper; the self-hosted page metadata (CAIRO, never Langfuse); every `LangfuseInternalTraceEnvironment` value aliased; customer names untouched; options keeping their values and existing labels; the environment badge; and the sidebar environment facet labelling while filtering on the stored value. The facet test fails with the sidebar change reverted |
 | B: staging | `Staging: not available.` | No database change |
-| C: post-deploy (dev) | Planned | Read-only, in the owner's session: the tab title on Home, a table page and sign-in; the Home environment chip and its list show `cairo-llm-as-a-judge`; selecting it still filters to those traces (the URL carries `langfuse-llm-as-a-judge`); the traces table's Environment column and sidebar facet; a trace's environment badge |
+| C: post-deploy (dev) | Passed 2026-09-28 on `acme-v4.38.0.26`, for what was checked, **except the not-found page**, which still shows the framework's title "Next.js" (§3) | Read-only, in the owner's session; nothing exported. Tab titles "Home \| CAIRO", "Dashboards \| CAIRO", "Tracing \| CAIRO". The sign-in page's server HTML has "Sign in \| CAIRO", CAIRO descriptions and `og:site_name`, and no "Langfuse". The traces sidebar environment facet lists `cairo-llm-as-a-judge` and `default`. A URL filter on the stored `langfuse-llm-as-a-judge` returns the evaluator traces, whose Environment column shows `cairo-llm-as-a-judge`. The raw name still appears inside trace metadata JSON, as expected (§2). **Not seen live:** the Home environment selector's list (its dropdown did not render in the hidden Browser pane) and the trace environment badge (the trace view on this build opens on the root observation, which has no badge); both are covered by the client tests only |
 
 ## 10. Assumptions and open questions
 
-- The organisation, project and dashboard names are renamed in the dev console on 2026-09-28, separately from this change. Nothing in code depends on them.
+- **Organisation and project:** renamed in the dev console on 2026-09-28, separately from this change ("ACME CAIRO", "Anees - CAIRO - Demo"). Nothing in code depends on them.
+- **Dashboard "RayIn Home":** not renamed. Correction to §1: it is a built-in dashboard, named in code (`packages/shared/src/domain/home-dashboard.ts`) and seeded by the worker at startup, not a console-editable name. Four other built-in dashboards carry the same "RayIn" prefix (`worker/src/constants/langfuse-dashboards.json`). Renaming them needs a code change and a worker release; open, awaiting the owner's decision.
