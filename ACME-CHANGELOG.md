@@ -5100,3 +5100,12 @@ Documentation only (Tier 2).
 - the sidebar facet.
 
 **Deployment status:** not deployed.
+
+## 2026-09-28 — Register status and gate C evidence for CHG-2026-085
+
+Documentation only (Tier 2).
+- **CHG-2026-085:** merged (#235) and live in dev as `acme-v4.38.0.26`. ADR-0019 gate C passed for what was checked; the Home environment selector's list and the trace environment badge were not seen live and rest on the client tests. ADR-0019 stays Proposed until the owner records acceptance.
+- **Corrections recorded in ADR-0019 §10 and the register:**
+  - The claim's "custom not-found page" was not needed.
+  - "RayIn Home" is a built-in dashboard named in code, not a console rename; it and the four other "RayIn" built-in dashboards await the owner's decision.
+- **Dev console renames (data):** the organisation is now "ACME CAIRO" and the project "Anees - CAIRO - Demo".
