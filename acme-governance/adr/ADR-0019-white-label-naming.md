@@ -4,7 +4,7 @@
 |---|---|
 | **Change ID** | CHG-2026-085 · Tier 1 (client-visible: every browser tab title, and environment names across the console) |
 | **Owner** | Anees Ur Rahman |
-| **Affected release** | `acme-v4.38.0.26` |
+| **Affected release** | `acme-v4.38.0.26` (part a), `.27` (part b), `.28` (part c) |
 | **Status** | Proposed |
 | **Type** | Forward |
 | **Date** | 2026-09-28 |
@@ -175,3 +175,11 @@ and the removed `assurance-demo` URL still returned Next.js's built-in 404, titl
   the layout no longer says "Next.js".
 - **Not provable by those tests:** how Next.js routes unmatched URLs. Gate C on dev,
   fetching the same two URLs, is the check.
+
+**Checked 2026-09-28 on `acme-v4.38.0.28`** (TRACED at `9860c3606`; read-only; ops record #49):
+- **With `curl`, no session:** a made-up URL and the removed `assurance-demo` URL return HTTP 404 titled "404: This page could not be found | CAIRO", with the card and Return home. "Next.js" appears nowhere in the HTML.
+- **In the owner's browser:** the card is styled (light palette), and Return home goes to `/`, "Organizations | CAIRO".
+- **Sign-in:** its title is unchanged.
+- **Not exercised:** the Pages Router `pages/404.tsx`, which needs a page to return `notFound: true`.
+
+**Result:** passed.

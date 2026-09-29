@@ -5123,3 +5123,12 @@ Tier 1 part c of CHG-2026-085 (ADR-0019 §12). **Part b did not fix unknown URLs
 - **Tests:** client tests cover the metadata and the card. Only gate C on dev can show the routing.
 
 Rollback: revert the commit and redeploy the previous console image. **Deployment status:** not deployed.
+
+## 2026-09-29 — Register status and gate C evidence for CHG-2026-085 b and c
+
+Documentation only (Tier 2).
+- **Part b** (#237) went out as `acme-v4.38.0.27`. Its gate C failed: unknown URLs still showed Next.js's 404, because the App Router serves them (ops record #48).
+- **Part c** (#238) went out as `acme-v4.38.0.28`, and its gate C passed.
+  - Unknown URLs return HTTP 404 titled "404: This page could not be found | CAIRO", with the error card and a working Return home.
+  - "Next.js" no longer appears (ops record #49).
+- **Records:** ADR-0019 §12 and the register record the results. ADR-0019 stays Proposed until the owner records acceptance.
