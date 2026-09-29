@@ -183,3 +183,32 @@ and the removed `assurance-demo` URL still returned Next.js's built-in 404, titl
 - **Not exercised:** the Pages Router `pages/404.tsx`, which needs a page to return `notFound: true`.
 
 **Result:** passed.
+
+## 13. Addendum 2026-09-29: part d, the built-in dashboards say CAIRO
+
+§10 recorded that "RayIn Home" and four other built-in dashboards could not be renamed in
+the console. On 2026-09-29 the owner said to proceed with renaming them.
+
+- **Renamed:**
+  - "RayIn Home" to "CAIRO Home" (`packages/shared/src/domain/home-dashboard.ts`);
+  - "RayIn Latency Dashboard", "RayIn Usage Management", "RayIn Cost Dashboard" and
+    "RayIn Agent Dashboard" to "CAIRO …" (`worker/src/constants/langfuse-dashboards.json`).
+
+  IDs, definitions, widgets and descriptions are unchanged.
+- **Each `updatedAt` is bumped to 2026-09-29.** The worker writes these rows at startup
+  (`upsertLangfuseDashboards`) and skips a row whose stored `updatedAt` matches, so without
+  the bump the rename would never reach the database. The 2026-09-10 rebrand to "RayIn"
+  worked the same way.
+- **When it takes effect:** when a worker built from this commit starts, which needs a
+  worker release.
+  - The worker in dev is `worker-acme-v4.38.0.3` (`65445bdf4`, 2026-09-24).
+  - A release from `main` also carries four changes that are already live in the console:
+    #209 (API-key revocation and SCIM fixes), #192 (Viewer and Auditor roles), #172 (knip
+    clean-up) and #179 (project access policy).
+  - The web console also embeds the Home dashboard definition as a fallback, used only when
+    its row does not exist. It picks up the new name on the next console release. It does
+    not need one for the rename to show.
+- **Dashboards copied from these by users are untouched.** They are separate rows owned by
+  their projects.
+- **Tests:** a worker test checks the four template names and their `updatedAt`; a shared
+  test checks "CAIRO Home" and its `updatedAt`.
