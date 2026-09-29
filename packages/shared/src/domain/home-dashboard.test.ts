@@ -62,3 +62,13 @@ describe("LANGFUSE_HOME_DASHBOARD", () => {
     }
   });
 });
+
+// CHG-2026-085 d / ADR-0019 §13.
+describe("LANGFUSE_HOME_DASHBOARD name", () => {
+  it("is CAIRO Home, with updatedAt bumped so the worker upsert rewrites it", () => {
+    expect(LANGFUSE_HOME_DASHBOARD.name).toBe("CAIRO Home");
+    expect(
+      new Date(LANGFUSE_HOME_DASHBOARD.updatedAt).getTime(),
+    ).toBeGreaterThanOrEqual(new Date("2026-09-29T00:00:00.000Z").getTime());
+  });
+});

@@ -5132,3 +5132,14 @@ Documentation only (Tier 2).
   - Unknown URLs return HTTP 404 titled "404: This page could not be found | CAIRO", with the error card and a working Return home.
   - "Next.js" no longer appears (ops record #49).
 - **Records:** ADR-0019 §12 and the register record the results. ADR-0019 stays Proposed until the owner records acceptance.
+
+## 2026-09-29 — Built-in dashboards renamed from RayIn to CAIRO (CHG-2026-085 d)
+
+Tier 1 part d of CHG-2026-085 (ADR-0019 §13), on the owner's instruction.
+- **Renamed:** the five built-in dashboards, "RayIn Home", "RayIn Latency Dashboard", "RayIn Usage Management", "RayIn Cost Dashboard" and "RayIn Agent Dashboard", now read "CAIRO …".
+- **`updatedAt` bumped:** the worker's startup upsert rewrites a row only when this date changes.
+- **Unchanged:** IDs, definitions and widgets. Users' own copies are untouched.
+- **Takes effect:** when a worker built from this commit starts, so it needs a worker release. That release also brings the worker up to `main` (#209, #192, #172, #179, already live in the console).
+- **Tests:** worker and shared tests check the names and dates.
+
+Rollback: revert the commit and release the worker again; the reverted dates make the upsert write the old names back. **Deployment status:** not deployed.
