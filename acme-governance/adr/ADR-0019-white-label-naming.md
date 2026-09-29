@@ -4,7 +4,7 @@
 |---|---|
 | **Change ID** | CHG-2026-085 · Tier 1 (client-visible: every browser tab title, and environment names across the console) |
 | **Owner** | Anees Ur Rahman |
-| **Affected release** | `acme-v4.38.0.26` (part a), `.27` (part b), `.28` (part c) |
+| **Affected release** | `acme-v4.38.0.26` (part a), `.27` (part b), `.28` (part c); worker `worker-acme-v4.38.0.4` (part d) |
 | **Status** | Proposed |
 | **Type** | Forward |
 | **Date** | 2026-09-28 |
@@ -212,3 +212,10 @@ the console. On 2026-09-29 the owner said to proceed with renaming them.
   their projects.
 - **Tests:** a worker test checks the four template names and their `updatedAt`; a shared
   test checks "CAIRO Home" and its `updatedAt`.
+
+**Checked 2026-09-29 on worker `worker-acme-v4.38.0.4`** (TRACED at `23a0462e0`; read-only; ops record #50):
+- **Worker log:** at startup it logged "Upserted dashboard" for all five "CAIRO …" dashboards, and no errors.
+- **Dashboards list, owner's session:** shows the five "CAIRO …" names and no "RayIn". A project's own dashboard is unchanged.
+- **Home:** renders.
+
+**Result:** passed.
