@@ -33,6 +33,7 @@ The owner also asked for automatic routing to be configured and tested. "Automat
 | The gateway pushes its request log to CAIRO | Built, **not enabled**: held at the gateway-restart gate | CHG-2026-009 |
 | Applications are forced through the gateway | **No.** Egress is unrestricted, so an application can call a provider directly and nothing about that call reaches CAIRO | Ledger N-33 |
 | Routed calls record the model that actually served them | **Not yet**: the ingest drops the router's field | ADR-0010 §5 |
+| CAIRO's own evaluators use the gateway | **No.** They call the provider directly, through a project connection outside the gateway (found 2026-09-30) | §3.6; step f |
 
 So the gateway already sits in the path, **for the applications that choose to use it**. This ADR makes the path mandatory, and makes CAIRO the front door.
 
@@ -107,6 +108,61 @@ These are configured in the gateway, managed from the console where ADR-0010 alr
 - **An output guardrail**, when one is built, must run on the final response after routing.
 - **Records:** every hop of a fallback is logged as its own call, carrying the original group, the group tried and the fallbacks attempted. CAIRO must show the request as one row with its chain, not as unrelated calls (§6, T6).
 
+### 3.6 CAIRO's own evaluators, and a dev-only guardrail exception
+
+*Added 2026-09-30, CHG-2026-086 f.* The owner decided on 2026-09-30: "yes, proceed with dev exemption and add roadmap items".
+
+**The problem.**
+- CAIRO's evaluators (LLM-as-a-judge scoring of traces) called the provider **directly**, through a project connection outside the gateway. This is the same bypass §3.2 forbids for applications, only inside CAIRO.
+- They shared a provider daily limit and lost evaluations to it (§7).
+
+**The decision.** The evaluators become a caller of the front door like any application:
+
+| | |
+|---|---|
+| **Model** | One model group, `cairo-evaluator`, on its own provider key. The provider sets limits per organisation, so the key belongs to a different organisation from the guardrail judge's key |
+| **Key** | A CAIRO-issued key, used only by the evaluators' gateway connection. It may call only `cairo-evaluator`. Request and token limits are set below the provider tier's own. While each gateway replica counts limits separately (until CHG-2026-088 b), the key's limits are divided by the replica count |
+| **Exception** | In **dev only**, the key is exempt from the input guardrail. It uses the key-level opt-out the judge key uses (ADR-0005-A §2): authenticated key metadata, never request data |
+| **Still recorded** | Every evaluator call is traced, metadata only (ADR-0006). It is also logged in the request log once step a is on. What is lost is the guardrail event for these calls |
+| **Connection** | The evaluators' default model points at the gateway connection. The direct provider connection is then removed, which closes the internal bypass |
+
+**Why the exception, in dev.**
+- An evaluator prompt is built from traces CAIRO already stores. It is not new user input.
+- Inspecting it would send each evaluation's full text to the guardrail judge. That adds one judge call per evaluation, on the limits the judge needs for application traffic.
+- In record mode, inspection refuses nothing, so in dev it would add cost and no protection.
+
+**Its bounds.** These are the three properties ADR-0005-A §4 requires of any exempt key:
+1. the opt-out;
+2. an allowlist of exactly one group;
+3. limits that are never unset.
+
+ADR-0005-A invariant I-1 is amended to allow exactly this second key. Any other key with an opt-out is still a finding.
+
+**The known gap in how it is set.**
+- The console cannot set a guardrail opt-out. It is set by a direct gateway admin call, which leaves no entry in CAIRO's change record. This is the same open gap as the judge key's edit (CHG-2026-029).
+- To cover it, the key's properties before and after the call are captured in the private records, without secret values.
+
+**Not carried forward.**
+- The full opt-out is not used for evaluators in a customer deployment. There, §3.7 replaces it.
+- The dev exception ends when R1 is built.
+
+### 3.7 Roadmap: finer guardrail control
+
+*Added 2026-09-30.* These are not built and not scheduled. They are recorded so that the dev exception in §3.6 has a planned replacement.
+
+| # | Item | What it changes | Notes |
+|---|---|---|---|
+| R1 | **Per-key selection of guardrail checks** | Today a key is all-or-nothing: every check runs, or (with the opt-out) none. R1 lets a key's policy name which checks run, for example personal-data detection on and attack screening off | Read from authenticated key metadata, the same trusted source as the opt-out. An unreadable policy runs every check (ADR-0005-A §2: ambiguity resolves to inspect). Set from the console key form, so it is in CAIRO's change record. The full opt-out stays for the judge key only |
+| R2 | **Personal-data redaction in the request path** | Today the guardrail records what it would redact, and the prompt reaches the model unchanged. R2 sends the redacted prompt to the model, and can be switched on per key without switching on refusals | Runs once, before routing, so no model and no fallback receives the redacted data (§3.5). Tests T5 and T6 gain a case: the model receives the redacted text |
+
+**The target for evaluators in a customer deployment**, once R1 and R2 exist:
+- The evaluators call models through the front door.
+- Their key runs personal-data redaction (R2) and skips attack screening (R1). Their prompts are the customer's stored traces, not user input.
+- The model is one the customer approved for residency (ADR-0021 §3.6).
+- The exception is written into the customer's security and residency statement.
+
+**Trade-off to decide per evaluator:** with redaction on, an evaluator that looks for personal data in a response sees placeholders instead. An evaluator of that kind needs its own decision.
+
 ## 4. Rollout in dev, each step owner-gated
 
 | Step | Change | Needs |
@@ -116,6 +172,7 @@ These are configured in the gateway, managed from the console where ADR-0010 alr
 | c | Routing configuration: model groups, strategy, fallbacks, retries, the `auto` router, per-key limits | Gateway configuration and restart |
 | d | Egress default-deny in the cluster, and the provider allow-list for the gateway only | NetworkPolicy, then a firewall rule where one exists |
 | e | The routing test suite (§6), run against dev and kept as a release check | Test keys and a budget |
+| f | CAIRO's own evaluators behind the gateway (§3.6): the `cairo-evaluator` group, a CAIRO-issued evaluator key with the dev exception, the evaluators' default model on the gateway connection, then removal of the direct provider connection | Gateway configuration and restart; a key and a connection created in the console by the owner; one key-metadata edit. **Runs first**, because it stops a live loss of evaluations |
 
 Each step is a lettered part of CHG-2026-086, with its own rollback: the previous ConfigMap, ingress or policy, all kept as files. The same design is then built into the AWS deployment (ADR-0021).
 
@@ -155,6 +212,8 @@ The suite's results are the gate C evidence for step e, and a release check afte
 | The front door becomes a single point of failure | Medium | High | Two gateway replicas minimum, readiness checks, a documented degraded mode. On AWS, multiple availability zones |
 | LiteLLM security advisories: it is now mandatory, so its flaws are CAIRO's | Medium | High | Digest pinning (as today), advisory watch by the security agent, upgrade review between versions, internal-only exposure, WAF on AWS |
 | Routing tests or application traffic exhaust the provider key the guardrail judge uses (seen 2026-09-28: evaluator runs failed on a daily token limit) | High today | High | Separate keys and budgets for the judge and application traffic (D4) |
+| The evaluator key's guardrail exception (§3.6) is an uninspected path if the key leaks | Low (the key is used only inside the cluster) | Medium | Allowlist of one group, limits never unset, dev only, replaced by R1 (§3.7). A second exempt key beyond it is a finding (ADR-0005-A I-1) |
+| Evaluations still fail on the provider tier's per-request or daily token limits, since some traces are larger than one request allows | High on a free tier | Medium | Visible as failed evaluations, and no longer shared with the judge. Sampling, filtering evaluated traces, or a paid tier are the owner's choice |
 | Egress default-deny breaks a dependency nobody listed | Medium | Medium | Apply in audit mode or in steps; list dependencies first; rollback is the previous policy |
 | Customer apps still reach providers directly | Medium | High | Customer responsibility with test T8 in the POC acceptance |
 | Fallback to a different provider changes data residency | Medium | High | Fallback groups contain only providers approved for the customer's residency (ADR-0021 §3.6) |
@@ -175,6 +234,7 @@ The suite's results are the gate C evidence for step e, and a release check afte
 | D4 | Separate provider keys for the guardrail judge and for application traffic | Yes. Required before T2–T9 run |
 | D5 | Which models form the tiers and fallback groups | Owner and customer choice, limited to providers approved for the customer's residency |
 | D6 | Egress block in dev: NetworkPolicy only, or a firewall too | NetworkPolicy now; the firewall comes with the AWS design |
+| D7 | Exempt the evaluators' key from the input guardrail in dev | **Decided by the owner, 2026-09-30:** yes, dev only, with the bounds in §3.6, and roadmap items R1 and R2 added (§3.7) |
 
 ## 10. Assumptions and not verified
 

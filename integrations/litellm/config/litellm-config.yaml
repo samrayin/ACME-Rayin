@@ -91,6 +91,22 @@ model_list:
       model: gemini/gemini-2.5-flash-lite
       api_key: os.environ/GEMINI_API_KEY
 
+  # CHG-2026-086 f (ADR-0020 §3.6), 2026-09-30: CAIRO's own evaluators move
+  # behind the gateway. Until now they called the provider directly, outside the
+  # front door, and lost evaluations to the provider's daily limit.
+  #
+  # Its own provider key, GROQ_API_KEY_APP, not GROQ_API_KEY: the provider sets
+  # its limits per organisation, so this key must belong to a different
+  # organisation from the judge's. Evaluator traffic then cannot use up the
+  # limits the guardrail judge depends on.
+  #
+  # Only the evaluator key may call this group. The request and token limits
+  # are set on that key, where the gateway enforces them per key.
+  - model_name: cairo-evaluator
+    litellm_params:
+      model: groq/openai/gpt-oss-20b
+      api_key: os.environ/GROQ_API_KEY_APP
+
   # OpenAI — configured-but-dormant. Uncomment once this provider is confirmed live.
   # - model_name: gpt-4o
   #   litellm_params:
@@ -146,6 +162,13 @@ general_settings:
 # 2026-09-22): opted_out_global_guardrails: ["cairo-guardrail"], a model
 # allowlist, and rpm_limit 10. That is what stops the rail's judge call
 # re-entering this hook in a loop (ADR-0005 F10 / Step 0).
+#
+# One more key carries the same opt-out, in dev only, by the owner's decision of
+# 2026-09-30 (CHG-2026-086 f, ADR-0020 §3.6): CAIRO's own evaluator key. It has
+# the same three properties: the opt-out, a one-group allowlist
+# (cairo-evaluator) and request/token limits. ADR-0005-A invariant I-1 is
+# amended to allow exactly this key; any other key with an opt-out is still a
+# finding.
 #
 # CONFIRMED 2026-09-23 on the first switch-on: litellm resolves
 # `cairo_guardrail_hook.CairoGuardrail` from the ConfigMap mount at /app/config.

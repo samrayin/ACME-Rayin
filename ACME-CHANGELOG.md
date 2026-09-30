@@ -5166,3 +5166,16 @@ Documentation only: two Proposed ADRs, with nothing built or changed. The owner 
   - sign-in through the customer's identity provider over OIDC;
   - rehearsal without an ACME AWS account.
 - **Open decisions:** both ADRs list them for the owner. Some are shared with the customer: residency of model providers, and the rehearsal account.
+
+## 2026-09-30 — CAIRO's own evaluators behind the gateway, with a dev-only guardrail exception (CHG-2026-086 f)
+
+Gateway configuration and documentation. Nothing is live until the owner-gated steps run. The owner decided on 2026-09-30: "yes, proceed with dev exemption and add roadmap items".
+- **Why:** CAIRO's evaluators called the model provider directly, outside the gateway. They shared a provider daily limit and lost evaluations to it.
+- **Gateway configuration:** a new model group, `cairo-evaluator`, on its own provider key (`GROQ_API_KEY_APP`), separate from the guardrail judge's key.
+- **ADR-0020 §3.6, the dev-only exception:** the evaluators' CAIRO-issued key is exempt from the input guardrail, with the same bounds as the judge key: the opt-out, an allowlist of one group, and limits that are never unset. Its calls are still traced, metadata only.
+- **ADR-0005-A invariant I-1 amended:** exactly this second key may carry an opt-out, in dev only. Any other is still a finding.
+- **ADR-0020 §3.7, roadmap (not built):**
+  - R1: per-key selection of guardrail checks;
+  - R2: personal-data redaction in the request path;
+  - the target for evaluators in a customer deployment: redaction on, attack screening off, a residency-approved model.
+- **Rollout step f**, first in order: the model group, the evaluator key and connection (created in the console by the owner), the key-metadata edit, the evaluators' default model, then removal of the direct connection.
