@@ -5179,3 +5179,11 @@ Gateway configuration and documentation. Nothing is live until the owner-gated s
   - R2: personal-data redaction in the request path;
   - the target for evaluators in a customer deployment: redaction on, attack screening off, a residency-approved model.
 - **Rollout step f**, first in order: the model group, the evaluator key and connection (created in the console by the owner), the key-metadata edit, the evaluators' default model, then removal of the direct connection.
+
+## 2026-09-30 — Register status for CHG-2026-086, 087 and 088
+
+Documentation only (Tier 2): the register's status column caught up with what merged and what runs in dev.
+- **CHG-2026-086:** ADR-0020 merged (#245). Part f (#246) is live in dev, with f5 pending the owner. Parts a–e have not started.
+- **CHG-2026-087:** ADR-0021 merged (#245), and parked by the owner the same day.
+- **CHG-2026-088:** part a applied in dev as cluster settings. The spread across nodes was made required after a restart placed both gateway replicas on one node. Gate C passed. Part b has not started.
+- **ADR-0020 and ADR-0021:** written and merged; both stay Proposed until the owner records acceptance.
