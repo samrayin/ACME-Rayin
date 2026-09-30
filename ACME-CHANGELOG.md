@@ -5187,3 +5187,20 @@ Documentation only (Tier 2): the register's status column caught up with what me
 - **CHG-2026-087:** ADR-0021 merged (#245), and parked by the owner the same day.
 - **CHG-2026-088:** part a applied in dev as cluster settings. The spread across nodes was made required after a restart placed both gateway replicas on one node. Gate C passed. Part b has not started.
 - **ADR-0020 and ADR-0021:** written and merged; both stay Proposed until the owner records acceptance.
+
+## 2026-09-30 — The gateway's shared, password-protected Redis (CHG-2026-088 b)
+
+Gateway configuration and a new in-cluster component. Nothing is live until the owner adds the password and the owner-gated steps run.
+- **Why:** the gateway runs two replicas (088a), and each counted per-key rate limits in its own memory, so a key could get up to twice its limit.
+- **New:** `integrations/litellm/k8s/redis.yaml`, a dedicated Redis for the gateway:
+  - one replica, image pinned by digest (redis 7.4.11-alpine);
+  - `requirepass` from `REDIS_PASSWORD` in the gateway's provider-key Secret; the pod does not start without it;
+  - no persistence;
+  - non-root, read-only root filesystem, all capabilities dropped;
+  - dangerous admin commands disabled;
+  - a NetworkPolicy allowing only the gateway, which takes effect once the cluster runs a network-policy engine.
+- **Gateway configuration:** `general_settings.coordination_redis` points at it, with the password referenced by name.
+  - This is coordination only: shared rate-limit counters, spend tracking and routing state.
+  - It does not enable response caching, so no prompt or response text goes into Redis.
+  - If Redis is unavailable, the rate limiter falls back to per-replica counting and keeps serving.
+- **`secret.example.yaml`:** lists `GROQ_API_KEY_APP` (from CHG-2026-086 f) and `REDIS_PASSWORD`, as names only.

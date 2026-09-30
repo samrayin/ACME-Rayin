@@ -132,6 +132,21 @@ general_settings:
   # the gateway database, their provider keys encrypted with LITELLM_SALT_KEY
   # (litellm-provider-keys Secret; must never change once a key is stored).
   store_model_in_db: true
+  # CHG-2026-088 b: shared state between gateway replicas. Per-key rpm/tpm
+  # counters, spend tracking and the router's usage and cooldown state live in
+  # a dedicated, password-protected Redis (../k8s/redis.yaml) instead of each
+  # replica's memory, so a key's limits hold across replicas.
+  # coordination_redis is coordination only: it does not turn on response
+  # caching, so no prompt or response text is written to Redis. Do not add
+  # `cache: true` under litellm_settings without a separate decision (P0-11).
+  # If Redis is unreachable, the rate limiter falls back to per-replica
+  # counting and keeps serving requests.
+  # The password is REDIS_PASSWORD in the litellm-provider-keys Secret, the same
+  # key the Redis pod reads. It is referenced here by name only.
+  coordination_redis:
+    host: litellm-redis
+    port: 6379
+    password: os.environ/REDIS_PASSWORD
 
 # CAIRO guardrail hook (CHG-2026-014, ADR-0005 / ADR-0005-A). Step 1: the hook
 # now has a verdict path -- it calls rayin-guardrails /v1/guard and acts on the
