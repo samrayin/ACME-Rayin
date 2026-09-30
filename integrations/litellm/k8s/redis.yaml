@@ -1,0 +1,151 @@
+# CHG-2026-088 b: the gateway's shared Redis.
+#
+# With two gateway replicas, per-key rate limits (rpm/tpm) are counted in each
+# replica's memory, so a key can get up to twice its limit. This Redis lets the
+# replicas share those counters, and the router's usage and cooldown state.
+# The gateway uses it through `general_settings.coordination_redis` in
+# ../config/litellm-config.yaml. That setting does not enable response caching,
+# so no prompt or response text is written here.
+#
+# Password-protected: `requirepass` comes from REDIS_PASSWORD in the
+# litellm-provider-keys Secret, the same key the gateway reads. The key is not
+# optional, so this pod will not start until the password exists (fail closed).
+# The password is written to a config file in memory at startup, never passed
+# as a command-line argument.
+#
+# No persistence: the counters are short-lived. After a restart they start from
+# zero. If this Redis is unavailable, the gateway's rate limiter falls back to
+# per-replica counting and keeps serving requests.
+#
+# Image pinned by digest (redis 7.4.11-alpine, multi-arch index), as the
+# gateway image is.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: litellm-redis
+  namespace: rayin-platform
+  labels:
+    app: litellm-redis
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: litellm-redis
+  template:
+    metadata:
+      labels:
+        app: litellm-redis
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: redis
+          image: docker.io/library/redis:7.4.11-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+          command: ["sh", "-c"]
+          args:
+            - |
+              umask 077
+              printf 'requirepass %s\n' "$REDIS_PASSWORD" > /tmp/redis.conf
+              cat >> /tmp/redis.conf <<'CONF'
+              port 6379
+              bind 0.0.0.0
+              protected-mode yes
+              dir /data
+              save ""
+              appendonly no
+              maxmemory 150mb
+              maxmemory-policy allkeys-lru
+              rename-command FLUSHALL ""
+              rename-command FLUSHDB ""
+              rename-command CONFIG ""
+              rename-command DEBUG ""
+              CONF
+              exec redis-server /tmp/redis.conf
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: litellm-provider-keys
+                  key: REDIS_PASSWORD
+          ports:
+            - containerPort: 6379
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          # Readiness proves the password works: REDISCLI_AUTH keeps it out of
+          # the probe's command line.
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "REDISCLI_AUTH=\"$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
+        - name: data
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: litellm-redis
+  namespace: rayin-platform
+spec:
+  type: ClusterIP
+  selector:
+    app: litellm-redis
+  ports:
+    - port: 6379
+      targetPort: 6379
+---
+# Only the gateway may connect. A NetworkPolicy is enforced only when the
+# cluster runs a network-policy engine. Until then the password is the control,
+# and this policy records the intended rule.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: litellm-redis-from-gateway-only
+  namespace: rayin-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: litellm-redis
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: litellm
+      ports:
+        - port: 6379
+          protocol: TCP
