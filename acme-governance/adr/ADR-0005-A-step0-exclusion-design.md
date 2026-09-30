@@ -39,7 +39,7 @@ Three rules bind the check:
 
 | | Invariant | Status |
 |---|---|---|
-| **I-1** | The judge key is the **only** virtual key carrying a guardrail opt-out. Any second key carrying one is a finding. (ADR-0005 F11, monitored.) | Asserted by the layer 3 preconditions on every run. |
+| **I-1** | The judge key is the **only** virtual key carrying a guardrail opt-out. Any second key carrying one is a finding. (ADR-0005 F11, monitored.) | Asserted by the layer 3 preconditions on every run. **Amended 2026-09-30 by the owner's decision (ADR-0020 §3.6, CHG-2026-086 f):** in dev, exactly one more key may carry the opt-out: CAIRO's own evaluator key. It must meet the same bounds as the judge key in §4: the opt-out, an allowlist of one group (`cairo-evaluator`), and limits that are never unset. Any other key with an opt-out is still a finding. The exception is not used in a customer deployment, and ends when ADR-0020 R1 is built. |
 | **I-2** | No model used by the judge should be reachable by application traffic. | **Hygiene, not the control — and violated today.** Two application-side keys hold an unrestricted model grant and can reach the judge model (read 2026-09-21; exact aliases in the private records). Under the §2 discriminator this is **not** a bypass, because model identity exempts nothing. It is recorded because an application calling a safety classifier directly is meaningless traffic, because the per-key allowlist is a governance control the product is sold on, and because the pattern suggests the console's default grant is unrestricted. Remediation rides with the deferred key clean-up. |
 | **I-3** | The judge key's `rpm_limit` is never unset. | Today it is unset on **every** key. Set by the §4 change; asserted by layer 3. |
 
