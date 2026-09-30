@@ -25,3 +25,5 @@ are marked as such and never claim approvals that were not recorded at the time.
 | [ADR-0017](ADR-0017-remove-assurance-preview.md) | Removing the Assurance (Preview) demo (CHG-2026-083) | Forward | Proposed | 2026-09-27 |
 | [ADR-0018](ADR-0018-logs-one-table-pattern.md) | One table pattern for the Logs page (CHG-2026-084) | Forward | Proposed | 2026-09-27 |
 | [ADR-0019](ADR-0019-white-label-naming.md) | White-label naming: CAIRO in page titles, and a display alias for Langfuse's internal environments (CHG-2026-085) | Forward | Proposed | 2026-09-28 |
+| [ADR-0020](ADR-0020-cairo-front-door.md) | CAIRO as the front door for AI traffic: one endpoint, no bypass, in-path observability, model routing (CHG-2026-086) | Forward | Proposed | 2026-09-30 |
+| [ADR-0021](ADR-0021-cairo-customer-aws-deployment.md) | CAIRO in a customer's own AWS account: architecture, residency, identity and egress control (CHG-2026-087) | Forward | Proposed — parked by the owner 2026-09-30 | 2026-09-30 |

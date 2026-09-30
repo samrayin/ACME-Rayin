@@ -5150,3 +5150,19 @@ Documentation only (Tier 2).
 - **Released:** part d (#240) as worker `worker-acme-v4.38.0.4`, which also brought the worker up to `main` (#209, #192, #172, #179, already live in the console).
 - **Gate C passed:** the worker rewrote the five built-in dashboards at startup, and the Dashboards list shows "CAIRO Home", "CAIRO Latency Dashboard", "CAIRO Usage Management", "CAIRO Cost Dashboard" and "CAIRO Agent Dashboard" (ops record #50).
 - **Recorded in:** ADR-0019 §13 and the register. ADR-0019 stays Proposed until the owner records acceptance.
+
+## 2026-09-30 — Design: CAIRO as the front door (ADR-0020) and CAIRO in a customer's AWS account (ADR-0021)
+
+Documentation only: two Proposed ADRs, with nothing built or changed. The owner set the direction on 2026-09-30.
+- **ADR-0020 (CHG-2026-086), CAIRO becomes the first point of contact for AI traffic:**
+  - one endpoint on CAIRO's hostname;
+  - a network rule so nothing reaches model providers except through it;
+  - every call leaves a metadata-only trace, a guardrail event and a request-log row naming the model that served it;
+  - model routing in the gateway: model groups, a routing strategy, fallbacks, retries, the heuristic complexity router as `auto`, and per-key limits;
+  - a nine-test suite as the proof.
+- **ADR-0021 (CHG-2026-087), CAIRO in a customer's own AWS account** (**parked by the owner the same day**, until CAIRO performs at its best in the current setup):
+  - an in-country region;
+  - the official Langfuse AWS Terraform module, pinned, plus a CAIRO layer: gateway, guardrails, internal front door, Network Firewall egress allow-list, WAF, Secrets Manager with the customer's KMS keys, and images copied by digest into the customer's ECR;
+  - sign-in through the customer's identity provider over OIDC;
+  - rehearsal without an ACME AWS account.
+- **Open decisions:** both ADRs list them for the owner. Some are shared with the customer: residency of model providers, and the rehearsal account.
