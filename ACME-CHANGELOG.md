@@ -5143,3 +5143,10 @@ Tier 1 part d of CHG-2026-085 (ADR-0019 §13), on the owner's instruction.
 - **Tests:** worker and shared tests check the names and dates.
 
 Rollback: revert the commit and release the worker again; the reverted dates make the upsert write the old names back. **Deployment status:** not deployed.
+
+## 2026-09-29 — Register status and gate C evidence for CHG-2026-085 d
+
+Documentation only (Tier 2).
+- **Released:** part d (#240) as worker `worker-acme-v4.38.0.4`, which also brought the worker up to `main` (#209, #192, #172, #179, already live in the console).
+- **Gate C passed:** the worker rewrote the five built-in dashboards at startup, and the Dashboards list shows "CAIRO Home", "CAIRO Latency Dashboard", "CAIRO Usage Management", "CAIRO Cost Dashboard" and "CAIRO Agent Dashboard" (ops record #50).
+- **Recorded in:** ADR-0019 §13 and the register. ADR-0019 stays Proposed until the owner records acceptance.
