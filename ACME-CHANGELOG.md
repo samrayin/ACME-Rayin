@@ -5204,3 +5204,16 @@ Gateway configuration and a new in-cluster component. Nothing is live until the 
   - It does not enable response caching, so no prompt or response text goes into Redis.
   - If Redis is unavailable, the rate limiter falls back to per-replica counting and keeps serving.
 - **`secret.example.yaml`:** lists `GROQ_API_KEY_APP` (from CHG-2026-086 f) and `REDIS_PASSWORD`, as names only.
+
+## 2026-10-01 — Design: a console switch for the guardrail enforcement mode (ADR-0005-B, CHG-2026-089)
+
+Documentation only: a Proposed ADR. Nothing is built or changed. The owner asked for a switch inside CAIRO between record and block mode.
+- **Today:** the mode is a gateway setting, `CAIRO_GUARDRAIL_MODE`, read when the gateway starts. The console cannot see it or change it.
+- **The design:**
+  - CAIRO stores the guardrail settings (mode and policy) as one versioned, audited record.
+  - Each guardrails pod pulls the settings at start and every 30 seconds, and each verdict carries the mode and version.
+  - The gateway hook applies the verdict's mode, within a new deployment ceiling, `CAIRO_GUARDRAIL_MODE_MAX` (default `record`).
+  - Record fails open; enforce fails closed.
+  - An Owner-only Enforcement card shows the effective mode per replica and the gate checklist, with typed confirmation and an automatic revert.
+- **Delivery:** part a (the settings mechanism, applied first to the existing policy controls) before part b (the switch).
+- **Also in the ADR:** tests B1–B9, four risks and four owner decisions.
