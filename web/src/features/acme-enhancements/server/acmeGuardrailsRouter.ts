@@ -66,12 +66,14 @@ import {
   ALL_PII_ENTITIES,
   getCurrentSettings,
   type GuardrailSettingsVersion,
-  isDeploymentAdmin,
+  canEditGuardrailSettings,
+  GuardrailSettingsValidationError,
   listReportingPods,
   parseAdminList,
   POD_STALE_AFTER_SECONDS,
   REASON_MAX_LENGTH,
   saveSettings,
+  selfSignupClosed,
 } from "@/src/features/acme-enhancements/server/acmeGuardrailSettings";
 
 const DIRECTION_FROM_DB: Record<
@@ -528,6 +530,12 @@ export const acmeGuardrailsRouter = createTRPCRouter({
         getCurrentSettings(ctx.prisma),
         listReportingPods(ctx.prisma),
       ]);
+      const signupClosed = selfSignupClosed(env);
+      const canEdit = canEditGuardrailSettings({
+        email: ctx.session.user.email,
+        rawAdminList: env.CAIRO_GUARDRAIL_ADMINS,
+        signupClosed,
+      });
 
       return {
         // Whether a rayin-guardrails service is wired to this deployment.
@@ -540,18 +548,21 @@ export const acmeGuardrailsRouter = createTRPCRouter({
               jailbreakEnabled: current.jailbreakEnabled,
               topicalEnabled: current.topicalEnabled,
               reason: current.reason,
-              createdByEmail: current.createdByEmail,
+              // Shown to the administrators only: the settings are visible
+              // from every organisation, the editor's email need not be
+              // (security review SF-2026-018).
+              createdByEmail: canEdit ? current.createdByEmail : null,
+              // The seeded first version was written by the migration.
+              createdByInitialSetup: current.createdBy === "migration",
               createdAt: current.createdAt,
             }
           : null,
         availablePiiEntities: [...ALL_PII_ENTITIES],
         pods,
         podStaleAfterSeconds: POD_STALE_AFTER_SECONDS,
-        canEdit: isDeploymentAdmin(
-          ctx.session.user.email,
-          env.CAIRO_GUARDRAIL_ADMINS,
-        ),
+        canEdit,
         adminsConfigured: parseAdminList(env.CAIRO_GUARDRAIL_ADMINS).length > 0,
+        signupClosed,
       };
     }),
 
@@ -576,13 +587,19 @@ export const acmeGuardrailsRouter = createTRPCRouter({
         projectId: input.projectId,
         scope: "projectGuardrails:read",
       });
+      const signupClosed = selfSignupClosed(env);
       if (
-        !isDeploymentAdmin(ctx.session.user.email, env.CAIRO_GUARDRAIL_ADMINS)
+        !canEditGuardrailSettings({
+          email: ctx.session.user.email,
+          rawAdminList: env.CAIRO_GUARDRAIL_ADMINS,
+          signupClosed,
+        })
       ) {
         throw new TRPCError({
           code: "FORBIDDEN",
-          message:
-            "Only the deployment's guardrail administrators can change these settings.",
+          message: signupClosed
+            ? "Only the deployment's guardrail administrators can change these settings."
+            : "Changing the guardrail settings is disabled while open sign-up is enabled on this deployment.",
         });
       }
 
@@ -617,7 +634,7 @@ export const acmeGuardrailsRouter = createTRPCRouter({
           },
         );
       } catch (e) {
-        if (e instanceof Error && /reason|personal-data type/.test(e.message)) {
+        if (e instanceof GuardrailSettingsValidationError) {
           throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
         }
         throw e;

@@ -1,12 +1,19 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   ALL_PII_ENTITIES,
+  canEditGuardrailSettings,
   getCurrentSettings,
+  GuardrailSettingsValidationError,
   isDeploymentAdmin,
+  listReportingPods,
+  MAX_LISTED_PODS,
   normalisePolicy,
   parseAdminList,
+  POD_NAME_PATTERN,
   policiesEqual,
+  recordPodSync,
   saveSettings,
+  selfSignupClosed,
   toSyncResponse,
   validateReason,
   type GuardrailSettingsVersion,
@@ -107,6 +114,52 @@ describe("parseAdminList / isDeploymentAdmin", () => {
   });
 });
 
+describe("selfSignupClosed / canEditGuardrailSettings", () => {
+  it("counts sign-up as closed only on an explicit 'true'", () => {
+    expect(selfSignupClosed({})).toBe(false);
+    expect(selfSignupClosed({ AUTH_DISABLE_SIGNUP: "false" })).toBe(false);
+    expect(selfSignupClosed({ AUTH_DISABLE_SIGNUP: "true" })).toBe(true);
+    expect(selfSignupClosed({ NEXT_PUBLIC_SIGN_UP_DISABLED: "true" })).toBe(
+      true,
+    );
+    expect(selfSignupClosed({ AUTH_EMAIL_VERIFICATION_REQUIRED: "true" })).toBe(
+      true,
+    );
+  });
+
+  it("needs both a listed email and closed sign-up", () => {
+    const base = { email: "a@x.com", rawAdminList: "a@x.com" };
+    expect(canEditGuardrailSettings({ ...base, signupClosed: true })).toBe(
+      true,
+    );
+    expect(canEditGuardrailSettings({ ...base, signupClosed: false })).toBe(
+      false,
+    );
+    expect(
+      canEditGuardrailSettings({
+        email: "owner@x.com",
+        rawAdminList: "a@x.com",
+        signupClosed: true,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("POD_NAME_PATTERN", () => {
+  it("accepts Kubernetes pod names and rejects anything else", () => {
+    expect(POD_NAME_PATTERN.test("rayin-guardrails-58565454fd-k2fpp")).toBe(
+      true,
+    );
+    expect(POD_NAME_PATTERN.test("a")).toBe(true);
+    expect(POD_NAME_PATTERN.test("Upper-Case")).toBe(false);
+    expect(POD_NAME_PATTERN.test("-leading")).toBe(false);
+    expect(POD_NAME_PATTERN.test("trailing-")).toBe(false);
+    expect(POD_NAME_PATTERN.test("has space")).toBe(false);
+    expect(POD_NAME_PATTERN.test("x".repeat(64))).toBe(false);
+    expect(POD_NAME_PATTERN.test("x".repeat(63))).toBe(true);
+  });
+});
+
 describe("normalisePolicy / policiesEqual", () => {
   it("orders and de-duplicates entities canonically", () => {
     const p = normalisePolicy({
@@ -124,7 +177,7 @@ describe("normalisePolicy / policiesEqual", () => {
         jailbreakEnabled: true,
         topicalEnabled: true,
       }),
-    ).toThrow(/Unknown personal-data type/);
+    ).toThrow(GuardrailSettingsValidationError);
   });
 
   it("treats the same policy in a different order as equal", () => {
@@ -301,6 +354,38 @@ describe("saveSettings", () => {
       ),
     ).rejects.toThrow(/reason/);
     expect(db).toBeDefined();
+  });
+});
+
+describe("pod status", () => {
+  it("upserts the pod's row and removes rows older than a day", async () => {
+    const pods = {
+      upsert: vi.fn(async () => ({})),
+      deleteMany: vi.fn(async () => ({ count: 0 })),
+    };
+    const now = new Date("2026-10-02T12:00:00Z");
+    await recordPodSync(
+      { acmeGuardrailSettingsPod: pods } as never,
+      { pod: "rayin-guardrails-abc", appliedVersion: 2, projectId: "proj-1" },
+      now,
+    );
+    expect(pods.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { pod: "rayin-guardrails-abc" },
+        update: expect.objectContaining({ appliedVersion: 2, lastSyncAt: now }),
+      }),
+    );
+    expect(pods.deleteMany).toHaveBeenCalledWith({
+      where: { lastSyncAt: { lt: new Date("2026-10-01T12:00:00Z") } },
+    });
+  });
+
+  it("lists at most MAX_LISTED_PODS recently reporting pods", async () => {
+    const pods = { findMany: vi.fn(async () => []) };
+    await listReportingPods({ acmeGuardrailSettingsPod: pods } as never);
+    expect(pods.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: MAX_LISTED_PODS }),
+    );
   });
 });
 
