@@ -90,8 +90,15 @@ export const env = createEnv({
     // comma-separated list of sign-in emails. Not an organisation or project
     // role: the settings apply to the whole deployment. Left unset, nobody
     // can change them (fail closed); everyone with guardrail read access
-    // still sees them.
+    // still sees them. Takes effect only where open sign-up cannot be used
+    // to claim a listed email (AUTH_DISABLE_SIGNUP, NEXT_PUBLIC_SIGN_UP_
+    // DISABLED or AUTH_EMAIL_VERIFICATION_REQUIRED is "true").
     CAIRO_GUARDRAIL_ADMINS: z.string().optional(),
+    // ACME addition (ADR-0005-B part a, CHG-2026-089): the one project whose
+    // API keys rayin-guardrails pods may use to pull the guardrail settings
+    // (POST /api/public/guardrails-settings): the project of the key they
+    // push events with. Left unset, every pull is refused (fail closed).
+    CAIRO_GUARDRAILS_SYNC_PROJECT_ID: z.string().optional(),
     // ACME addition: A/B prompt testing & canary rollout for the ACME AI
     // chat widget (acmePromptVariant.ts). All optional -- unset behaves
     // exactly as before this feature existed (the router's own hardcoded
@@ -888,6 +895,8 @@ export const env = createEnv({
     RAYIN_GUARDRAILS_URL: process.env.RAYIN_GUARDRAILS_URL,
     RAYIN_GUARDRAILS_CONFIG_SECRET: process.env.RAYIN_GUARDRAILS_CONFIG_SECRET,
     CAIRO_GUARDRAIL_ADMINS: process.env.CAIRO_GUARDRAIL_ADMINS,
+    CAIRO_GUARDRAILS_SYNC_PROJECT_ID:
+      process.env.CAIRO_GUARDRAILS_SYNC_PROJECT_ID,
     ACME_CHAT_PROMPT_LABEL: process.env.ACME_CHAT_PROMPT_LABEL,
     ACME_CHAT_PROMPT_CANARY_LABEL: process.env.ACME_CHAT_PROMPT_CANARY_LABEL,
     ACME_CHAT_PROMPT_CANARY_WEIGHT: process.env.ACME_CHAT_PROMPT_CANARY_WEIGHT,

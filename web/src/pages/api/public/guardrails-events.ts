@@ -20,6 +20,10 @@ import { z } from "zod";
 import { createAuthedProjectAPIRoute } from "@/src/features/public-api/server/createAuthedProjectAPIRoute";
 import { withMiddlewares } from "@/src/features/public-api/server/withMiddlewares";
 import { ingestGuardrailsEvent } from "@/src/features/acme-enhancements/server/acmeGuardrailsEventsIngestService";
+import {
+  MAX_SETTINGS_VERSION,
+  POD_NAME_PATTERN,
+} from "@/src/features/acme-enhancements/server/acmeGuardrailSettings";
 
 const PiiFindingSchema = z.object({
   entity_type: z.string(),
@@ -53,8 +57,14 @@ const GuardrailsEventPushBody = z.object({
   // ADR-0005-B part a (CHG-2026-089): the guardrail settings version the
   // deciding pod had applied (null = settings unknown), and the pod's name.
   // Optional, like client_host, so older rayin-guardrails builds still work.
-  settings_version: z.number().int().min(1).nullable().optional(),
-  pod: z.string().max(255).nullable().optional(),
+  settings_version: z
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_SETTINGS_VERSION)
+    .nullable()
+    .optional(),
+  pod: z.string().regex(POD_NAME_PATTERN).nullable().optional(),
 });
 
 const GuardrailsEventPushResponse = z.object({

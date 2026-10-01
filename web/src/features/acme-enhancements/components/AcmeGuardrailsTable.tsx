@@ -528,7 +528,7 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
           ? `Saved as version ${data.version}`
           : "No change to save",
         description: data.changed
-          ? "Every guardrails pod applies it on its next pull, within 30 seconds. The pod status on this card shows when they have."
+          ? "Guardrails pods that pull their settings apply it within 30 seconds. The pod status on this card shows which have."
           : `The settings already match version ${data.version}.`,
       });
     },
@@ -570,8 +570,14 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
     return null;
   }
 
-  const { current, availablePiiEntities, pods, canEdit, adminsConfigured } =
-    config.data;
+  const {
+    current,
+    availablePiiEntities,
+    pods,
+    canEdit,
+    adminsConfigured,
+    signupClosed,
+  } = config.data;
 
   if (!current || !draft) {
     return (
@@ -633,9 +639,11 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
         </CardTitle>
         {!canEdit && (
           <span className="text-muted-foreground text-xs">
-            {adminsConfigured
-              ? "Only the deployment's guardrail administrators can edit"
-              : "Editing is off: no guardrail administrators are configured"}
+            {!adminsConfigured
+              ? "Editing is off: no guardrail administrators are configured"
+              : !signupClosed
+                ? "Editing is off while open sign-up is enabled"
+                : "Only the deployment's guardrail administrators can edit"}
           </span>
         )}
       </CardHeader>
@@ -644,7 +652,10 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
           <div>
             Version {current.version}, saved{" "}
             {formatDateTime(new Date(current.createdAt).toISOString())} by{" "}
-            {current.createdByEmail ?? "the initial setup"}: “{current.reason}”
+            {current.createdByInitialSetup
+              ? "the initial setup"
+              : (current.createdByEmail ?? "a guardrail administrator")}
+            : “{current.reason}”
           </div>
           <div className="mt-1">
             {pods.length === 0
@@ -735,7 +746,8 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
               </span>
             </div>
             <Label htmlFor="guardrail-settings-reason" className="text-xs">
-              Reason (required, recorded in the audit log)
+              Reason (required, recorded in the audit log, and shown to everyone
+              who can see guardrails in any organisation)
             </Label>
             <Input
               id="guardrail-settings-reason"
