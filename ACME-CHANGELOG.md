@@ -5220,3 +5220,16 @@ Documentation only: a Proposed addendum to ADR-0020 (CHG-2026-086 g). Nothing is
   - tests T10–T13;
   - three risks;
   - decisions D8 (budget), D9 (guardrail treatment) and D10 (retire the workstation trace export once records are proven).
+
+## 2026-10-01 — Design: a console switch for the guardrail enforcement mode (ADR-0005-B, CHG-2026-089)
+
+Documentation only: a Proposed ADR. Nothing is built or changed. The owner asked for a switch inside CAIRO between record and block mode.
+- **Today:** the mode is a gateway setting, `CAIRO_GUARDRAIL_MODE`, read when the gateway starts. The console cannot see it or change it.
+- **The design:**
+  - CAIRO stores the guardrail settings (mode and policy) as one versioned, audited record.
+  - Each guardrails pod pulls the settings at start and every 30 seconds, and each verdict carries the mode and version.
+  - The gateway hook applies the verdict's mode, within a new deployment ceiling, `CAIRO_GUARDRAIL_MODE_MAX` (default `record`).
+  - Record fails open; enforce fails closed.
+  - An Owner-only Enforcement card shows the effective mode per replica and the gate checklist, with typed confirmation and an automatic revert.
+- **Delivery:** part a (the settings mechanism, applied first to the existing policy controls) before part b (the switch).
+- **Also in the ADR:** tests B1–B9, four risks and four owner decisions.
