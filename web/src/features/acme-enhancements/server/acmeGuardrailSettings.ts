@@ -56,6 +56,30 @@ export const POD_STALE_AFTER_SECONDS = 120;
 const REASON_MIN_LENGTH = 10;
 export const REASON_MAX_LENGTH = 500;
 
+/** Postgres INTEGER maximum: version numbers above it cannot be stored. */
+export const MAX_SETTINGS_VERSION = 2147483647;
+
+/**
+ * A pod name as Kubernetes issues it: a DNS-1123 label (lower-case letters,
+ * digits and hyphens, at most 63 characters). Bounds what a caller can write
+ * into the pod-status table (security review SF-2026-016).
+ */
+export const POD_NAME_PATTERN = /^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$/;
+
+/** At most this many pods are listed; a guardrails deployment has a few. */
+export const MAX_LISTED_PODS = 32;
+
+/** Pod-status rows older than this are removed on the next pull. */
+const POD_ROW_RETENTION_HOURS = 24;
+
+/** A bad input from the person saving: the router answers 400 for these. */
+export class GuardrailSettingsValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GuardrailSettingsValidationError";
+  }
+}
+
 // ---------------------------------------------------------------- pure logic
 
 /**
@@ -71,8 +95,8 @@ export function parseAdminList(raw: string | undefined | null): string[] {
 }
 
 /**
- * Whether this signed-in user may change the guardrail settings. Fails
- * closed: no email, or no list configured, means no.
+ * Whether this signed-in user is one of the named deployment administrators.
+ * Fails closed: no email, or no list configured, means no.
  */
 export function isDeploymentAdmin(
   email: string | null | undefined,
@@ -81,6 +105,40 @@ export function isDeploymentAdmin(
   if (!email) return false;
   const admins = parseAdminList(rawAdminList);
   return admins.includes(email.trim().toLowerCase());
+}
+
+/**
+ * Whether nobody can register an arbitrary email address themselves. The
+ * admin check trusts the sign-in email, so it is only sound when open
+ * sign-up is off, or when sign-up requires a verified email (security
+ * review SF-2026-015). Reads the deployment's own auth settings.
+ */
+export function selfSignupClosed(authEnv: {
+  AUTH_DISABLE_SIGNUP?: string;
+  NEXT_PUBLIC_SIGN_UP_DISABLED?: string;
+  AUTH_EMAIL_VERIFICATION_REQUIRED?: string;
+}): boolean {
+  return (
+    authEnv.AUTH_DISABLE_SIGNUP === "true" ||
+    authEnv.NEXT_PUBLIC_SIGN_UP_DISABLED === "true" ||
+    authEnv.AUTH_EMAIL_VERIFICATION_REQUIRED === "true"
+  );
+}
+
+/**
+ * The single authority rule for changing the guardrail settings
+ * (ADR-0005-B §3.4, test B12): a named deployment administrator, on a
+ * deployment where open sign-up cannot be used to claim that email.
+ * Organisation and project roles play no part.
+ */
+export function canEditGuardrailSettings(input: {
+  email: string | null | undefined;
+  rawAdminList: string | undefined | null;
+  signupClosed: boolean;
+}): boolean {
+  return (
+    input.signupClosed && isDeploymentAdmin(input.email, input.rawAdminList)
+  );
 }
 
 /**
@@ -96,7 +154,9 @@ export function normalisePolicy(policy: {
 }): GuardrailPolicy {
   for (const e of policy.piiEntities) {
     if (!(ALL_PII_ENTITIES as readonly string[]).includes(e)) {
-      throw new Error(`Unknown personal-data type: ${e}`);
+      throw new GuardrailSettingsValidationError(
+        `Unknown personal-data type: ${e}`,
+      );
     }
   }
   const wanted = new Set(policy.piiEntities);
@@ -119,12 +179,12 @@ export function policiesEqual(a: GuardrailPolicy, b: GuardrailPolicy): boolean {
 export function validateReason(reason: string): string {
   const trimmed = reason.trim();
   if (trimmed.length < REASON_MIN_LENGTH) {
-    throw new Error(
+    throw new GuardrailSettingsValidationError(
       `A reason of at least ${REASON_MIN_LENGTH} characters is required.`,
     );
   }
   if (trimmed.length > REASON_MAX_LENGTH) {
-    throw new Error(
+    throw new GuardrailSettingsValidationError(
       `The reason is limited to ${REASON_MAX_LENGTH} characters.`,
     );
   }
@@ -254,10 +314,16 @@ export async function saveSettings(
   }
 }
 
-/** Records the version a pod reported, at the time of its pull. */
+/**
+ * Records the version a pod reported, at the time of its pull, and removes
+ * rows for pods that stopped reporting more than a day ago (a replaced pod
+ * never pulls again). The caller treats this as best effort: a failure here
+ * must never deny a pod its settings.
+ */
 export async function recordPodSync(
   db: Pick<Db, "acmeGuardrailSettingsPod">,
   input: { pod: string; appliedVersion: number | null; projectId: string },
+  now: Date = new Date(),
 ): Promise<void> {
   await db.acmeGuardrailSettingsPod.upsert({
     where: { pod: input.pod },
@@ -265,16 +331,24 @@ export async function recordPodSync(
       pod: input.pod,
       appliedVersion: input.appliedVersion,
       projectId: input.projectId,
+      lastSyncAt: now,
     },
     update: {
       appliedVersion: input.appliedVersion,
       projectId: input.projectId,
-      lastSyncAt: new Date(),
+      lastSyncAt: now,
+    },
+  });
+  await db.acmeGuardrailSettingsPod.deleteMany({
+    where: {
+      lastSyncAt: {
+        lt: new Date(now.getTime() - POD_ROW_RETENTION_HOURS * 3600 * 1000),
+      },
     },
   });
 }
 
-/** Pods that pulled within POD_STALE_AFTER_SECONDS, newest first. */
+/** Pods that pulled within POD_STALE_AFTER_SECONDS, at most MAX_LISTED_PODS. */
 export async function listReportingPods(
   db: Pick<Db, "acmeGuardrailSettingsPod">,
   now: Date = new Date(),
@@ -283,6 +357,7 @@ export async function listReportingPods(
   return db.acmeGuardrailSettingsPod.findMany({
     where: { lastSyncAt: { gte: cutoff } },
     orderBy: { pod: "asc" },
+    take: MAX_LISTED_PODS,
     select: { pod: true, appliedVersion: true, lastSyncAt: true },
   });
 }

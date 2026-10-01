@@ -50,7 +50,7 @@ This ADR makes the mode a CAIRO control alongside the policy, and sets the bar a
 ### 3.2 The guardrails service distributes them
 
 - **Each guardrails pod pulls the settings from CAIRO,** at start and then every 30 seconds.
-  - It uses an internal, authenticated CAIRO endpoint with the existing admin shared secret.
+  - It uses CAIRO's endpoint `POST /api/public/guardrails-settings`, authenticated with the project key the pods already use to push events. The key is accepted only from the one project named in `CAIRO_GUARDRAILS_SYNC_PROJECT_ID`, and is refused when that is unset (owner decision, 2026-10-01, after the security review). The endpoint is meant for in-cluster calls; denying it at the public ingress is a follow-up.
   - A restart therefore restores the settings (Q2), and every replica converges (Q3).
 - **CAIRO's save also notifies each pod** so changes apply at once. The pull is what guarantees convergence.
 - **Every guard verdict carries the mode and the settings version** that produced it.
@@ -139,7 +139,7 @@ Until part a is live, changes to the guardrail policy in the console are to be a
 | B4 | Enforce refuses | A prompt the guard blocks is refused, and no model or fallback receives it (ADR-0020 T5) |
 | B5 | Fail closed | With the guard unavailable in enforce, requests are refused. In record they proceed |
 | B6 | Automatic revert | An enforce trial with a 5-minute revert returns to record by itself, and the change is audited as automatic |
-| B7 | Permissions | An Admin cannot switch to enforce. A non-member cannot read the settings endpoint |
+| B7 | Permissions | An Admin cannot switch to enforce. A key from any project other than the configured one is refused by the settings endpoint, as is every key when none is configured |
 | B8 | Records | Each change has audit rows before and after, and a mode-change guardrail event |
 | B9 | Policy fixed too | A policy toggle reaches every guardrails replica, survives a restart, and is audited |
 | B10 | No downgrade from an unsynced pod | With enforce on, a guardrails pod restarted while CAIRO's settings endpoint is unreachable marks its verdicts settings unknown, and the gateway keeps enforcing for that pod's traffic |
@@ -166,7 +166,7 @@ Until part a is live, changes to the guardrail policy in the console are to be a
 
 ## 8. Not verified
 
-- The exact form of the internal settings endpoint, and whether the existing admin shared secret is the right credential for it.
+- Whether the public ingress already denies `/api/public/guardrails-settings` and `/api/public/guardrails-events`. Denying both there is a follow-up.
 - How LiteLLM 1.100.1 returns redacted text from a pre-call hook for every request format, including Anthropic's Messages API (ADR-0020 §3.8). To be proven by test B4.
 
 ## 9. Revisions
@@ -174,3 +174,7 @@ Until part a is live, changes to the guardrail policy in the console are to be a
 - **2026-10-01, after a security review of this design:**
   - **No downgrade.** A guardrails pod that has not received CAIRO's settings no longer reports `record`, and the gateway ignores unknown or older settings versions (§3.2, §3.3; tests B10 and B11).
   - **Authority.** The authority for the switch and the policy is now a named list of deployment administrators, not an organisation or project Owner role (§3.4, D-B1; test B12).
+- **2026-10-01, during the part a build, after a second security review:**
+  - **Pull authentication:** the pods' existing project key, accepted from one named project only (§3.2, B7). The owner chose this over a new shared secret.
+  - **Authority:** the administrator list takes effect only where open sign-up is off or requires a verified email.
+  - **Append-only:** the settings table is append-only through database triggers, so no version number can be reused.

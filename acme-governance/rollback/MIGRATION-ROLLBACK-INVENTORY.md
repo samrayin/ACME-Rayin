@@ -20,6 +20,14 @@ Not yet shipped, for completeness: `20260919120000_add_acme_litellm_management`
 (CHG-2026-005) is **reversible with data loss** and has a `down.sql`, rehearsed
 up → down → up on 2026-09-19 (see its `ROLLBACK.md`).
 
+Added with CHG-2026-089 part a: `20261001120000_add_acme_guardrail_settings`
+creates `acme_guardrail_settings` (append-only, with triggers) and
+`acme_guardrail_settings_pods`, and adds the nullable columns `settings_version`
+and `pod` to `acme_guardrail_events`. It is **reversible with data loss**: the
+settings history is lost, but the audit-log entries remain. It has a `down.sql`
+and `ROLLBACK.md`, and was rehearsed up, down and up again on 2026-10-01
+(7 of 7 steps PASS; see its `ROLLBACK.md`).
+
 ## Reading this
 - Nothing here is *safely reversible*: every ACME migration either holds audit data or changes something Postgres cannot undo.
 - Nothing is classed *backup-and-restore* on its own, but that is the only complete answer for 3, and the fallback for all of them. It depends on a restore that has actually been rehearsed; see the dev restore rehearsal plan.

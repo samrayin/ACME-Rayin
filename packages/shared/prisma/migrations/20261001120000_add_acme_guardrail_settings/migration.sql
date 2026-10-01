@@ -50,14 +50,39 @@ CREATE TABLE "acme_guardrail_settings_pods" (
 ALTER TABLE "acme_guardrail_events" ADD COLUMN "settings_version" INTEGER;
 ALTER TABLE "acme_guardrail_events" ADD COLUMN "pod" TEXT;
 
--- Settings history is append-only by design: a change is a new version.
--- As with acme_guardrail_events, this binds only the least-privilege
--- runtime role, which nothing uses until the cutover (ADR-0004): designed,
--- not yet effective. The role is created by migration 20260917090000.
+-- Settings history is append-only: a change is a new version, and a version
+-- number is never reused (ADR-0005-B §3.3 relies on versions only moving
+-- forward). Enforced by triggers, so it holds for every login, including the
+-- admin login the application still uses until the least-privilege cutover
+-- (ADR-0004, P0-5). Only a superuser disabling the triggers can bypass them.
+CREATE FUNCTION acme_guardrail_settings_append_only() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'acme_guardrail_settings is append-only: % is not allowed', TG_OP;
+END;
+$$;
+
+CREATE TRIGGER acme_guardrail_settings_no_update_delete
+  BEFORE UPDATE OR DELETE ON "acme_guardrail_settings"
+  FOR EACH ROW EXECUTE FUNCTION acme_guardrail_settings_append_only();
+
+CREATE TRIGGER acme_guardrail_settings_no_truncate
+  BEFORE TRUNCATE ON "acme_guardrail_settings"
+  FOR EACH STATEMENT EXECUTE FUNCTION acme_guardrail_settings_append_only();
+
+-- Privileges for the least-privilege runtime role. Migrations still run as
+-- the admin login, so the default privileges set for rayin_migrator do not
+-- cover these tables; grant explicitly (the pattern of 20260919120000).
+-- Settings: read and add versions only. Pod status: read and upsert. The
+-- role is created by migration 20260917090000; guarded so this migration
+-- also applies where it does not exist.
 DO $$
 BEGIN
   IF EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'rayin_app_runtime') THEN
-    REVOKE UPDATE, DELETE ON "acme_guardrail_settings" FROM rayin_app_runtime;
+    REVOKE ALL ON "acme_guardrail_settings" FROM rayin_app_runtime;
+    GRANT SELECT, INSERT ON "acme_guardrail_settings" TO rayin_app_runtime;
+    REVOKE ALL ON "acme_guardrail_settings_pods" FROM rayin_app_runtime;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON "acme_guardrail_settings_pods" TO rayin_app_runtime;
   END IF;
 END
 $$;

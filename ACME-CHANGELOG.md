@@ -5256,4 +5256,12 @@ Console change, with a database migration. ADR-0005-B part a. Nothing changes in
   - Each pod's report is kept in `acme_guardrail_settings_pods`.
 - **Console:** the Policies card shows the stored version, who changed it, when and why, and how many guardrails pods are on it. It no longer reads one pod at random.
 - **Events:** guardrail events accept and store the settings version and the pod that decided them.
-- **Tests:** unit tests for the settings logic: the admin list, normalisation, reason, versioning, audit within the transaction, the concurrent-save retry, and the event fields.
+- **Security review fixes:** #253 was merged at 11:20 UTC with only its first commit, before these fixes were pushed. They land through a follow-up PR, and the release waits for it:
+  - **Pull route:** accepts keys from one named project only (`CAIRO_GUARDRAILS_SYNC_PROJECT_ID`, fail closed; owner's choice). Pod names must be DNS-1123 labels, versions are capped, the settings are read before the best-effort status write, the listed pods are capped, and stale pod rows are removed.
+  - **Admin list:** takes effect only where open sign-up is off or requires a verified email.
+  - **Settings table:** append-only through triggers (UPDATE, DELETE and TRUNCATE are refused for every login), with explicit grants for the least-privilege runtime role.
+  - **Rollback:** `down.sql`, `ROLLBACK.md` and an inventory note added. Rehearsed on 2026-10-01 on a throwaway database: up, down and up again, 7 of 7 steps PASS, plus checks of the seed, the append-only triggers, the mode CHECK and the grants.
+  - **Privacy:** the editor's email is shown to administrators only.
+- **Tests:**
+  - unit tests for the settings logic: the admin list, the sign-up guard, normalisation, reason, versioning, audit within the transaction, the concurrent-save retry, pod-name bounds, pod-status cleanup and cap, and the event fields;
+  - router tests for B12: an Owner not on the list is refused, as is a listed admin while sign-up is open; refusals happen before the database is touched; and the Auditor's read-only limit still applies.

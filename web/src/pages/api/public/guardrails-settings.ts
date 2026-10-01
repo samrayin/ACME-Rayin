@@ -7,31 +7,40 @@
  * (acme_guardrail_settings_pods), which the console shows as "n of n pods on
  * version v".
  *
- * Auth: the same project-scoped API key rayin-guardrails already uses to push
- * events (guardrails-events.ts), gated on the API-only scope
- * guardrailsSettings:sync, which no UI role holds. The response carries the
- * policy only, no secrets. Like guardrails-events, this route is meant to be
+ * Auth: the project-scoped API key rayin-guardrails already uses to push
+ * events (guardrails-events.ts), with the API-only scope
+ * guardrailsSettings:sync -- and accepted only from the one project named in
+ * CAIRO_GUARDRAILS_SYNC_PROJECT_ID (owner decision 2026-10-01, after the
+ * security review, SF-2026-016). Every project key holds the scope, so
+ * without that allowlist any project's key could read the deployment-wide
+ * policy and write pod-status rows. Unset, every call is refused (fail
+ * closed). The response carries the policy only, no secrets. Meant to be
  * called over in-cluster service DNS.
  *
- * 503 when no settings are stored: the pod keeps what it has and reports
- * "settings unknown" rather than applying anything invented here.
+ * The settings are read first and the status write is best effort, so a
+ * failed status write never denies a pod its settings. 503 when no settings
+ * are stored: the pod keeps what it has and reports "settings unknown".
  */
 import { z } from "zod";
 import { createAuthedProjectAPIRoute } from "@/src/features/public-api/server/createAuthedProjectAPIRoute";
 import { withMiddlewares } from "@/src/features/public-api/server/withMiddlewares";
 import { prisma } from "@langfuse/shared/src/db";
-import { ServiceUnavailableError } from "@langfuse/shared";
+import { ForbiddenError, ServiceUnavailableError } from "@langfuse/shared";
+import { logger } from "@langfuse/shared/src/server";
+import { env } from "@/src/env.mjs";
 import {
   getCurrentSettings,
+  MAX_SETTINGS_VERSION,
+  POD_NAME_PATTERN,
   recordPodSync,
   toSyncResponse,
 } from "@/src/features/acme-enhancements/server/acmeGuardrailSettings";
 
 const GuardrailsSettingsSyncBody = z.object({
-  // The pod's own name (HOSTNAME). Bounded: it becomes a primary key.
-  pod: z.string().min(1).max(255),
+  // The pod's own name (HOSTNAME): a DNS-1123 label. It becomes a primary key.
+  pod: z.string().regex(POD_NAME_PATTERN),
   // The settings version the pod has applied; null before its first pull.
-  applied_version: z.number().int().min(1).nullable(),
+  applied_version: z.number().int().min(1).max(MAX_SETTINGS_VERSION).nullable(),
 });
 
 const GuardrailsSettingsSyncResponse = z.object({
@@ -51,17 +60,30 @@ export default withMiddlewares({
     responseSchema: GuardrailsSettingsSyncResponse,
     successStatusCode: 200,
     fn: async ({ body, auth }) => {
-      await recordPodSync(prisma, {
-        pod: body.pod,
-        appliedVersion: body.applied_version,
-        projectId: auth.scope.projectId,
-      });
+      const allowedProject = env.CAIRO_GUARDRAILS_SYNC_PROJECT_ID;
+      if (!allowedProject || auth.scope.projectId !== allowedProject) {
+        throw new ForbiddenError("This key may not sync guardrail settings.");
+      }
+
       const current = await getCurrentSettings(prisma);
       if (!current) {
         throw new ServiceUnavailableError(
           "No guardrail settings are stored in CAIRO yet.",
         );
       }
+
+      try {
+        await recordPodSync(prisma, {
+          pod: body.pod,
+          appliedVersion: body.applied_version,
+          projectId: auth.scope.projectId,
+        });
+      } catch (e) {
+        logger.warn(
+          `guardrail settings sync: could not record status for pod ${body.pod}: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+
       return toSyncResponse(current);
     },
   }),
