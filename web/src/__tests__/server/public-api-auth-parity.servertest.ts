@@ -108,6 +108,9 @@ const projectRoutes: Route[] = [
     route: "v2/evaluation-rules/[evaluationRuleId]",
     methods: ["GET", "PATCH", "DELETE"],
   },
+  // ACME: rayin-guardrails event push and settings pull
+  { route: "guardrails-events", methods: ["POST"] },
+  { route: "guardrails-settings", methods: ["POST"] },
 ];
 
 // Org and misc routes call shadowAuth directly from the handler body.
@@ -146,6 +149,7 @@ const denylistPrefixes = [
   "mcp", // MCP server, own auth path
   "otel", // ingestion handlers read the raw request stream, not drivable via node-mocks-http
   "slack", // Slack OAuth, own auth path
+  "litellm-request-logs", // ACME LiteLLM gateway log push, own auth path
 ];
 
 type ApiKeyKind = "org" | "project" | "agent" | "admin";
