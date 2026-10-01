@@ -85,6 +85,13 @@ export const env = createEnv({
     // path. Never exposed to the client. Left unset, every call refuses
     // to authenticate rather than silently failing.
     RAYIN_GUARDRAILS_CONFIG_SECRET: z.string().optional(),
+    // ACME addition (ADR-0005-B part a, CHG-2026-089): the deployment
+    // administrators who may change the guardrail settings, as a
+    // comma-separated list of sign-in emails. Not an organisation or project
+    // role: the settings apply to the whole deployment. Left unset, nobody
+    // can change them (fail closed); everyone with guardrail read access
+    // still sees them.
+    CAIRO_GUARDRAIL_ADMINS: z.string().optional(),
     // ACME addition: A/B prompt testing & canary rollout for the ACME AI
     // chat widget (acmePromptVariant.ts). All optional -- unset behaves
     // exactly as before this feature existed (the router's own hardcoded
@@ -880,6 +887,7 @@ export const env = createEnv({
     RAYIN_CHAT_LLM_MODEL: process.env.RAYIN_CHAT_LLM_MODEL,
     RAYIN_GUARDRAILS_URL: process.env.RAYIN_GUARDRAILS_URL,
     RAYIN_GUARDRAILS_CONFIG_SECRET: process.env.RAYIN_GUARDRAILS_CONFIG_SECRET,
+    CAIRO_GUARDRAIL_ADMINS: process.env.CAIRO_GUARDRAIL_ADMINS,
     ACME_CHAT_PROMPT_LABEL: process.env.ACME_CHAT_PROMPT_LABEL,
     ACME_CHAT_PROMPT_CANARY_LABEL: process.env.ACME_CHAT_PROMPT_CANARY_LABEL,
     ACME_CHAT_PROMPT_CANARY_WEIGHT: process.env.ACME_CHAT_PROMPT_CANARY_WEIGHT,

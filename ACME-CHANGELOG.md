@@ -5239,3 +5239,21 @@ Documentation only: a Proposed ADR. Nothing is built or changed. The owner asked
 Documentation only. The design is still Proposed and nothing is built.
 - **No downgrade.** A guardrails pod that has not received CAIRO's settings marks its verdicts "settings unknown" instead of reporting `record`. The gateway takes the mode only from a known settings version, and versions only move forward. So an unsynced or stale pod cannot lower enforce to record. New tests: B10 and B11.
 - **Authority.** The switch and the guardrail policy are controlled by a named list of deployment administrators, set in the deployment's configuration, not by an organisation or project Owner role. The mode applies to the whole deployment. New test: B12.
+
+## 2026-10-01 — Guardrail settings held by CAIRO: audited, durable, applied to every pod (CHG-2026-089 part a)
+
+Console change, with a database migration. ADR-0005-B part a. Nothing changes in the gateway, and the guardrail stays in record mode. The rayin-guardrails pull lands in that repository separately.
+- **Why:** console changes to the guardrail policy were not audited, were lost when a guardrails pod restarted, and reached only one of the two replicas.
+- **Settings store:** a new append-only table, `acme_guardrail_settings`, with one row per version; the highest version is in force.
+  - The migration seeds version 1 with the defaults in force on 2026-10-01: all seven personal-data types, with the jailbreak and topic checks on.
+  - A CHECK constraint keeps the mode at `record` until part b.
+- **Saving:**
+  - Every save writes a new version and an audit-log entry, before and after, in one transaction.
+  - A reason is required.
+  - Only the deployment administrators named in `CAIRO_GUARDRAIL_ADMINS` (sign-in emails) can save; with the list unset, nobody can. It is not an organisation or project role.
+- **Pull route:** a new route, `POST /api/public/guardrails-settings`, with a new API-only scope, `guardrailsSettings:sync`.
+  - rayin-guardrails pulls the current version there and reports which version it applied, using the project key it already pushes events with.
+  - Each pod's report is kept in `acme_guardrail_settings_pods`.
+- **Console:** the Policies card shows the stored version, who changed it, when and why, and how many guardrails pods are on it. It no longer reads one pod at random.
+- **Events:** guardrail events accept and store the settings version and the pod that decided them.
+- **Tests:** unit tests for the settings logic: the admin list, normalisation, reason, versioning, audit within the transaction, the concurrent-save retry, and the event fields.

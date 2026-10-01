@@ -479,41 +479,57 @@ function AcmeGuardrailsAssurance({ projectId }: { projectId: string }) {
   );
 }
 
-function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
-  const canEdit = useHasProjectAccess({ projectId, scope: "project:update" });
-  const utils = api.useUtils();
-  const config = api.acmeGuardrails.getConfig.useQuery({ projectId });
+// Matches REASON_MIN_LENGTH in server/acmeGuardrailSettings.ts, which is
+// what actually enforces it.
+const SETTINGS_REASON_MIN_LENGTH = 10;
 
-  // Draft state: what the switches show while editing, versus what's
-  // actually saved (config.data). Only diverges after a real edit.
+// ADR-0005-B part a (CHG-2026-089): the settings are stored in CAIRO as
+// versions, and every rayin-guardrails pod pulls the current one. This card
+// shows the stored version and which version each pod reports; only the
+// deployment's guardrail administrators can save a new one.
+function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
+  const utils = api.useUtils();
+  // Polled so "n of n pods on version v" follows a save without a reload.
+  const config = api.acmeGuardrails.getConfig.useQuery(
+    { projectId },
+    { refetchInterval: 15_000 },
+  );
+
+  // Draft state: what the switches show while editing, versus the stored
+  // version. Reset only when the stored version changes, so the 15-second
+  // poll never discards an edit in progress.
   const [draft, setDraft] = useState<{
     piiEntities: string[];
     jailbreakEnabled: boolean;
     topicalEnabled: boolean;
   } | null>(null);
+  const [reason, setReason] = useState("");
+  const storedVersion = config.data?.current?.version;
 
   useEffect(() => {
-    if (config.data?.configured) {
+    const current = config.data?.current;
+    if (current) {
       setDraft({
-        piiEntities: config.data.pii_entities,
-        jailbreakEnabled: config.data.jailbreak_enabled,
-        topicalEnabled: config.data.topical_enabled,
+        piiEntities: current.piiEntities,
+        jailbreakEnabled: current.jailbreakEnabled,
+        topicalEnabled: current.topicalEnabled,
       });
     }
-  }, [config.data]);
+    // Deliberately keyed on the stored version only: see above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storedVersion]);
 
   const update = api.acmeGuardrails.updateConfig.useMutation({
     onSuccess: (data) => {
       utils.acmeGuardrails.getConfig.invalidate({ projectId });
-      setDraft({
-        piiEntities: data.pii_entities,
-        jailbreakEnabled: data.jailbreak_enabled,
-        topicalEnabled: data.topical_enabled,
-      });
+      setReason("");
       showSuccessToast({
-        title: "Guardrails updated",
-        description:
-          "Saved and pushed to rayin-guardrails — effective on the next request.",
+        title: data.changed
+          ? `Saved as version ${data.version}`
+          : "No change to save",
+        description: data.changed
+          ? "Every guardrails pod applies it on its next pull, within 30 seconds. The pod status on this card shows when they have."
+          : `The settings already match version ${data.version}.`,
       });
     },
     onError: (error) => {
@@ -521,7 +537,7 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
     },
   });
 
-  if (config.isPending || !draft) {
+  if (config.isPending) {
     return (
       <Card>
         <CardHeader>
@@ -541,7 +557,7 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
           <CardTitle className="text-sm">Policies</CardTitle>
         </CardHeader>
         <CardContent className="text-muted-foreground pt-0 text-sm">
-          Could not reach rayin-guardrails: {config.error.message}
+          Could not load the guardrail settings: {config.error.message}
         </CardContent>
       </Card>
     );
@@ -554,14 +570,36 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
     return null;
   }
 
-  const saved = config.data;
+  const { current, availablePiiEntities, pods, canEdit, adminsConfigured } =
+    config.data;
+
+  if (!current || !draft) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Policies</CardTitle>
+        </CardHeader>
+        <CardContent className="text-muted-foreground pt-0 text-sm">
+          No guardrail settings are stored in CAIRO yet.
+        </CardContent>
+      </Card>
+    );
+  }
+
   const isDirty =
-    draft.jailbreakEnabled !== saved.jailbreak_enabled ||
-    draft.topicalEnabled !== saved.topical_enabled ||
-    draft.piiEntities.length !== saved.pii_entities.length ||
-    draft.piiEntities.some((e) => !saved.pii_entities.includes(e));
+    draft.jailbreakEnabled !== current.jailbreakEnabled ||
+    draft.topicalEnabled !== current.topicalEnabled ||
+    draft.piiEntities.length !== current.piiEntities.length ||
+    draft.piiEntities.some(
+      (e) => !(current.piiEntities as readonly string[]).includes(e),
+    );
 
   const piiOn = draft.piiEntities.length > 0;
+  const podsOnCurrent = pods.filter(
+    (p) => p.appliedVersion === current.version,
+  ).length;
+  const podsBehind = pods.filter((p) => p.appliedVersion !== current.version);
+  const reasonOk = reason.trim().length >= SETTINGS_REASON_MIN_LENGTH;
 
   function toggleEntity(entity: string) {
     if (!draft) return;
@@ -580,21 +618,49 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
     // saved before — a reasonable default for "turn it back on."
     setDraft({
       ...draft,
-      piiEntities: on ? saved.available_pii_entities : [],
+      piiEntities: on ? availablePiiEntities : [],
     });
   }
 
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0">
-        <CardTitle className="text-sm">Policies</CardTitle>
+        <CardTitle className="text-sm">
+          Policies{" "}
+          <Badge variant="outline" className="ml-1 align-middle">
+            Version {current.version}
+          </Badge>
+        </CardTitle>
         {!canEdit && (
           <span className="text-muted-foreground text-xs">
-            Owner/Admin can edit
+            {adminsConfigured
+              ? "Only the deployment's guardrail administrators can edit"
+              : "Editing is off: no guardrail administrators are configured"}
           </span>
         )}
       </CardHeader>
       <CardContent className="flex flex-col gap-1 pt-0">
+        <div className="text-muted-foreground border-b pb-3 text-xs">
+          <div>
+            Version {current.version}, saved{" "}
+            {formatDateTime(new Date(current.createdAt).toISOString())} by{" "}
+            {current.createdByEmail ?? "the initial setup"}: “{current.reason}”
+          </div>
+          <div className="mt-1">
+            {pods.length === 0
+              ? `No guardrails pod has reported in the last ${Math.round(config.data.podStaleAfterSeconds / 60)} minutes.`
+              : `${podsOnCurrent} of ${pods.length} guardrails ${pods.length === 1 ? "pod is" : "pods are"} on version ${current.version}` +
+                (podsBehind.length > 0
+                  ? ` (${podsBehind
+                      .map(
+                        (p) =>
+                          `${p.pod}: ${p.appliedVersion === null ? "settings unknown" : `version ${p.appliedVersion}`}`,
+                      )
+                      .join("; ")})`
+                  : ".")}
+          </div>
+        </div>
+
         <div className="flex items-start justify-between gap-3 border-b py-3">
           <div>
             <div className="text-sm">Jailbreak Detection</div>
@@ -630,7 +696,7 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
                 !piiOn && "pointer-events-none opacity-40",
               )}
             >
-              {saved.available_pii_entities.map((entity) => {
+              {availablePiiEntities.map((entity) => {
                 const on = draft.piiEntities.includes(entity);
                 return (
                   <button
@@ -660,44 +726,62 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
         </div>
 
         {isDirty && (
-          <div className="bg-muted flex items-center gap-3 rounded-md p-3 text-sm">
-            <span className="bg-dark-yellow h-2 w-2 shrink-0 rounded-full" />
-            <span className="flex-1">Unsaved changes</span>
-            <Button
-              size="sm"
-              variant="outline"
+          <div className="bg-muted flex flex-col gap-2 rounded-md p-3 text-sm">
+            <div className="flex items-center gap-3">
+              <span className="bg-dark-yellow h-2 w-2 shrink-0 rounded-full" />
+              <span className="flex-1">
+                Unsaved changes. They apply to every project and every gateway
+                caller on this deployment.
+              </span>
+            </div>
+            <Label htmlFor="guardrail-settings-reason" className="text-xs">
+              Reason (required, recorded in the audit log)
+            </Label>
+            <Input
+              id="guardrail-settings-reason"
+              value={reason}
+              maxLength={500}
               disabled={update.isPending}
-              onClick={() =>
-                setDraft({
-                  piiEntities: saved.pii_entities,
-                  jailbreakEnabled: saved.jailbreak_enabled,
-                  topicalEnabled: saved.topical_enabled,
-                })
-              }
-            >
-              Discard
-            </Button>
-            <Button
-              size="sm"
-              disabled={update.isPending}
-              onClick={() =>
-                update.mutate({
-                  projectId,
-                  // draft.piiEntities is string[] because it's threaded
-                  // through from the server's general-purpose read schema;
-                  // filter rather than blindly cast, so an unrecognized
-                  // value from a future server response can't reach the
-                  // enum-validated mutation input.
-                  piiEntities: draft.piiEntities.filter((e): e is PiiEntity =>
-                    (ALL_PII_ENTITIES as readonly string[]).includes(e),
-                  ),
-                  jailbreakEnabled: draft.jailbreakEnabled,
-                  topicalEnabled: draft.topicalEnabled,
-                })
-              }
-            >
-              {update.isPending ? "Saving…" : "Save & apply"}
-            </Button>
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Why is this change needed?"
+            />
+            <div className="flex justify-end gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={update.isPending}
+                onClick={() => {
+                  setReason("");
+                  setDraft({
+                    piiEntities: current.piiEntities,
+                    jailbreakEnabled: current.jailbreakEnabled,
+                    topicalEnabled: current.topicalEnabled,
+                  });
+                }}
+              >
+                Discard
+              </Button>
+              <Button
+                size="sm"
+                disabled={update.isPending || !reasonOk}
+                onClick={() =>
+                  update.mutate({
+                    projectId,
+                    // Filter rather than cast, so an unrecognized value from
+                    // a future server response can't reach the
+                    // enum-validated mutation input.
+                    piiEntities: draft.piiEntities.filter((e): e is PiiEntity =>
+                      (ALL_PII_ENTITIES as readonly string[]).includes(e),
+                    ),
+                    jailbreakEnabled: draft.jailbreakEnabled,
+                    topicalEnabled: draft.topicalEnabled,
+                    reason,
+                  })
+                }
+              >
+                {update.isPending ? "Saving…" : "Save new version"}
+              </Button>
+            </div>
           </div>
         )}
       </CardContent>

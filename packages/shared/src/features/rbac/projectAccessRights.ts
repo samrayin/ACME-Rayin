@@ -145,6 +145,12 @@ export const projectScopes = [
   // other public-API-only scopes above are: this is what an API key
   // presents, not something a UI role membership should confer.
   "guardrailsEvents:create",
+
+  // ACME addition (ADR-0005-B part a, CHG-2026-089): rayin-guardrails pods
+  // pull CAIRO's guardrail settings with the same project-scoped key they
+  // push events with, and report which version they applied. API-only, like
+  // guardrailsEvents:create: granted to no UI role.
+  "guardrailsSettings:sync",
 ] as const;
 
 // type string of all Resource:Action, e.g. "members:read"

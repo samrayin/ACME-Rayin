@@ -53,6 +53,11 @@ export type GuardrailsEventPushInput = {
   // like userId -- rayin-guardrails only sees the gateway pod as its peer.
   // Null when the caller didn't send one, or rayin-guardrails predates it.
   clientHost: string | null;
+  // ADR-0005-B part a (CHG-2026-089): the settings version the deciding pod
+  // had applied (null = settings unknown, or a build that predates it) and
+  // the pod's name. Optional so existing callers and tests are unaffected.
+  settingsVersion?: number | null;
+  pod?: string | null;
   eventTime: string;
   direction: "input" | "output";
   action: "allow" | "redact" | "block";
@@ -103,6 +108,8 @@ export function buildEventRow(
     traceId: input.traceId,
     userId: input.userId,
     clientHost: input.clientHost,
+    settingsVersion: input.settingsVersion ?? null,
+    pod: input.pod ?? null,
     source: "PUSH",
     eventTime: new Date(input.eventTime),
     direction: input.direction === "input" ? "INPUT" : "OUTPUT",
