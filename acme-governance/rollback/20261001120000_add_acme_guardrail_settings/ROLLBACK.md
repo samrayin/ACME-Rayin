@@ -39,7 +39,7 @@
 `Staging: not available; isolated migration and rollback rehearsal performed.`
 Command: `acme-governance/scripts/rehearsal-db.sh rehearse 20261001120000_add_acme_guardrail_settings`, then `down`.
 
-**Environment:** a throwaway Postgres 15.19 pod modelling Azure, in the scratch namespace `cairo-rehearsal` on the dev cluster, with no real data. **Created 2026-10-01 13:43:33 UTC, removed 13:55:22 UTC** by the script's `down`.
+**Environment:** a throwaway Postgres 15.19 pod modelling Azure, in the scratch namespace `cairo-rehearsal` on the dev cluster, with no real data. **Created 2026-10-01 13:44:03 UTC, removed 13:55:22 UTC** by the script's `down`.
 
 The first attempt stopped before any migration ran: local port 55432 was already in use. The run below reused the same pod with `REHEARSAL_PORT=55441`.
 
