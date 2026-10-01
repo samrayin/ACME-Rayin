@@ -1018,6 +1018,14 @@ model AcmeGuardrailEvent {
   // existed; existing rows are deliberately not backfilled (audit table).
   source AcmeGuardrailEventSource?
 
+  // ADR-0005-B part a (CHG-2026-089): which guardrail settings version the
+  // deciding rayin-guardrails pod had applied, and which pod it was. Null
+  // when the pod had not yet received CAIRO's settings ("settings unknown"),
+  // or the event predates these columns. Lets a split policy between
+  // replicas be reconstructed afterwards.
+  settingsVersion Int?    @map("settings_version")
+  pod             String? @map("pod")
+
   // Dedup key: pre-dates eventId (rayin-guardrails' ring buffer originally
   // had no event id of its own). Kept in place until the eventId backfill
   // is complete and every consumer emits it, then dropped in a follow-up
@@ -1025,6 +1033,47 @@ model AcmeGuardrailEvent {
   @@unique([projectId, agentId, eventTime, direction], map: "acme_guardrail_events_dedup_key")
   @@index([projectId, eventTime])
   @@map("acme_guardrail_events")
+}
+
+// ---------------------------------------------------------------------
+// ACME: CAIRO-held guardrail settings (ADR-0005-B part a, CHG-2026-089).
+// One row per version; the highest version is in force. Rows are never
+// updated or deleted: a change is a new version, so the table is its own
+// history (the audit log records who, why, before and after as well).
+// Deployment-wide, not per project: the gateway and rayin-guardrails serve
+// every project. Every rayin-guardrails pod pulls the current version.
+model AcmeGuardrailSettings {
+  id               String   @id @default(cuid())
+  version          Int      @unique(map: "acme_guardrail_settings_version_key")
+  // Part a: always "record" (a CHECK constraint holds it there). Part b
+  // (the enforcement switch) widens it.
+  mode             String   @default("record")
+  piiEntities      String[] @map("pii_entities")
+  jailbreakEnabled Boolean  @map("jailbreak_enabled")
+  topicalEnabled   Boolean  @map("topical_enabled")
+  reason           String
+  // A user id, or "migration" for the seeded first version.
+  createdBy        String   @map("created_by")
+  createdByEmail   String?  @map("created_by_email")
+  // The project page the change was made from: context only, the settings
+  // themselves apply to the whole deployment.
+  projectId        String?  @map("project_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@map("acme_guardrail_settings")
+}
+
+// ACME: which settings version each rayin-guardrails pod last pulled, and
+// when (ADR-0005-B Q6). Upserted on every pull; a pod that stops pulling
+// simply ages out of the console's view.
+model AcmeGuardrailSettingsPod {
+  pod            String   @id
+  appliedVersion Int?     @map("applied_version")
+  // Project of the API key the pod authenticated with.
+  projectId      String   @map("project_id")
+  lastSyncAt     DateTime @default(now()) @map("last_sync_at")
+
+  @@map("acme_guardrail_settings_pods")
 }
 
 enum AcmePromptApprovalStatus {

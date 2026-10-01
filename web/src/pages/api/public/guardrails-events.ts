@@ -50,6 +50,11 @@ const GuardrailsEventPushBody = z.object({
   // must only ever be reachable via in-cluster service DNS, never the
   // public ingress, given this field's contents.
   raw_content: z.string().nullable(),
+  // ADR-0005-B part a (CHG-2026-089): the guardrail settings version the
+  // deciding pod had applied (null = settings unknown), and the pod's name.
+  // Optional, like client_host, so older rayin-guardrails builds still work.
+  settings_version: z.number().int().min(1).nullable().optional(),
+  pod: z.string().max(255).nullable().optional(),
 });
 
 const GuardrailsEventPushResponse = z.object({
@@ -81,6 +86,8 @@ export default withMiddlewares({
         redactedText: body.redacted_text,
         piiFindings: body.pii_findings,
         rawContent: body.raw_content,
+        settingsVersion: body.settings_version ?? null,
+        pod: body.pod ?? null,
       }),
   }),
 });

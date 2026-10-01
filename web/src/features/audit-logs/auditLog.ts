@@ -55,7 +55,9 @@ type AuditableResource =
   // ACME (ADR-0011): project access policy rows.
   | "acmeProjectAccess"
   // ACME (ADR-0013): exports of the guardrail event history.
-  | "acmeGuardrailEvents";
+  | "acmeGuardrailEvents"
+  // ACME (ADR-0005-B part a): versions of the CAIRO-held guardrail settings.
+  | "acmeGuardrailSettings";
 
 type AuditLog = {
   resourceType: AuditableResource;

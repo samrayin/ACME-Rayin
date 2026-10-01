@@ -21,9 +21,11 @@
  * acmeGuardrailsPullBackfill.ts for why it only persists events with an
  * event_id that are old enough for their push to have finished.
  *
- * updateConfig: "project:update" — owner/admin only, same gate as UI
- * Customization, since this changes what gets enforced for every user in
- * the project, not just how the dashboard looks.
+ * getConfig / updateConfig (ADR-0005-B part a, CHG-2026-089): the guardrail
+ * settings are stored in CAIRO and versioned (acmeGuardrailSettings.ts).
+ * They apply to every project and every gateway caller, so a change needs a
+ * named deployment administrator (CAIRO_GUARDRAIL_ADMINS), not a project
+ * role. Every rayin-guardrails pod pulls the current version itself.
  *
  * Every call to rayin-guardrails from here — reads and the write — carries
  * the shared secret (RAYIN_GUARDRAILS_CONFIG_SECRET) as X-Config-Secret.
@@ -60,6 +62,17 @@ import {
   TEST_TRAFFIC_AGENT_PREFIXES,
 } from "@/src/features/acme-enhancements/server/acmeGuardrailsHistory";
 import { auditLog } from "@/src/features/audit-logs/auditLog";
+import {
+  ALL_PII_ENTITIES,
+  getCurrentSettings,
+  type GuardrailSettingsVersion,
+  isDeploymentAdmin,
+  listReportingPods,
+  parseAdminList,
+  POD_STALE_AFTER_SECONDS,
+  REASON_MAX_LENGTH,
+  saveSettings,
+} from "@/src/features/acme-enhancements/server/acmeGuardrailSettings";
 
 const DIRECTION_FROM_DB: Record<
   AcmeGuardrailEventDirection,
@@ -77,25 +90,6 @@ const ACTION_FROM_DB: Record<
   [AcmeGuardrailEventAction.REDACT]: "redact",
   [AcmeGuardrailEventAction.BLOCK]: "block",
 };
-
-const ALL_PII_ENTITIES = [
-  "EMAIL_ADDRESS",
-  "PHONE_NUMBER",
-  "CREDIT_CARD",
-  "PERSON",
-  "IBAN_CODE",
-  "IP_ADDRESS",
-  // Bahrain CPR number (rayin-guardrails, CHG-2026-078). Keep in step with the
-  // service's ALL_PII_ENTITIES: an entity missing here can't be saved.
-  "BH_CPR",
-] as const;
-
-const ConfigResponseSchema = z.object({
-  pii_entities: z.array(z.string()),
-  jailbreak_enabled: z.boolean(),
-  topical_enabled: z.boolean(),
-  available_pii_entities: z.array(z.string()),
-});
 
 // event_id, user_id and client_host are optional: older rayin-guardrails
 // builds don't include them in the buffer. Kept (not stripped) so pull rows
@@ -517,6 +511,10 @@ export const acmeGuardrailsRouter = createTRPCRouter({
       };
     }),
 
+  // ADR-0005-B part a (CHG-2026-089): the guardrail settings live in CAIRO
+  // (acme_guardrail_settings), not in one rayin-guardrails pod's memory.
+  // This reads CAIRO's stored version and which version each pod reports;
+  // it no longer asks a pod, which behind the Service would be a random one.
   getConfig: protectedProjectProcedure
     .input(z.object({ projectId: z.string() }))
     .query(async ({ ctx, input }) => {
@@ -526,80 +524,157 @@ export const acmeGuardrailsRouter = createTRPCRouter({
         scope: "projectGuardrails:read",
       });
 
-      if (!env.RAYIN_GUARDRAILS_URL) {
-        return { configured: false as const };
-      }
-      if (!env.RAYIN_GUARDRAILS_CONFIG_SECRET) {
-        throw new Error(
-          "RAYIN_GUARDRAILS_CONFIG_SECRET is not configured — refusing to call an endpoint we can't authenticate to.",
-        );
-      }
+      const [current, pods] = await Promise.all([
+        getCurrentSettings(ctx.prisma),
+        listReportingPods(ctx.prisma),
+      ]);
 
-      const res = await fetch(`${env.RAYIN_GUARDRAILS_URL}/v1/config`, {
-        headers: { "X-Config-Secret": env.RAYIN_GUARDRAILS_CONFIG_SECRET },
-        signal: AbortSignal.timeout(5_000),
-      });
-      if (!res.ok) {
-        throw new Error(
-          `rayin-guardrails returned ${res.status} fetching /v1/config`,
-        );
-      }
-
-      const parsed = ConfigResponseSchema.parse(await res.json());
-      return { configured: true as const, ...parsed };
+      return {
+        // Whether a rayin-guardrails service is wired to this deployment.
+        configured: Boolean(env.RAYIN_GUARDRAILS_URL),
+        current: current
+          ? {
+              version: current.version,
+              mode: current.mode,
+              piiEntities: current.piiEntities,
+              jailbreakEnabled: current.jailbreakEnabled,
+              topicalEnabled: current.topicalEnabled,
+              reason: current.reason,
+              createdByEmail: current.createdByEmail,
+              createdAt: current.createdAt,
+            }
+          : null,
+        availablePiiEntities: [...ALL_PII_ENTITIES],
+        pods,
+        podStaleAfterSeconds: POD_STALE_AFTER_SECONDS,
+        canEdit: isDeploymentAdmin(
+          ctx.session.user.email,
+          env.CAIRO_GUARDRAIL_ADMINS,
+        ),
+        adminsConfigured: parseAdminList(env.CAIRO_GUARDRAIL_ADMINS).length > 0,
+      };
     }),
 
+  // ADR-0005-B part a: a change is a new, audited settings version. Only the
+  // named deployment administrators (CAIRO_GUARDRAIL_ADMINS) may make one:
+  // the settings apply to every project and every gateway caller, so no
+  // organisation or project role is the right authority (§3.4, test B12).
+  // Every rayin-guardrails pod applies it on its next pull (within 30 s).
   updateConfig: protectedProjectProcedure
     .input(
       z.object({
         projectId: z.string(),
-        piiEntities: z.array(z.enum(ALL_PII_ENTITIES)).optional(),
-        jailbreakEnabled: z.boolean().optional(),
-        topicalEnabled: z.boolean().optional(),
+        piiEntities: z.array(z.enum(ALL_PII_ENTITIES)),
+        jailbreakEnabled: z.boolean(),
+        topicalEnabled: z.boolean(),
+        reason: z.string().max(REASON_MAX_LENGTH),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      // Deliberately project:update, not projectGuardrails:read -- this
-      // changes enforcement for every user in the project, the same bar
-      // UI Customization's write path uses, not just a read permission.
       throwIfNoProjectAccess({
         session: ctx.session,
         projectId: input.projectId,
-        scope: "project:update",
+        scope: "projectGuardrails:read",
       });
-
-      if (!env.RAYIN_GUARDRAILS_URL) {
-        throw new Error(
-          "RAYIN_GUARDRAILS_URL is not configured for this deployment — nothing to push this change to.",
-        );
-      }
-      if (!env.RAYIN_GUARDRAILS_CONFIG_SECRET) {
-        throw new Error(
-          "RAYIN_GUARDRAILS_CONFIG_SECRET is not configured — refusing to call an endpoint we can't authenticate to.",
-        );
+      if (
+        !isDeploymentAdmin(ctx.session.user.email, env.CAIRO_GUARDRAIL_ADMINS)
+      ) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message:
+            "Only the deployment's guardrail administrators can change these settings.",
+        });
       }
 
-      const res = await fetch(`${env.RAYIN_GUARDRAILS_URL}/v1/config`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Config-Secret": env.RAYIN_GUARDRAILS_CONFIG_SECRET,
-        },
-        body: JSON.stringify({
-          pii_entities: input.piiEntities,
-          jailbreak_enabled: input.jailbreakEnabled,
-          topical_enabled: input.topicalEnabled,
-        }),
-        signal: AbortSignal.timeout(5_000),
-      });
-      if (!res.ok) {
-        const detail = await res.text().catch(() => "");
-        throw new Error(
-          `rayin-guardrails rejected the config update (${res.status}): ${detail}`,
+      let result;
+      try {
+        result = await saveSettings(
+          ctx.prisma,
+          {
+            policy: {
+              piiEntities: input.piiEntities,
+              jailbreakEnabled: input.jailbreakEnabled,
+              topicalEnabled: input.topicalEnabled,
+            },
+            reason: input.reason,
+            userId: ctx.session.user.id,
+            userEmail: ctx.session.user.email ?? null,
+            projectId: input.projectId,
+          },
+          async (tx, { before, current }) => {
+            await auditLog(
+              {
+                session: ctx.session,
+                resourceType: "acmeGuardrailSettings",
+                resourceId: `v${current.version}`,
+                action: "update",
+                before: before ? settingsForAudit(before) : null,
+                after: settingsForAudit(current),
+              },
+              // The audit row commits with the new version (Q1).
+              tx as unknown as typeof ctx.prisma,
+            );
+          },
         );
+      } catch (e) {
+        if (e instanceof Error && /reason|personal-data type/.test(e.message)) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
+        }
+        throw e;
       }
 
-      const parsed = ConfigResponseSchema.parse(await res.json());
-      return parsed;
+      // Nudge one pod to pull now; the rest pick it up within 30 s. Sent
+      // with the full policy, so a rayin-guardrails build that predates
+      // part a still applies it (to the one pod it reaches) during rollout.
+      // Best effort: the stored version, not this call, is what counts.
+      let nudged = false;
+      if (
+        result.changed &&
+        env.RAYIN_GUARDRAILS_URL &&
+        env.RAYIN_GUARDRAILS_CONFIG_SECRET
+      ) {
+        try {
+          const res = await fetch(`${env.RAYIN_GUARDRAILS_URL}/v1/config`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Config-Secret": env.RAYIN_GUARDRAILS_CONFIG_SECRET,
+            },
+            body: JSON.stringify({
+              pii_entities: result.current.piiEntities,
+              jailbreak_enabled: result.current.jailbreakEnabled,
+              topical_enabled: result.current.topicalEnabled,
+            }),
+            signal: AbortSignal.timeout(5_000),
+          });
+          nudged = res.ok;
+          if (!res.ok) {
+            logger.warn(
+              `guardrail settings v${result.current.version} saved; rayin-guardrails nudge returned ${res.status}`,
+            );
+          }
+        } catch (e) {
+          logger.warn(
+            `guardrail settings v${result.current.version} saved; rayin-guardrails nudge failed: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      }
+
+      return {
+        changed: result.changed,
+        version: result.current.version,
+        nudged,
+      };
     }),
 });
+
+function settingsForAudit(s: GuardrailSettingsVersion) {
+  return {
+    version: s.version,
+    mode: s.mode,
+    piiEntities: s.piiEntities,
+    jailbreakEnabled: s.jailbreakEnabled,
+    topicalEnabled: s.topicalEnabled,
+    reason: s.reason,
+  };
+}
