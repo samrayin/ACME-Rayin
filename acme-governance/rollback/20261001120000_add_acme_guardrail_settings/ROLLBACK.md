@@ -6,7 +6,7 @@
 | **ADR** | [ADR-0005-B](../../adr/ADR-0005-B-console-enforcement-switch.md) |
 | **Forward migration** | `packages/shared/prisma/migrations/20261001120000_add_acme_guardrail_settings/migration.sql` |
 | **Rollback script** | `./down.sql` |
-| **Test status** | **Not yet rehearsed.** The rehearsal (`acme-governance/scripts/rehearsal-db.sh`) creates a throwaway Postgres pod in a scratch namespace on the dev cluster, and runs only with the owner's go. Record the result below before this migration is released. |
+| **Test status** | **Tested 2026-10-01** on a throwaway database (owner: "go rehearsal"): up, down and up again, 7 of 7 steps PASS, plus 6 extra checks PASS. Not yet run in dev. |
 | **Data lost on rollback** | **Steps 1 and 2:** none. **Step 3 (`down.sql`):** the guardrail settings history (every version, with who, when and why), the pod-status table, and the settings version and pod recorded on guardrail events since. The audit-log entry for each change stays in `audit_logs`. |
 
 ## When to roll back
@@ -36,15 +36,32 @@
 - [ ] the application starts on the previous image, and the smoke test passes
 
 ## Rehearsal log
-`Staging: not available; isolated migration and rollback rehearsal to be performed.`
+`Staging: not available; isolated migration and rollback rehearsal performed.`
 Command: `acme-governance/scripts/rehearsal-db.sh rehearse 20261001120000_add_acme_guardrail_settings`, then `down`.
+
+**Environment:** a throwaway Postgres 15.19 pod modelling Azure, in the scratch namespace `cairo-rehearsal` on the dev cluster, with no real data. **Created 2026-10-01 13:43:33 UTC, removed 13:55:22 UTC** by the script's `down`.
+
+The first attempt stopped before any migration ran: local port 55432 was already in use. The run below reused the same pod with `REHEARSAL_PORT=55441`.
 
 | Step | Command | Result | Started (UTC) |
 |---|---|---|---|
-| Up | `prisma migrate deploy` (empty database, all migrations) | not yet run | |
-| Up check | migration row present; seeded version 1 present; UPDATE and DELETE on the settings table refused by the trigger | not yet run | |
-| Down | `prisma db execute --file …/down.sql` | not yet run | |
-| Down check | migration row removed; tables and columns gone | not yet run | |
-| Up again | `prisma migrate deploy` | not yet run | |
+| Up | `prisma migrate deploy` (empty database, all migrations) | PASS | 2026-10-01T13:44:26Z |
+| Up check | migration row present | PASS | 2026-10-01T13:54:01Z |
+| Down | `prisma db execute --file …/down.sql` | PASS | 2026-10-01T13:54:01Z |
+| Down check | migration row removed | PASS | 2026-10-01T13:54:19Z |
+| Status after down | `prisma migrate status` lists it as pending again | PASS | 2026-10-01T13:54:19Z |
+| Up again | `prisma migrate deploy` | PASS | 2026-10-01T13:54:29Z |
+| Status after up again | "Database schema is up to date" | PASS | 2026-10-01T13:54:38Z |
+
+**Extra checks** (on the same database after "Up again", as the admin login `postgres`):
+
+| Check | Result |
+|---|---|
+| Version 1 seeded: mode `record`, 7 personal-data types, both checks on, created by `migration` | PASS |
+| `UPDATE`, `DELETE` and `TRUNCATE` on `acme_guardrail_settings` refused by the append-only trigger | PASS (3 of 3 refused) |
+| A new version can still be inserted (in a rolled-back transaction) | PASS |
+| `mode = 'enforce'` refused by `acme_guardrail_settings_mode_check` | PASS |
+| `rayin_app_runtime`: SELECT and INSERT only on settings; SELECT, INSERT, UPDATE and DELETE on pods; TRUNCATE on neither | PASS |
+| `acme_guardrail_events` has `settings_version` (integer) and `pod` (text) | PASS |
 
 **Known limit, tied to Readiness Ledger P0-5:** in dev the application connects as the admin login, so the grants to `rayin_app_runtime` do not constrain it yet. The append-only triggers do: they hold for every login except a superuser who disables them.

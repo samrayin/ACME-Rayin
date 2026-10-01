@@ -5260,7 +5260,7 @@ Console change, with a database migration. ADR-0005-B part a. Nothing changes in
   - **Pull route:** accepts keys from one named project only (`CAIRO_GUARDRAILS_SYNC_PROJECT_ID`, fail closed; owner's choice). Pod names must be DNS-1123 labels, versions are capped, the settings are read before the best-effort status write, the listed pods are capped, and stale pod rows are removed.
   - **Admin list:** takes effect only where open sign-up is off or requires a verified email.
   - **Settings table:** append-only through triggers (UPDATE, DELETE and TRUNCATE are refused for every login), with explicit grants for the least-privilege runtime role.
-  - **Rollback:** `down.sql`, `ROLLBACK.md` and an inventory note added. The rehearsal is pending the owner's go.
+  - **Rollback:** `down.sql`, `ROLLBACK.md` and an inventory note added. Rehearsed on 2026-10-01 on a throwaway database: up, down and up again, 7 of 7 steps PASS, plus checks of the seed, the append-only triggers, the mode CHECK and the grants.
   - **Privacy:** the editor's email is shown to administrators only.
 - **Tests:**
   - unit tests for the settings logic: the admin list, the sign-up guard, normalisation, reason, versioning, audit within the transaction, the concurrent-save retry, pod-name bounds, pod-status cleanup and cap, and the event fields;

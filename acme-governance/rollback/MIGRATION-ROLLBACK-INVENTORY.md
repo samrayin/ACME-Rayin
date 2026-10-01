@@ -25,8 +25,8 @@ creates `acme_guardrail_settings` (append-only, with triggers) and
 `acme_guardrail_settings_pods`, and adds the nullable columns `settings_version`
 and `pod` to `acme_guardrail_events`. It is **reversible with data loss**: the
 settings history is lost, but the audit-log entries remain. It has a `down.sql`
-and `ROLLBACK.md`; the rehearsal is pending the owner's go (see its
-`ROLLBACK.md`).
+and `ROLLBACK.md`, and was rehearsed up, down and up again on 2026-10-01
+(7 of 7 steps PASS; see its `ROLLBACK.md`).
 
 ## Reading this
 - Nothing here is *safely reversible*: every ACME migration either holds audit data or changes something Postgres cannot undo.
