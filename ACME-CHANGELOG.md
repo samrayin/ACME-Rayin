@@ -5204,3 +5204,19 @@ Gateway configuration and a new in-cluster component. Nothing is live until the 
   - It does not enable response caching, so no prompt or response text goes into Redis.
   - If Redis is unavailable, the rate limiter falls back to per-replica counting and keeps serving.
 - **`secret.example.yaml`:** lists `GROQ_API_KEY_APP` (from CHG-2026-086 f) and `REDIS_PASSWORD`, as names only.
+
+## 2026-09-30 — Design: developers' Claude Code through the front door (ADR-0020 §3.8, step g)
+
+Documentation only: a Proposed addendum to ADR-0020 (CHG-2026-086 g). Nothing is built or changed. The owner asked that the gateway also be the only point of access to Claude for developers.
+- **§3.8:** Claude Code points at the front door with two documented settings (`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`), using one CAIRO-issued key per person. The gateway already serves Anthropic's `/v1/messages`.
+- **Prerequisites:**
+  - step b (the front door with TLS and unbuffered streaming);
+  - a funded provider account, because usage is billed per token instead of the person's subscription;
+  - a guardrail treatment for very large coding prompts;
+  - unchanged pass-through of Anthropic headers and fields;
+  - model groups matching Claude Code's model names.
+- **Also added:**
+  - rollout step g;
+  - tests T10–T13;
+  - three risks;
+  - decisions D8 (budget), D9 (guardrail treatment) and D10 (retire the workstation trace export once records are proven).

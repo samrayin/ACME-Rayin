@@ -34,6 +34,7 @@ The owner also asked for automatic routing to be configured and tested. "Automat
 | Applications are forced through the gateway | **No.** Egress is unrestricted, so an application can call a provider directly and nothing about that call reaches CAIRO | Ledger N-33 |
 | Routed calls record the model that actually served them | **Not yet**: the ingest drops the router's field | ADR-0010 §5 |
 | CAIRO's own evaluators use the gateway | **No.** They call the provider directly, through a project connection outside the gateway (found 2026-09-30) | §3.6; step f |
+| Developers' Claude Code uses the gateway | **No.** It calls the provider directly with each person's login | §3.8; step g |
 
 So the gateway already sits in the path, **for the applications that choose to use it**. This ADR makes the path mandatory, and makes CAIRO the front door.
 
@@ -163,6 +164,43 @@ ADR-0005-A invariant I-1 is amended to allow exactly this second key. Any other 
 
 **Trade-off to decide per evaluator:** with redaction on, an evaluator that looks for personal data in a response sees placeholders instead. An evaluator of that kind needs its own decision.
 
+### 3.8 Developer tools through the front door (Claude Code)
+
+*Added 2026-09-30, CHG-2026-086 g. Proposed; nothing is built or changed.* The owner asked on 2026-09-30 that the gateway also be the only point of access to Claude for developers.
+
+**Today.**
+- Developers' Claude Code sessions call the model provider directly, each with the person's own login. CAIRO sees none of these calls.
+- In dev, a workstation plugin exports session traces, content included, into a dev CAIRO project. This is the CHG-2026-055 path, accepted by decision.
+
+**The change.** Claude Code calls CAIRO's front door instead of the provider:
+- **Two Claude Code settings,** documented by Claude Code for LLM gateways:
+  - `ANTHROPIC_BASE_URL` points at the front door's Anthropic-compatible path;
+  - `ANTHROPIC_AUTH_TOKEN` holds a CAIRO-issued key for that developer, sent as `Authorization: Bearer`.
+  - They go in the `env` block of Claude Code's settings, not only in the shell, so background agents use them too.
+- **The gateway already serves the Messages API.** It serves Anthropic's `/v1/messages` and `/v1/messages/count_tokens`, checked in the 1.100.1 source. Claude Code's documentation recommends this format for a gateway.
+- **Records.** Each call then leaves the same records as any application (§3.3): a metadata-only trace, a request-log row and, depending on D9, a guardrail event.
+- **The workstation export can retire.** The content-bearing trace export from developer workstations is then no longer needed (D10).
+
+**Prerequisites, in order:**
+1. **Step b,** the front door on CAIRO's hostname:
+   - TLS, reachable from developer machines;
+   - streamed responses passed through without buffering, which Claude Code relies on.
+
+   The test-only external address is never used for real work.
+2. **A funded provider account for the gateway, and an agreed budget (D8).** Through a gateway, Claude Code authenticates with the organisation's credential "instead of your personal claude.ai login" (Claude Code documentation). Usage is therefore billed per token to the gateway's provider account, not to the person's subscription. Claude Code's volumes are large: one developer turn traced in dev on 2026-09-30 totalled about 1.17 million prompt tokens across its calls. Prompt caching reduces the cost, but only if it passes through (point 4).
+3. **A guardrail treatment for developer keys (D9).** Two reasons:
+   - The guardrail's size limit (20,000 characters) stops oversize prompts unscanned. That is recorded in record mode, but in enforce mode it would refuse almost every Claude Code call.
+   - Inspecting every call would send whole coding sessions to the judge model, beyond its limits.
+4. **Pass-through, unchanged.** Claude Code's documentation requires `anthropic-*` request headers and body fields to be forwarded as they are, not filtered to a list, because each release adds new ones. This covers prompt caching (`cache_control`), thinking, context management and output settings. Tests T10 and T11 prove it.
+5. **Model groups that answer to the names Claude Code requests,** or Claude Code pinned to the group names through its model settings. This includes the small, fast model Claude Code uses for background work.
+
+**Keys.**
+- One CAIRO-issued key per person, never shared.
+- Limited to the Claude model groups, with a budget and request limits.
+- Issued and revoked in the console, so each is in CAIRO's change record and usage and cost are attributable to a person.
+
+**Rollback, per developer:** remove the two settings, run `/logout`, then sign in with the personal login. Claude Code returns to its direct connection (Claude Code documentation).
+
 ## 4. Rollout in dev, each step owner-gated
 
 | Step | Change | Needs |
@@ -173,6 +211,7 @@ ADR-0005-A invariant I-1 is amended to allow exactly this second key. Any other 
 | d | Egress default-deny in the cluster, and the provider allow-list for the gateway only | NetworkPolicy, then a firewall rule where one exists |
 | e | The routing test suite (§6), run against dev and kept as a release check | Test keys and a budget |
 | f | CAIRO's own evaluators behind the gateway (§3.6): the `cairo-evaluator` group, a CAIRO-issued evaluator key with the dev exception, the evaluators' default model on the gateway connection, then removal of the direct provider connection | Gateway configuration and restart; a key and a connection created in the console by the owner; one key-metadata edit. **Runs first**, because it stops a live loss of evaluations |
+| g | Developers' Claude Code through the front door (§3.8): Claude model groups, per-person keys, two Claude Code settings; one developer first, then the rest; then the workstation trace export retires | Step b; decisions D8–D10; T10–T13 passed with the first developer |
 
 Each step is a lettered part of CHG-2026-086, with its own rollback: the previous ConfigMap, ingress or policy, all kept as files. The same design is then built into the AWS deployment (ADR-0021).
 
@@ -202,6 +241,10 @@ It runs from a test pod and a test key with a small budget. It never uses the gu
 | T7 | Per-key limits | A key limited to `auto` cannot call a named model; a key with a named group can |
 | T8 | No bypass | From an application pod (and, on AWS, from the customer's application subnet), a direct call to a provider domain fails; the same request through CAIRO succeeds |
 | T9 | Latency | The front door and guardrail add no more than the measured budget at p95 (ADR-0005 §3c) |
+| T10 | Claude Code works through the front door | One developer's session: responses stream as they are generated, tool use works, and `/v1/messages/count_tokens` answers (or Claude Code's documented fallback applies) |
+| T11 | Claude Code features pass through | Prompt-cache reads are reported on repeated context; a request using a current `anthropic-beta` header behaves as it does against the provider directly |
+| T12 | Developer records | Each call is a metadata-only trace under the person's key, with no prompt text in any store; the guardrail record follows D9 |
+| T13 | Developer limits | A key over its budget or request limit is refused with a clear error, and the rollback restores the direct connection |
 
 The suite's results are the gate C evidence for step e, and a release check afterwards.
 
@@ -214,6 +257,9 @@ The suite's results are the gate C evidence for step e, and a release check afte
 | Routing tests or application traffic exhaust the provider key the guardrail judge uses (seen 2026-09-28: evaluator runs failed on a daily token limit) | High today | High | Separate keys and budgets for the judge and application traffic (D4) |
 | The evaluator key's guardrail exception (§3.6) is an uninspected path if the key leaks | Low (the key is used only inside the cluster) | Medium | Allowlist of one group, limits never unset, dev only, replaced by R1 (§3.7). A second exempt key beyond it is a finding (ADR-0005-A I-1) |
 | Evaluations still fail on the provider tier's per-request or daily token limits, since some traces are larger than one request allows | High on a free tier | Medium | Visible as failed evaluations, and no longer shared with the judge. Sampling, filtering evaluated traces, or a paid tier are the owner's choice |
+| Developer usage through the gateway costs more than expected (§3.8) | High | Medium | A budget per key; prompt caching passed through (T11); one developer first (D8) |
+| The gateway becomes a dependency for developers' daily work | Medium | Medium | Two gateway replicas on two nodes (CHG-2026-088); the per-developer rollback takes one step |
+| A Claude Code release adds a header or field the gateway drops, and a feature breaks | Medium | Medium | Forward `anthropic-*` headers and fields unchanged; T10 and T11 as a release check after every gateway upgrade |
 | Egress default-deny breaks a dependency nobody listed | Medium | Medium | Apply in audit mode or in steps; list dependencies first; rollback is the previous policy |
 | Customer apps still reach providers directly | Medium | High | Customer responsibility with test T8 in the POC acceptance |
 | Fallback to a different provider changes data residency | Medium | High | Fallback groups contain only providers approved for the customer's residency (ADR-0021 §3.6) |
@@ -235,6 +281,9 @@ The suite's results are the gate C evidence for step e, and a release check afte
 | D5 | Which models form the tiers and fallback groups | Owner and customer choice, limited to providers approved for the customer's residency |
 | D6 | Egress block in dev: NetworkPolicy only, or a firewall too | NetworkPolicy now; the firewall comes with the AWS design |
 | D7 | Exempt the evaluators' key from the input guardrail in dev | **Decided by the owner, 2026-09-30:** yes, dev only, with the bounds in §3.6, and roadmap items R1 and R2 added (§3.7) |
+| D8 | Fund the gateway's provider account for developer use, with a monthly budget | One developer first, on a capped key, to measure real cost before the rest |
+| D9 | Guardrail treatment for developer keys | R1 when built: personal-data detection on the newest user turn only, attack screening off. Until then, in dev, a key-level exemption with the §3.6 bounds, which needs a further amendment of ADR-0005-A I-1 by the owner |
+| D10 | Retire the content-bearing workstation trace export once T12 passes | Yes: the gateway's metadata-only records replace it |
 
 ## 10. Assumptions and not verified
 
