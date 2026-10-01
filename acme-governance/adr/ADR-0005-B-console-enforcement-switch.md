@@ -54,15 +54,22 @@ This ADR makes the mode a CAIRO control alongside the policy, and sets the bar a
   - A restart therefore restores the settings (Q2), and every replica converges (Q3).
 - **CAIRO's save also notifies each pod** so changes apply at once. The pull is what guarantees convergence.
 - **Every guard verdict carries the mode and the settings version** that produced it.
-- **If CAIRO cannot be reached,** a pod keeps the last settings it pulled. A pod that has never pulled since it started uses its built-in defaults, with mode `record`.
+- **If CAIRO cannot be reached,** a pod keeps the last settings it pulled.
+- **A pod that has not pulled since it started never reports a mode.**
+  - It applies its built-in default policy, which today is the strictest the console offers.
+  - It marks its verdicts **settings unknown**, with no mode and no version.
+  - It never reports `record` on its own authority: a pod that cannot reach CAIRO must not be able to lower the mode for its share of traffic.
 
 ### 3.3 The gateway applies the mode from the verdict, within a ceiling
 
 - **The hook takes the mode from each verdict.** It needs no restart and makes no extra call.
+- **Only a verdict with a known settings version can set the mode, and versions only move forward.**
+  - Each gateway replica keeps the highest settings version it has seen.
+  - A verdict marked settings unknown, or carrying an older version, is treated like a missing verdict (below). So neither an unsynced pod nor a stale pod can lower the mode.
 - **A new gateway setting, `CAIRO_GUARDRAIL_MODE_MAX`** (`record` by default, or `enforce`), is the ceiling (Q4).
   - When the verdict says `enforce` but the ceiling is `record`, the hook records and does not refuse. It logs that enforce was requested but not allowed.
   - The existing `CAIRO_GUARDRAIL_MODE` is read as the ceiling, for compatibility.
-- **When there is no verdict** (the guard is down, slow or garbled), the hook uses the last mode it saw from a verdict on that gateway replica:
+- **When there is no usable verdict** (the guard is down, slow or garbled, or the verdict's settings are unknown or older than the newest seen), the hook uses the last mode it saw from a usable verdict on that gateway replica:
   - **last mode enforce: refuse.** This is ADR-0005's fail-closed rule.
   - **last mode record: proceed.**
   - **no mode seen since the replica started:** the ceiling decides. `record` proceeds; `enforce` refuses, because an unknown state under an enforce allowance fails closed.
@@ -86,13 +93,13 @@ The switch lives in Governance Controls › Guardrails, as an **Enforcement** ca
 - any pending automatic revert.
 
 **Switching to enforce:**
-- **Owner only.**
+- **Deployment administrators only.** These are people named in the deployment's own configuration (for example `CAIRO_GUARDRAIL_ADMINS`, a list of sign-in emails). It is not an organisation or project role: the mode applies to every organisation and project on the deployment, so no single organisation's role is the right authority for it.
 - The card shows the ADR-0005 §5 Step 4 gate checklist beside the switch, with live figures where CAIRO can compute them: the record-mode would-block rate over a chosen window, guard availability, and p95 added latency.
 - It needs a typed confirmation and a reason.
 - It offers an **automatic revert** after a set time, for a supervised trial. The default is on, for 30 minutes.
 - It is refused, with an explanation, when the ceiling is `record`.
 
-**Switching back to record:** Owner only by default. Whether Admins may also switch it off is decision D-B1.
+**Switching back to record:** deployment administrators only, by default. Whether a wider group may also switch it off is decision D-B1.
 
 **Records:**
 - each change writes the audit log before and after (Q1);
@@ -104,11 +111,11 @@ The switch lives in Governance Controls › Guardrails, as an **Enforcement** ca
   - What it builds: §3.1, the pull and verdict fields in §3.2, the Q1 audit writes and the Q6 status view.
   - It is delivered **first and on its own.** The console's guardrail policy form already exists, and Q1–Q3 must hold for it before anything is added.
   - The mode stays `record` throughout part a, and the gateway hook is not changed in part a.
-  - Tests: B2, B3, B7 (the settings endpoint), B8 and B9.
+  - Tests: B2, B3, B7 (the settings endpoint), B8, B9 and B12.
 - **Part b: the enforcement switch.**
   - What it builds: §3.3, the ceiling setting, and §3.4's Enforcement card and automatic revert.
   - It is delivered **only after part a's tests pass.**
-  - Tests: B1, B4, B5 and B6, and B7 (the switch).
+  - Tests: B1, B4, B5, B6, B10 and B11, and B7 (the switch).
 
 Until part a is live, changes to the guardrail policy in the console are to be avoided, so that the policy stays the same on every replica. This is an owner instruction recorded in the operations records, not something this ADR enforces.
 
@@ -135,13 +142,16 @@ Until part a is live, changes to the guardrail policy in the console are to be a
 | B7 | Permissions | An Admin cannot switch to enforce. A non-member cannot read the settings endpoint |
 | B8 | Records | Each change has audit rows before and after, and a mode-change guardrail event |
 | B9 | Policy fixed too | A policy toggle reaches every guardrails replica, survives a restart, and is audited |
+| B10 | No downgrade from an unsynced pod | With enforce on, a guardrails pod restarted while CAIRO's settings endpoint is unreachable marks its verdicts settings unknown, and the gateway keeps enforcing for that pod's traffic |
+| B11 | No downgrade from a stale pod | After a change from enforce to record and back to enforce, a verdict carrying an older settings version does not change the gateway's mode |
+| B12 | Authority | A signed-in user who is an organisation or project Owner, but not a named deployment administrator, cannot change the mode or the policy |
 
 ## 6. Risks
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
 | Enforce is switched on before the deployment is ready, refusing legitimate traffic | Medium | High | The ceiling (Q4); the gate checklist; an automatic revert by default |
-| A compromised Owner session switches enforcement off | Low | High | Owner only; audit log; mode-change event; an alert on mode change, if the SIEM path is built |
+| A compromised deployment-administrator session switches enforcement off | Low | High | A named administrator list, not a role anyone can obtain; audit log; mode-change event; an alert on mode change, if the SIEM path is built |
 | The guardrails service depends on CAIRO's console being up | Medium | Low | Last pulled settings are kept; the pull only refreshes them |
 | Exempt keys stay unchecked in enforce | Certain | Medium | Shown on the Enforcement card next to the switch (ADR-0005-A I-1) |
 
@@ -149,7 +159,7 @@ Until part a is live, changes to the guardrail policy in the console are to be a
 
 | # | Decision | Recommendation |
 |---|---|---|
-| D-B1 | Who may switch enforcement **off** | Owner only, as for on. Admins may if the owner wants a faster safety-off |
+| D-B1 | Who may switch enforcement **off** | The deployment administrators, as for on. A wider named group if the owner wants a faster safety-off |
 | D-B2 | Automatic revert by default | On, 30 minutes, until ADR-0005's gates are met |
 | D-B3 | Ceiling in dev | `record` until the first supervised trial, then `enforce` for that trial window only |
 | D-B4 | Pull interval | 30 seconds |
@@ -158,3 +168,9 @@ Until part a is live, changes to the guardrail policy in the console are to be a
 
 - The exact form of the internal settings endpoint, and whether the existing admin shared secret is the right credential for it.
 - How LiteLLM 1.100.1 returns redacted text from a pre-call hook for every request format, including Anthropic's Messages API (ADR-0020 §3.8). To be proven by test B4.
+
+## 9. Revisions
+
+- **2026-10-01, after a security review of this design:**
+  - **No downgrade.** A guardrails pod that has not received CAIRO's settings no longer reports `record`, and the gateway ignores unknown or older settings versions (§3.2, §3.3; tests B10 and B11).
+  - **Authority.** The authority for the switch and the policy is now a named list of deployment administrators, not an organisation or project Owner role (§3.4, D-B1; test B12).

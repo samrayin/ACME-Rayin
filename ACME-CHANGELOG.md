@@ -5233,3 +5233,9 @@ Documentation only: a Proposed ADR. Nothing is built or changed. The owner asked
   - An Owner-only Enforcement card shows the effective mode per replica and the gate checklist, with typed confirmation and an automatic revert.
 - **Delivery:** part a (the settings mechanism, applied first to the existing policy controls) before part b (the switch).
 - **Also in the ADR:** tests B1–B9, four risks and four owner decisions.
+
+## 2026-10-01 — ADR-0005-B amended after a security review (CHG-2026-089)
+
+Documentation only. The design is still Proposed and nothing is built.
+- **No downgrade.** A guardrails pod that has not received CAIRO's settings marks its verdicts "settings unknown" instead of reporting `record`. The gateway takes the mode only from a known settings version, and versions only move forward. So an unsynced or stale pod cannot lower enforce to record. New tests: B10 and B11.
+- **Authority.** The switch and the guardrail policy are controlled by a named list of deployment administrators, set in the deployment's configuration, not by an organisation or project Owner role. The mode applies to the whole deployment. New test: B12.
