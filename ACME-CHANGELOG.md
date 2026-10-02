@@ -5243,6 +5243,11 @@ Documentation only. The design is still Proposed and nothing is built.
 ## 2026-10-01 — Guardrail settings held by CAIRO: audited, durable, applied to every pod (CHG-2026-089 part a)
 
 Console change, with a database migration. ADR-0005-B part a. Nothing changes in the gateway, and the guardrail stays in record mode. The rayin-guardrails pull lands in that repository separately.
+- **Released (2026-10-01/02):**
+  - console `acme-v4.38.0.29` first, then rayin-guardrails `v0.4.0`;
+  - acceptance tests B2, B3, B8 and B9 passed on 2026-10-02: every guardrails pod was on a newly saved version within seconds, and settings survived pod restarts;
+  - the freeze on guardrail-setting changes was lifted;
+  - B7 and B12 are covered by automated tests only.
 - **Why:** console changes to the guardrail policy were not audited, were lost when a guardrails pod restarted, and reached only one of the two replicas.
 - **Settings store:** a new append-only table, `acme_guardrail_settings`, with one row per version; the highest version is in force.
   - The migration seeds version 1 with the defaults in force on 2026-10-01: all seven personal-data types, with the jailbreak and topic checks on.
