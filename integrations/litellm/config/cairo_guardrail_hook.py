@@ -40,6 +40,14 @@ a dict ``{"texts": [...]}``, and expects the same shape back. The first switch-o
 proved the earlier assumption wrong: every request recorded ``guard_unreadable``
 and nothing was inspected. ``extract_text`` still reads the older shapes and still
 returns None for anything unrecognised, which is a record-mode proceed.
+
+**The mode comes from CAIRO, within a ceiling (ADR-0005-B part b, CHG-2026-089).**
+Since part b the mode is no longer read once at pod start. Each verdict carries
+the CAIRO settings version and mode it was decided under, and each gateway
+replica keeps the newest it has seen (``ModeTracker``), bounded by the
+deployment ceiling ``CAIRO_GUARDRAIL_MODE_MAX``. The rules are pure functions
+here too: ``read_ceiling``, ``settings_labels``, ``ModeTracker`` and
+``decision_mode``. See ``CairoGuardrail`` for the table.
 """
 
 from __future__ import annotations
@@ -47,10 +55,11 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sys
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List, NamedTuple, Optional
+from typing import Any, Dict, List, Mapping, NamedTuple, Optional, Tuple
 
 try:  # pragma: no cover - exercised only inside the gateway image
     from litellm.integrations.custom_guardrail import CustomGuardrail as _Base
@@ -135,6 +144,169 @@ _AGENT_ID_FIELDS = (
 #: Used when no authenticated identifier is present. A constant, not a guess: the
 #: audit row should say "we do not know" rather than name the wrong application.
 UNKNOWN_AGENT_ID = "unknown-agent"
+
+#: The two modes (ADR-0005-B). Anything else is not a mode.
+MODES = ("record", "enforce")
+
+#: The deployment ceiling (ADR-0005-B §3.3, owner decision D-B3). ``enforce``
+#: allows the console's enforce to take effect; unset or anything else means
+#: record, whatever the console says.
+CEILING_ENV = "CAIRO_GUARDRAIL_MODE_MAX"
+
+#: Read as the ceiling when CEILING_ENV is unset, for compatibility (§3.3).
+LEGACY_MODE_ENV = "CAIRO_GUARDRAIL_MODE"
+
+#: Where this replica's pod name comes from. Kubernetes sets HOSTNAME to the
+#: pod name; POD_NAME is honoured first if a manifest sets it explicitly.
+_POD_NAME_ENVS = ("POD_NAME", "HOSTNAME")
+
+#: CAIRO's bounds for a pod name (its POD_NAME_PATTERN) and a settings version.
+_POD_NAME_PATTERN = re.compile(r"^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$")
+MAX_SETTINGS_VERSION = 2147483647
+
+#: rayin-guardrails' explicit "no verdict" answer when the judge model could
+#: not be asked (Readiness Ledger N-64): HTTP 503 with this verdict and reason.
+NO_VERDICT = "none"
+JUDGE_UNAVAILABLE = "judge_unavailable"
+
+
+def read_ceiling(environ: Optional[Mapping[str, str]] = None) -> str:
+    """The deployment ceiling: ``enforce`` only when set to exactly that.
+
+    ``CAIRO_GUARDRAIL_MODE_MAX`` wins; when it is unset or blank, the older
+    ``CAIRO_GUARDRAIL_MODE`` is read as the ceiling. Every other value, a typo
+    included, means record: a ceiling that cannot be read must not allow
+    enforce.
+    """
+    env = os.environ if environ is None else environ
+    raw = env.get(CEILING_ENV)
+    if raw is None or not str(raw).strip():
+        raw = env.get(LEGACY_MODE_ENV, "")
+    return "enforce" if str(raw).strip().lower() == "enforce" else "record"
+
+
+def gateway_pod_name(environ: Optional[Mapping[str, str]] = None) -> Optional[str]:
+    """This replica's pod name as CAIRO accepts it, or None."""
+    env = os.environ if environ is None else environ
+    for name in _POD_NAME_ENVS:
+        raw = env.get(name)
+        if isinstance(raw, str):
+            candidate = raw.strip().lower()
+            if _POD_NAME_PATTERN.fullmatch(candidate):
+                return candidate
+    return None
+
+
+def _parse_utc(value: Any) -> Optional[datetime]:
+    if not isinstance(value, str) or len(value) > 40:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(timezone.utc)
+
+
+Labels = Tuple[int, str, Optional[datetime]]
+
+
+def settings_labels(answer: Any) -> Optional[Labels]:
+    """``(version, mode, revert_at)`` from a verdict or a no-verdict answer,
+    or None when they cannot set the mode.
+
+    Only an answer whose settings are ``applied``, with a version in range and
+    a known mode, can (§3.3). Settings unknown, a missing or malformed field,
+    or an older rayin-guardrails that sends no labels: None. ``revert_at``
+    counts on an enforce answer only.
+    """
+    try:
+        if not isinstance(answer, dict) or answer.get("settings_status") != "applied":
+            return None
+        version = answer.get("settings_version")
+        mode = answer.get("mode")
+        if not isinstance(version, int) or isinstance(version, bool):
+            return None
+        if not 1 <= version <= MAX_SETTINGS_VERSION or mode not in MODES:
+            return None
+        revert_at = _parse_utc(answer.get("revert_at")) if mode == "enforce" else None
+        return version, mode, revert_at
+    except Exception:
+        return None
+
+
+class ModeTracker:
+    """One gateway replica's view of the console's mode (ADR-0005-B §3.3).
+
+    In-process and per replica: a restart forgets it, and the ceiling then
+    decides until a usable answer arrives.
+
+    * **Versions only move forward.** A newer version sets the mode. An older
+      one is a stale guardrails pod and is ignored, so it cannot lower the mode.
+    * **At the same version, only enforce -> record.** CAIRO and the guardrails
+      pods report an enforce trial past its switch-back time as record *at the
+      same version number*, until the automatic version is written. That is
+      the one legitimate same-version change. The reverse, record -> enforce
+      at one version, can only come from a pod that pulled before the trial
+      ended, so it is ignored (SF-2026-024's open case, now defined).
+    * **A trial ends on time here too.** An enforce mode with a switch-back time
+      reads as record from that time, even if no answer arrives at all.
+    """
+
+    def __init__(self) -> None:
+        self.version: Optional[int] = None
+        self.mode: Optional[str] = None
+        self.revert_at: Optional[datetime] = None
+
+    def observe(self, labels: Optional[Labels]) -> bool:
+        """Take an answer's labels. True when they are current (not stale or
+        unusable), so the answer can be acted on in enforce mode."""
+        if labels is None:
+            return False
+        version, mode, revert_at = labels
+        if self.version is None or version > self.version:
+            self.version, self.mode, self.revert_at = version, mode, revert_at
+            return True
+        if version < self.version:
+            return False
+        if mode == "record" and self.mode == "enforce":
+            self.mode, self.revert_at = "record", None
+        elif mode == "enforce" and self.mode == "enforce" and self.revert_at is None:
+            # The same trial, now with its switch-back time (an older pod sent
+            # none). The time belongs to the version, so adopting it is safe.
+            self.revert_at = revert_at
+        return True
+
+    def desired(self, now: Optional[datetime] = None) -> Optional[str]:
+        """The console's mode as this replica knows it, or None if no usable
+        answer has arrived since the replica started."""
+        if self.mode == "enforce" and self.revert_at is not None:
+            if (now or datetime.now(timezone.utc)) >= self.revert_at:
+                return "record"
+        return self.mode
+
+
+def decision_mode(ceiling: str, desired: Optional[str]) -> str:
+    """The mode a request is decided in (ADR-0005-B §3.3).
+
+    The ceiling bounds it. With no mode seen since the replica started, the
+    ceiling decides: an unknown state under an enforce allowance fails closed.
+    """
+    if ceiling != "enforce":
+        return "record"
+    if desired is None:
+        return "enforce"
+    return desired
+
+
+def is_judge_unavailable(answer: Any) -> bool:
+    """rayin-guardrails' explicit "no verdict: judge unavailable" answer."""
+    return (
+        isinstance(answer, dict)
+        and answer.get("verdict") == NO_VERDICT
+        and answer.get("reason") == JUDGE_UNAVAILABLE
+    )
 
 
 class GuardOutcome(NamedTuple):
@@ -302,6 +474,9 @@ def build_health_log(
     guardrail_name: str = GUARDRAIL_NAME,
     payload: Optional[Dict[str, Any]] = None,
     now: Optional[datetime] = None,
+    ceiling: Optional[str] = None,
+    settings_version: Optional[int] = None,
+    refused: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """The health record for one hook invocation, as a flat JSON-able dict.
 
@@ -331,6 +506,15 @@ def build_health_log(
         "called": called,
         "duration_ms": round(duration_ms, 1) if duration_ms is not None else None,
     }
+    # ADR-0005-B part b: the mode above is the one this request was decided
+    # in. The ceiling and the newest settings version this replica has seen
+    # explain it; refused says whether the request was stopped.
+    if ceiling is not None:
+        record["ceiling"] = ceiling
+    if settings_version is not None:
+        record["settings_version"] = settings_version
+    if refused is not None:
+        record["refused"] = refused
     # Correlation to the originating request, when the proxy supplied one. Same
     # field AcmeLitellmRequestLog already keys on, so the two can be joined
     # without inventing a new identifier.
@@ -421,20 +605,53 @@ def should_skip(request_data: Any, guardrail_name: str = GUARDRAIL_NAME) -> bool
 class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
     """Gateway-side guardrail calling ``rayin-guardrails`` ``/v1/guard``.
 
-    ``CAIRO_GUARDRAIL_MODE`` is read at pod start: ``record`` (default) or
-    ``enforce``. ADR-0005 §3b:
+    **The mode** (ADR-0005-B §3.3, CHG-2026-089 part b). The console stores it;
+    every verdict carries it with its settings version; ``ModeTracker`` keeps
+    the newest per replica; ``CAIRO_GUARDRAIL_MODE_MAX`` (default ``record``;
+    the older ``CAIRO_GUARDRAIL_MODE`` is read in its place when unset) is the
+    ceiling. ``decision_mode`` combines them for each request.
 
-    ======================  ==========================  =========================
-    guardrails says         record                      enforce
-    ======================  ==========================  =========================
-    allow                   proceed                     proceed
-    block                   proceed, log would_block    refuse
-    redact                  proceed, original text      return redacted text
-    timeout / 5xx / down    proceed, guard_unavailable  refuse (fail closed)
-    ======================  ==========================  =========================
+    ==========================  ==========================  =========================
+    guardrails answers          decided in record           decided in enforce
+    ==========================  ==========================  =========================
+    allow                       proceed                     proceed
+    block                       proceed, log would_block    refuse
+    redact                      proceed, original text      return redacted text
+    no verdict: judge           proceed, log                refuse, judge_unavailable
+    unavailable (HTTP 503)      judge_unavailable
+    verdict, settings unknown   as its action says          refuse, settings_unusable
+    or stale
+    timeout / 5xx / down        proceed, guard_unavailable  refuse (fail closed)
+    ==========================  ==========================  =========================
 
-    ``enforce`` must not be selected until every ADR-0005 §5 Step 4 gate holds.
-    Nothing in this file relaxes those gates.
+    **Judge unavailable** (Readiness Ledger N-64; owner decision 2026-10-02).
+    rayin-guardrails answers HTTP 503 ``{"verdict": "none", "reason":
+    "judge_unavailable"}`` when its judge model could not be asked, for
+    example for its rate limit. Record mode proceeds and logs the outcome
+    ``judge_unavailable``. Enforce mode refuses, with that outcome code and a
+    message saying the request could not be checked: proceeding would let
+    anyone bypass the jailbreak check by saturating the judge. The fix for
+    refusals of this kind is judge capacity, never relaxing this rule.
+    rayin-guardrails records every such case as an event with action
+    ``unavailable``, in both modes.
+
+    **Settings unknown or stale.** A verdict from a guardrails pod that has
+    not pulled CAIRO's settings, or that is on an older version than this
+    replica has seen, cannot set the mode. In enforce it is treated like a
+    missing verdict and refused (``settings_unusable``), so neither an
+    unsynced pod nor a stale one can let a request through on a policy CAIRO
+    did not set (§3.3, tests B10 and B11).
+
+    **What this replica reports.** Each call sends ``gateway_pod``,
+    ``gateway_mode`` (the mode this replica was in when it called) and
+    ``gateway_settings_version``. rayin-guardrails passes them to the audit
+    event, so the console can show each replica's last seen mode (build
+    decision C1).
+
+    Enforce takes effect only with the ceiling at ``enforce`` and the console
+    at enforce. Neither may be set until the owner's preconditions hold:
+    ADR-0005 §5 Step 4, Readiness Ledger N-64, N-59's re-confirmation and
+    SF-2026-015. Nothing in this file relaxes them.
     """
 
     def __init__(self, **kwargs: Any) -> None:
@@ -449,7 +666,14 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
         # the judge path straight back into the F10 loop. Caught by layer 1
         # (test_guardrail_name_survives_construction); do not reorder.
         self.guardrail_name = name
-        self.mode = os.environ.get("CAIRO_GUARDRAIL_MODE", "record").strip().lower()
+        # ADR-0005-B §3.3: the ceiling is read at start; the mode comes from
+        # the verdicts, through the tracker.
+        self.ceiling = read_ceiling()
+        self.tracker = ModeTracker()
+        self.pod_name = gateway_pod_name()
+        # The settings version last warned about, so "enforce requested but
+        # not allowed" is logged once per version, not once per request.
+        self._ceiling_warned_version: Optional[int] = None
         self.guard_url = os.environ.get(
             "CAIRO_GUARDRAIL_URL", "http://rayin-guardrails.rayin-platform:8080/v1/guard"
         )
@@ -481,8 +705,55 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
         self.guard_secret = os.environ.get(GUARD_SECRET_ENV, "").strip()
         _ensure_health_output(log)
 
-    def _is_enforcing(self) -> bool:
-        return self.mode == "enforce"
+    def current_mode(self) -> str:
+        """The mode the next request would be decided in.
+
+        A method, not an attribute named ``mode``: LiteLLM's guardrail
+        configuration uses ``mode`` for the hook's event type, so this class
+        must not claim that name.
+        """
+        return decision_mode(self.ceiling, self.tracker.desired())
+
+    def _gateway_state(self, mode: str) -> Dict[str, Any]:
+        """What this replica reports with each call (build decision C1)."""
+        state: Dict[str, Any] = {"gateway_mode": mode}
+        if self.pod_name:
+            state["gateway_pod"] = self.pod_name
+        if self.tracker.version is not None:
+            state["gateway_settings_version"] = self.tracker.version
+        return state
+
+    def _warn_if_capped(self, labels: Optional[Labels]) -> None:
+        """Log once per version when the console asks for enforce and the
+        ceiling does not allow it (§3.3)."""
+        if labels is None or self.ceiling == "enforce":
+            return
+        version, mode, _ = labels
+        if mode == "enforce" and self._ceiling_warned_version != version:
+            self._ceiling_warned_version = version
+            log.warning(
+                "cairo_guardrail: the console asks for enforce (settings version %s), "
+                "but %s is not enforce; recording only",
+                version,
+                CEILING_ENV,
+            )
+
+    def judge(self, answer: Any) -> Tuple[GuardOutcome, str]:
+        """Decide one answer: take its labels, then apply the table.
+
+        Pure apart from updating this replica's tracker. Returns the outcome
+        and the mode it was decided in.
+        """
+        labels = settings_labels(answer)
+        current = self.tracker.observe(labels)
+        self._warn_if_capped(labels)
+        mode = decision_mode(self.ceiling, self.tracker.desired())
+        enforcing = mode == "enforce"
+        if is_judge_unavailable(answer):
+            return GuardOutcome(not enforcing, None, JUDGE_UNAVAILABLE), mode
+        if enforcing and isinstance(answer, dict) and "action" in answer and not current:
+            return GuardOutcome(False, None, "settings_unusable"), mode
+        return decide(answer, enforcing), mode
 
     async def apply_guardrail(
         self,
@@ -512,22 +783,25 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
             return self._resolve(
                 GuardOutcome(True, None, "excluded"),
                 inputs,
+                mode=self.current_mode(),
                 duration_ms=None,
                 called=False,
                 payload={"agent_id": _authenticated_agent_id(data)},
             )
 
-        enforcing = self._is_enforcing()
+        mode_before = self.current_mode()
         payload = build_guard_payload(inputs, data, input_type)
         if payload is None:
             # Nothing honest to ask. Record: proceed. Enforce: fail closed.
             return self._resolve(
-                GuardOutcome(not enforcing, None, "guard_unreadable"),
+                GuardOutcome(mode_before != "enforce", None, "guard_unreadable"),
                 inputs,
+                mode=mode_before,
                 duration_ms=None,
                 called=False,
                 payload=None,
             )
+        payload.update(self._gateway_state(mode_before))
 
         # Timed here rather than inside _post_guard so the measurement survives
         # the tests substituting that seam, and so it covers the whole call
@@ -539,12 +813,14 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
         # high-resolution clock on every platform, and is what Python documents
         # for measuring short durations.
         started = time.perf_counter()
-        verdict = await self._post_guard(payload)
+        answer = await self._post_guard(payload)
         duration_ms = (time.perf_counter() - started) * 1000.0
 
+        outcome, mode = self.judge(answer)
         return self._resolve(
-            decide(verdict, enforcing),
+            outcome,
             inputs,
+            mode=mode,
             duration_ms=duration_ms,
             called=True,
             payload=payload,
@@ -554,6 +830,7 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
         self,
         outcome: GuardOutcome,
         inputs: Any,
+        mode: Optional[str] = None,
         duration_ms: Optional[float] = None,
         called: bool = False,
         payload: Optional[Dict[str, Any]] = None,
@@ -561,16 +838,27 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
         """Apply a decided outcome: record it, then proceed, replace, or refuse."""
         record = build_health_log(
             outcome=outcome.event,
-            mode=self.mode,
+            mode=mode or self.current_mode(),
             duration_ms=duration_ms,
             called=called,
             guardrail_name=self.guardrail_name,
             payload=payload,
+            ceiling=self.ceiling,
+            settings_version=self.tracker.version,
+            refused=not outcome.proceed,
         )
         # One line, valid JSON, no interpolation -- so a log collector can parse
         # it without a regex and the fields survive a message-wording change.
         log.info(json.dumps(record, separators=(",", ":"), sort_keys=True))
         if not outcome.proceed:
+            if outcome.event == JUDGE_UNAVAILABLE:
+                # Operator-visible and distinct (owner decision 2026-10-02).
+                raise CairoGuardrailBlocked(
+                    f"Blocked by {self.guardrail_name} ({JUDGE_UNAVAILABLE}): the "
+                    "guardrail's judge model could not check this request, so it was "
+                    "refused. Retry later; if it persists, the judge's capacity is "
+                    "exhausted."
+                )
             raise CairoGuardrailBlocked(
                 f"Blocked by {self.guardrail_name} ({outcome.event})."
             )
@@ -622,6 +910,16 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
                     json=payload,
                     headers={GUARD_SECRET_HEADER: self.guard_secret},
                 )
+            if response.status_code == 503:
+                # N-64: rayin-guardrails' explicit "no verdict: judge
+                # unavailable" answer carries its settings labels, and is told
+                # apart from any other 503 by its body.
+                try:
+                    body = response.json()
+                except Exception:
+                    body = None
+                if is_judge_unavailable(body):
+                    return body
             if response.status_code != 200:
                 log.warning(
                     "cairo_guardrail: guardrails returned HTTP %s", response.status_code

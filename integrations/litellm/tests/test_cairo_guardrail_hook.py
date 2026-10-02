@@ -41,6 +41,19 @@ OTHER_GUARDRAIL = "some-other-guardrail"
 JUDGE_MODEL = "groq-safeguard"
 
 
+def labelled(verdict, mode="enforce", version=1):
+    """A verdict as rayin-guardrails v0.4.0 and later sends it: with the CAIRO
+    settings it was decided under (ADR-0005-B). Non-verdicts pass unchanged."""
+    if not isinstance(verdict, dict) or "action" not in verdict:
+        return verdict
+    return {
+        **verdict,
+        "settings_status": "applied",
+        "settings_version": version,
+        "mode": mode,
+    }
+
+
 def req(container="metadata", key_meta=None, team_meta=None, **extra):
     """Build request_data the way the proxy hands it to a guardrail."""
     meta = {}
@@ -406,10 +419,13 @@ class TestApplyGuardrailEndToEnd(unittest.TestCase):
     """The orchestration, with the I/O seam substituted -- no network."""
 
     def _hook(self, verdict, mode="record"):
+        """``mode`` is both the ceiling and the console's mode (ADR-0005-B):
+        "enforce" here means enforce allowed and chosen."""
         import cairo_guardrail_hook as m
 
         g = m.CairoGuardrail()
-        g.mode = mode
+        g.ceiling = mode
+        verdict = labelled(verdict, mode=mode)
         g.guard_secret = "test-secret"
         calls = []
 
@@ -611,7 +627,7 @@ class TestPostGuardFailsSafe(unittest.TestCase):
         import cairo_guardrail_hook as m
 
         g = m.CairoGuardrail()
-        g.mode = "record"
+        g.ceiling = "record"
         g.guard_secret = ""
         out = asyncio.run(g.apply_guardrail(inputs="hi", request_data=req(key_meta={})))
         self.assertEqual(out, "hi", "a missing secret must not fail requests in record mode")
@@ -697,7 +713,8 @@ class TestHealthLogEmittedEndToEnd(unittest.TestCase):
         import cairo_guardrail_hook as m
 
         g = m.CairoGuardrail()
-        g.mode = mode
+        g.ceiling = mode
+        verdict = labelled(verdict, mode=mode)
         g.guard_secret = "test-secret"
 
         async def fake_post(payload):

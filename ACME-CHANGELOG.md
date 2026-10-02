@@ -5342,3 +5342,25 @@ Console change, with a database migration. ADR-0005-B part b, console half. **No
 - **Tests:** unit tests for the ceiling, trial expiry, the mode checks, saving a mode, keeping a trial through a policy change, the automatic switch-back (including two pulls racing), the mode history and the gateway fields; router tests for the authority, the read-only roles, the ceiling (B1), the confirmation, and what `getConfig` shows to whom.
 - **Approval:** Pending. The owner merges after the security-agent review has reported; the implementer does not approve its own change. Not a production approval.
 - **Deployment status:** not deployed.
+
+## 2026-10-02 — The gateway takes the guardrail mode from CAIRO, within a ceiling (CHG-2026-089 part b, phase 2: gateway)
+
+Gateway hook and configuration comment; no console code and no migration. ADR-0005-B §3.3 and the new §3.3.1. The rayin-guardrails half is rayin-guardrails #24; the console parts follow in their own PR (owner decision).
+- **Why:** the hook read its mode once, at start, from `CAIRO_GUARDRAIL_MODE`. Part b phase 1 put the mode in the console; this makes the gateway follow it, bounded by a deployment ceiling.
+- **The ceiling:** `CAIRO_GUARDRAIL_MODE_MAX`. Only exactly `enforce` allows enforce; unset or anything else means record. The older `CAIRO_GUARDRAIL_MODE` is read as the ceiling when it is unset. Both are unset in dev, so **nothing changes in dev**: every request is still decided in record.
+- **The mode from verdicts:** each gateway replica keeps the newest CAIRO settings version it has seen.
+  - Versions only move forward.
+  - At one version, only enforce to record is accepted, because that is how a trial ends.
+  - Under enforce, a verdict with unknown or stale settings is refused (`settings_unusable`), so an unsynced or stale guardrails pod cannot let a request through (tests B10, B11).
+- **No verdict: judge unavailable** (Readiness Ledger N-64, owner decision): rayin-guardrails' explicit HTTP 503 answer is recognised.
+  - **Record:** the request proceeds and is logged as `judge_unavailable`.
+  - **Enforce:** the request is refused, with that outcome code and a message saying it could not be checked.
+  - It is never relaxed to proceed. N-64 closes only on measured judge capacity.
+- **A trial ends on time:** a running trial's switch-back time travels on each verdict, so a replica ends the trial at that time even if no verdict arrives (SF-2026-024).
+- **What each replica reports** (build decision C1): its pod name, the mode it was in, and the newest settings version it has seen, with every `/v1/guard` call.
+- **Health log:** each line now also carries the ceiling, the settings version and whether the request was refused. Enforce requested under a record ceiling is logged once per version.
+- **Tests:** 119 stdlib `unittest` tests pass (`python -m unittest discover -s integrations/litellm/tests`): the 79 existing ones, adapted to the ceiling, and 40 new ones for the ceiling, the labels, the tracker, the §3.3 table, B1, B10, B11, the judge-unavailable rule, the switch-back and the replica's report.
+- **Rollback:** no migration. Re-apply the previous `litellm-config` ConfigMap (both files) and restart the gateway.
+- **Release order (phase 3):** the console first (it must accept the `unavailable` event and send the switch-back time), then rayin-guardrails, then this ConfigMap and a gateway restart. Each step needs the owner's yes.
+- **Approval:** Pending. The owner merges after the security review, run from a fresh session, has reported. There is no human reviewer; the owner accepts that with compensating controls (Readiness Ledger N-48). Not a production approval.
+- **Deployment status:** not deployed.
