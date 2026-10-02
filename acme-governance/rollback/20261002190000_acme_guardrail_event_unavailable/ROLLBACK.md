@@ -6,7 +6,7 @@
 | **ADR** | [ADR-0005-B](../../adr/ADR-0005-B-console-enforcement-switch.md) §3.3.1 |
 | **Forward migration** | `packages/shared/prisma/migrations/20261002190000_acme_guardrail_event_unavailable/migration.sql` |
 | **Rollback script** | `./down.sql` |
-| **Test status** | **Rehearsed locally on 2026-10-02** on a throwaway Postgres 16.4 (portable binaries, scratch data directory, removed afterwards; nothing on the cluster): up, down and up again, 7 of 7 steps PASS, plus the extra checks below. **The cluster rehearsal on Postgres 15** (`acme-governance/scripts/rehearsal-db.sh`) waits for the owner's decision. |
+| **Test status** | **Rehearsed locally on 2026-10-02** on a throwaway Postgres 16.4 (portable binaries, scratch data directory, removed afterwards; nothing on the cluster): up, down and up again, 7 of 7 steps PASS, plus the extra checks below. **Rehearsed on the dev cluster's throwaway Postgres 15.19 on 2026-10-02**, with the owner's yes: 7 of 7 steps PASS (log below). |
 | **Reversible** | **Only while no event uses the value `unavailable`.** Postgres cannot drop one enum value, so `down.sql` rebuilds the type without it, and that fails once a row uses it. `down.sql` checks first and stops without changing anything. After that point, roll back the code and keep the value. |
 | **Data lost on rollback** | None: `down.sql` runs only while no row uses the value. |
 
@@ -57,4 +57,21 @@
 | **Down guard, plain `psql -f`** (no `ON_ERROR_STOP`), with an `unavailable` event stored: refused at the first check, every later statement ignored in the aborted transaction; the migration row, the enum value and the event are all still there | PASS |
 | **Down guard, `prisma db execute`**, same state: refused, nothing changed | PASS |
 
-**Still to run on the cluster's Postgres 15,** if the owner wants it: the same steps with `acme-governance/scripts/rehearsal-db.sh rehearse 20261002190000_acme_guardrail_event_unavailable`.
+**Cluster rehearsal, 2026-10-02 (owner's yes, before the console release).**
+- **Command:** `REHEARSAL_PORT=55453 acme-governance/scripts/rehearsal-db.sh rehearse 20261002190000_acme_guardrail_event_unavailable`, then `down`, run from `main` at `d2c78b33c`.
+- **Environment:** a throwaway Postgres 15.19 pod modelling Azure, in the scratch namespace `cairo-rehearsal` on the dev cluster, with no real data. Created 23:06:33Z and removed 23:18:24Z UTC.
+
+| Step | Command | Result | Started (UTC) |
+|---|---|---|---|
+| Up | `prisma migrate deploy` (empty database, all migrations) | PASS | 2026-10-02T23:06:36Z |
+| Up check | migration row present | PASS | 2026-10-02T23:15:58Z |
+| Down | `prisma db execute --file …/down.sql` | PASS | 2026-10-02T23:15:58Z |
+| Down check | migration row removed | PASS | 2026-10-02T23:16:31Z |
+| Status after down | `prisma migrate status` lists it as pending again | PASS | 2026-10-02T23:16:31Z |
+| Up again | `prisma migrate deploy` | PASS | 2026-10-02T23:17:07Z |
+| Status after up again | `prisma migrate status` up to date | PASS | 2026-10-02T23:17:39Z |
+
+**A harness fault, recorded so it is not lost.** The first attempt (22:46–23:04Z) did apply the whole chain: the database held all 450 migrations as finished, and prisma printed "All migrations have been successfully applied."
+- **What went wrong:** the script's own pass check, `grep -q … <<<"${out}"`, hung on Git Bash for Windows with that much output. Ending the hung `grep` made the step report FAIL, and the script removed the namespace as designed.
+- **The re-run above:** the one check line read the output from a temporary file instead of a here-string. That change was made in the local copy only, and was restored afterwards with `git checkout`. Nothing else in the script, the migration or `down.sql` changed.
+- **The permanent fix** to the script is a separate change.

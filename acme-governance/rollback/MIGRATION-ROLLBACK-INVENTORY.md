@@ -47,8 +47,7 @@ the value**; after that it is **forward-fix only**, because Postgres cannot drop
 an enum value in use. Its `down.sql` checks this first and stops without
 changing anything. Rehearsed locally on Postgres 16.4 on 2026-10-02 (7 of 7
 steps PASS, and its `down.sql` refuses once an `unavailable` event exists);
-the cluster rehearsal on Postgres 15 waits for the owner (see its
-`ROLLBACK.md`).
+it was rehearsed on the dev cluster's throwaway Postgres 15.19 on 2026-10-02 with the owner's yes, also 7 of 7 PASS (see its `ROLLBACK.md`).
 
 ## Reading this
 - Nothing here is *safely reversible*: every ACME migration either holds audit data or changes something Postgres cannot undo.
