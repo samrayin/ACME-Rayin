@@ -5288,3 +5288,12 @@ Tier 1 (authorisation shown in the console). Console only, no schema change. Und
 - **Rollback:** revert the commit and redeploy the previous console image.
 - **Approval:** Pending. The owner merges after the security-agent review has reported; the implementer does not approve its own change. Not a production approval.
 - **Deployment status:** not deployed.
+
+## 2026-10-02 — Two more router tests for the Policies card (CHG-2026-091, follow-up)
+
+Test only, no product code. The pre-merge review of #259 named two cases without a test, and the owner asked for both. In `acmeGuardrailsSettingsRouter.servertest.ts`:
+
+- a listed Auditor gets `canEdit` false and `readOnlyRole` true from `getConfig`;
+- an instance admin whose project role is Security Analyst, and who is listed, gets `canEdit` true from `getConfig`, and `updateConfig` lets the call through to the save. Instance admins skip the content-free allow-lists, so the card and the server agree.
+
+Rollback: revert the commit.

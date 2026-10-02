@@ -18,7 +18,11 @@ const ADMIN_EMAIL = "guardrail-admin@example.com";
 
 const router = createTRPCRouter({ acmeGuardrails: acmeGuardrailsRouter });
 
-function sessionFor(role: string, email: string | null): Session {
+function sessionFor(
+  role: string,
+  email: string | null,
+  instanceAdmin = false,
+): Session {
   return {
     expires: "1",
     user: {
@@ -26,7 +30,7 @@ function sessionFor(role: string, email: string | null): Session {
       name: role,
       email,
       canCreateOrganizations: false,
-      admin: false,
+      admin: instanceAdmin,
       featureFlags: {},
       organizations: [
         {
@@ -75,9 +79,10 @@ function callerFor(
   role: string,
   email: string | null,
   db: object = explodingPrisma,
+  instanceAdmin = false,
 ) {
   const ctx = createInnerTRPCContext({
-    session: sessionFor(role, email),
+    session: sessionFor(role, email, instanceAdmin),
     headers: {},
   });
   return router.createCaller({
@@ -198,5 +203,37 @@ describe("guardrail settings authority (B12)", () => {
       message: expect.stringMatching(/Security Analyst role cannot access/),
     });
     expect(touched).not.toHaveBeenCalled();
+  });
+
+  it("does not offer editing to a listed Auditor", async () => {
+    // updateConfig's refusal for this caller is the Auditor test above.
+    const config = await callerFor(
+      "AUDITOR",
+      ADMIN_EMAIL,
+      readOnlyPrisma,
+    ).getConfig({ projectId: PROJECT });
+    expect(config).toMatchObject({ canEdit: false, readOnlyRole: true });
+  });
+
+  it("follows the server for an instance admin who holds a content-free role", async () => {
+    // Instance admins skip the content-free allow-lists in the middleware,
+    // so a listed one may save whatever their project role, and the card
+    // must offer it.
+    const config = await callerFor(
+      "SECURITY",
+      ADMIN_EMAIL,
+      readOnlyPrisma,
+      true,
+    ).getConfig({ projectId: PROJECT });
+    expect(config).toMatchObject({ canEdit: true, readOnlyRole: false });
+
+    // Not refused: the call reaches the database (masked as internal, as in
+    // "lets a listed administrator through to the save").
+    await expect(
+      callerFor("SECURITY", ADMIN_EMAIL, explodingPrisma, true).updateConfig(
+        SAVE,
+      ),
+    ).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
+    expect(touched).toHaveBeenCalled();
   });
 });
