@@ -5286,8 +5286,10 @@ Tier 1 (authorisation shown in the console). Console only, no schema change. Und
   - a listed Admin gets `canEdit` true from `getConfig`, and an Owner not on the list gets false;
   - a listed Security Analyst gets `canEdit` false and `readOnlyRole` true from `getConfig`, and FORBIDDEN from `updateConfig` before the database is touched.
 - **Rollback:** revert the commit and redeploy the previous console image.
-- **Approval:** Pending. The owner merges after the security-agent review has reported; the implementer does not approve its own change. Not a production approval.
-- **Deployment status:** not deployed.
+- **Approval:** the owner merged #259 and the follow-up tests #260 on 2026-10-02. Human approval by merge; delegated auto-approval was not used. Not a production approval.
+  - Before each merge the security agent reviewed the change and reported no Critical or High finding. The session that wrote the change launched that agent, so it was not a fully independent review.
+  - The author and the merger are the same GitHub account, so GitHub holds no formal review (Readiness Ledger N-47).
+- **Deployment status:** not deployed. No console release contains it yet; the latest, `acme-v4.38.0.29`, predates it.
 
 ## 2026-10-02 — Two more router tests for the Policies card (CHG-2026-091, follow-up)
 
