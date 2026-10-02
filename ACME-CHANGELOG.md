@@ -5289,7 +5289,7 @@ Tier 1 (authorisation shown in the console). Console only, no schema change. Und
 - **Approval:** the owner merged #259 and the follow-up tests #260 on 2026-10-02. Human approval by merge; delegated auto-approval was not used. Not a production approval.
   - Before each merge the security agent reviewed the change and reported no Critical or High finding. The session that wrote the change launched that agent, so it was not a fully independent review.
   - The author and the merger are the same GitHub account, so GitHub holds no formal review (Readiness Ledger N-47).
-- **Deployment status:** not deployed. No console release contains it yet; the latest, `acme-v4.38.0.29`, predates it.
+- **Deployment status:** live in dev as console `acme-v4.38.0.30` (commit `33cf774d9`), released 2026-10-02 with the owner's approval; `verify-deployed.sh` TRACED, health 200, no migration. The read-only view for a listed Security Analyst or Auditor has not been checked live yet; router tests only.
 
 ## 2026-10-02 — Two more router tests for the Policies card (CHG-2026-091, follow-up)
 
@@ -5305,7 +5305,7 @@ Rollback: revert the commit.
 | | |
 |---|---|
 | **Change ID** | CHG-2026-082 · Tier 2 (removes one card; no procedure, scope or data change) · owner: Anees Ur Rahman |
-| **Dates** | Written 2026-09-27, rebased on main 2026-10-02. Dev: not deployed · Prod: none exists |
+| **Dates** | Written 2026-09-27, rebased on main 2026-10-02, merged 2026-10-02 (#264). Dev: `acme-v4.38.0.30`, 2026-10-02 · Prod: none exists |
 | **Impact** | The Guardrails page no longer shows the Continuous Assurance card |
 | **Rollback** | Set `SHOW_CONTINUOUS_ASSURANCE` back to `true` and redeploy, or redeploy the previous console image. No data change |
 
@@ -5313,7 +5313,7 @@ Rollback: revert the commit.
 
 **What:** `AcmeGuardrailsTable.tsx` gains a `SHOW_CONTINUOUS_ASSURANCE` constant, set to `false`, that gates the card. The card's code and its queries are kept, and they no longer run while it is hidden. It returns by setting the constant to `true` once a scheduled run pushes its scores to the project.
 
-**Deployment status:** not deployed.
+**Deployment status:** live in dev as console `acme-v4.38.0.30` (commit `33cf774d9`), released 2026-10-02 with the owner's approval; `verify-deployed.sh` TRACED, health 200, no migration.
 
 ## 2026-10-02 — The guardrail enforcement switch in the console (CHG-2026-089 part b, phase 1)
 
