@@ -71,13 +71,13 @@ export const ENFORCE_CONFIRMATION = "ENFORCE";
 export const AUTOMATIC_CREATOR = "automatic";
 
 /** The Enforcement card's evidence covers this many days of decisions. */
-export const EVIDENCE_WINDOW_DAYS = 7;
+const EVIDENCE_WINDOW_DAYS = 7;
 
 /**
  * A gateway replica reports only when a request passes through it, so the
  * card lists those seen within this window, with when each was last seen.
  */
-export const GATEWAY_REPORT_WINDOW_HOURS = 24;
+const GATEWAY_REPORT_WINDOW_HOURS = 24;
 
 /** At most this many settings versions are read for the mode history. */
 const MODE_HISTORY_MAX_VERSIONS = 500;

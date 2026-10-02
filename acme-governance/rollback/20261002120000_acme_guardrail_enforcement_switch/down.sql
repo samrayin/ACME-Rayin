@@ -6,6 +6,13 @@
 -- one exists, the "record only" CHECK cannot be restored, and this script
 -- stops before changing anything: forward-fix instead (switch back to record
 -- in the console, and keep the columns).
+--
+-- The whole script is one transaction. If the first check refuses, nothing
+-- changes, whichever runner is used: `psql -v ON_ERROR_STOP=1 -f down.sql`,
+-- plain `psql -f down.sql` (the remaining statements fail inside the aborted
+-- transaction and COMMIT rolls it back), or `prisma db execute --file`.
+BEGIN;
+
 DO $$
 BEGIN
   IF EXISTS (
@@ -32,3 +39,5 @@ ALTER TABLE "acme_guardrail_settings" ADD CONSTRAINT "acme_guardrail_settings_mo
 
 DELETE FROM "_prisma_migrations"
 WHERE "migration_name" = '20261002120000_acme_guardrail_enforcement_switch';
+
+COMMIT;

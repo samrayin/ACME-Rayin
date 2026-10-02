@@ -253,6 +253,7 @@ async function nudgeGuardrailsPods(version: number): Promise<boolean> {
         "X-Config-Secret": env.RAYIN_GUARDRAILS_CONFIG_SECRET,
       },
       body: "{}",
+      redirect: "error",
       signal: AbortSignal.timeout(5_000),
     });
     if (!res.ok) {
