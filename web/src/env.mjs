@@ -99,6 +99,12 @@ export const env = createEnv({
     // (POST /api/public/guardrails-settings): the project of the key they
     // push events with. Left unset, every pull is refused (fail closed).
     CAIRO_GUARDRAILS_SYNC_PROJECT_ID: z.string().optional(),
+    // ACME addition (ADR-0005-B part b, CHG-2026-089): the deployment ceiling
+    // for the guardrail mode, mirroring the gateway's own setting of the same
+    // name. Only "enforce" lets the console switch to enforce; anything else,
+    // including unset, means record (fail safe). The gateway applies its own
+    // copy independently, so a mismatch errs towards record either way.
+    CAIRO_GUARDRAIL_MODE_MAX: z.string().optional(),
     // ACME addition: A/B prompt testing & canary rollout for the ACME AI
     // chat widget (acmePromptVariant.ts). All optional -- unset behaves
     // exactly as before this feature existed (the router's own hardcoded
@@ -897,6 +903,7 @@ export const env = createEnv({
     CAIRO_GUARDRAIL_ADMINS: process.env.CAIRO_GUARDRAIL_ADMINS,
     CAIRO_GUARDRAILS_SYNC_PROJECT_ID:
       process.env.CAIRO_GUARDRAILS_SYNC_PROJECT_ID,
+    CAIRO_GUARDRAIL_MODE_MAX: process.env.CAIRO_GUARDRAIL_MODE_MAX,
     ACME_CHAT_PROMPT_LABEL: process.env.ACME_CHAT_PROMPT_LABEL,
     ACME_CHAT_PROMPT_CANARY_LABEL: process.env.ACME_CHAT_PROMPT_CANARY_LABEL,
     ACME_CHAT_PROMPT_CANARY_WEIGHT: process.env.ACME_CHAT_PROMPT_CANARY_WEIGHT,

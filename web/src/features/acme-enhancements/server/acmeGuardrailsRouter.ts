@@ -67,16 +67,31 @@ import { auditLog } from "@/src/features/audit-logs/auditLog";
 import { mayCallProjectProcedure } from "@/src/features/rbac/server/securityRoleAllowList";
 import {
   ALL_PII_ENTITIES,
-  getCurrentSettings,
-  type GuardrailSettingsVersion,
+  AUTOMATIC_CREATOR,
   canEditGuardrailSettings,
+  DEFAULT_REVERT_AFTER_MINUTES,
+  effectiveMode,
+  ENFORCE_CONFIRMATION,
+  getCurrentSettings,
+  GUARDRAIL_MODES,
+  GuardrailModeNotAllowedError,
+  type GuardrailModeChange,
   GuardrailSettingsValidationError,
+  guardrailEvidence,
+  listModeChanges,
+  listReportingGateways,
   listReportingPods,
   parseAdminList,
+  parseModeCeiling,
   POD_STALE_AFTER_SECONDS,
   REASON_MAX_LENGTH,
+  REVERT_AFTER_MINUTES_OPTIONS,
+  saveMode,
   saveSettings,
   selfSignupClosed,
+  settingsForAudit,
+  trialExpired,
+  validateModeChange,
 } from "@/src/features/acme-enhancements/server/acmeGuardrailSettings";
 
 const DIRECTION_FROM_DB: Record<
@@ -195,8 +210,65 @@ const EVENT_ROW_SELECT = {
   clientHost: true,
 } satisfies Prisma.AcmeGuardrailEventSelect;
 
-// updateConfig's path as the content-free roles' allow-lists name it.
+// updateConfig's and setMode's paths as the content-free roles' allow-lists
+// name them.
 const UPDATE_CONFIG_PROCEDURE = "acmeGuardrails.updateConfig";
+const SET_MODE_PROCEDURE = "acmeGuardrails.setMode";
+
+/** At most this many mode changes are listed beside the event history. */
+const MODE_CHANGES_LISTED = 20;
+
+/**
+ * A mode change as the console shows it. The person's email is shown to the
+ * guardrail administrators only, as for the Policies card (SF-2026-018).
+ */
+function modeChangeForDisplay(c: GuardrailModeChange, showEmail: boolean) {
+  return {
+    version: c.version,
+    mode: c.mode,
+    previousMode: c.previousMode,
+    revertAt: c.revertAt,
+    automatic: c.automatic || c.createdBy === AUTOMATIC_CREATOR,
+    reason: c.reason,
+    createdByEmail: showEmail ? c.createdByEmail : null,
+    createdAt: c.createdAt,
+  };
+}
+
+/**
+ * Asks one rayin-guardrails pod to pull now; the others pull within 30 s.
+ * Best effort: the stored version, not this call, is what counts. Since
+ * rayin-guardrails v0.4.0, PUT /v1/config only triggers a pull and ignores
+ * its body (owner decision D3).
+ */
+async function nudgeGuardrailsPods(version: number): Promise<boolean> {
+  if (!env.RAYIN_GUARDRAILS_URL || !env.RAYIN_GUARDRAILS_CONFIG_SECRET) {
+    return false;
+  }
+  try {
+    const res = await fetch(`${env.RAYIN_GUARDRAILS_URL}/v1/config`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Config-Secret": env.RAYIN_GUARDRAILS_CONFIG_SECRET,
+      },
+      body: "{}",
+      redirect: "error",
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!res.ok) {
+      logger.warn(
+        `guardrail settings v${version} saved; rayin-guardrails nudge returned ${res.status}`,
+      );
+    }
+    return res.ok;
+  } catch (e) {
+    logger.warn(
+      `guardrail settings v${version} saved; rayin-guardrails nudge failed: ${e instanceof Error ? e.message : String(e)}`,
+    );
+    return false;
+  }
+}
 
 /** Newest first; the id breaks ties so cursor paging never skips a row. */
 const HISTORY_ORDER: Prisma.AcmeGuardrailEventOrderByWithRelationInput[] = [
@@ -552,6 +624,34 @@ export const acmeGuardrailsRouter = createTRPCRouter({
       });
       const canEdit = isGuardrailAdmin && roleMaySave;
 
+      // ADR-0005-B part b: the enforcement switch. Same authority as the
+      // policy (D-B1), and the same role allow-list check, for setMode.
+      const now = new Date();
+      const ceiling = parseModeCeiling(env.CAIRO_GUARDRAIL_MODE_MAX);
+      const roleMaySetMode = mayCallProjectProcedure({
+        projectRole: ctx.session.projectRole,
+        procedurePath: SET_MODE_PROCEDURE,
+        isInstanceAdmin: ctx.session.user.admin === true,
+      });
+      // The deployment-wide figures (gateway replicas and the evidence) come
+      // from the guardrails' push project, and are shown to the guardrail
+      // administrators only: other viewers see this project's own counts.
+      const eventsProject =
+        env.CAIRO_GUARDRAILS_SYNC_PROJECT_ID ?? input.projectId;
+      const [modeChanges, gateways, evidence] = await Promise.all([
+        listModeChanges(ctx.prisma),
+        isGuardrailAdmin
+          ? listReportingGateways(ctx.prisma, {
+              projectId: eventsProject,
+              now,
+            })
+          : Promise.resolve(null),
+        isGuardrailAdmin
+          ? guardrailEvidence(ctx.prisma, { projectId: eventsProject, now })
+          : Promise.resolve(null),
+      ]);
+      const lastModeChange = modeChanges[modeChanges.length - 1];
+
       return {
         // Whether a rayin-guardrails service is wired to this deployment.
         configured: Boolean(env.RAYIN_GUARDRAILS_URL),
@@ -580,6 +680,161 @@ export const acmeGuardrailsRouter = createTRPCRouter({
         readOnlyRole: isGuardrailAdmin && !roleMaySave,
         adminsConfigured: parseAdminList(env.CAIRO_GUARDRAIL_ADMINS).length > 0,
         signupClosed,
+        enforcement: {
+          ceiling,
+          storedMode: current?.mode ?? ("record" as const),
+          // An enforce trial whose switch-back time has passed reads as
+          // record, even before its automatic version is written.
+          effectiveMode: current
+            ? effectiveMode(current, now)
+            : ("record" as const),
+          revertAt: current?.mode === "enforce" ? current.revertAt : null,
+          trialEnded: current ? trialExpired(current, now) : false,
+          lastChange: lastModeChange
+            ? modeChangeForDisplay(lastModeChange, isGuardrailAdmin)
+            : null,
+          canSwitch: isGuardrailAdmin && roleMaySetMode,
+          readOnlyRole: isGuardrailAdmin && !roleMaySetMode,
+          revertOptions: [...REVERT_AFTER_MINUTES_OPTIONS],
+          defaultRevertMinutes: DEFAULT_REVERT_AFTER_MINUTES,
+          confirmationWord: ENFORCE_CONFIRMATION,
+          // Administrators only; null for everyone else.
+          gateways,
+          evidence,
+        },
+      };
+    }),
+
+  // ADR-0005-B part b: mode changes for the event history's period, newest
+  // first, so a change shows next to the decisions it affected (build
+  // decision C2). Read from the settings history; no event row is written.
+  modeChanges: protectedProjectProcedure
+    .input(
+      z.object({
+        projectId: z.string(),
+        from: z.date().optional(),
+        to: z.date().optional(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      throwIfNoProjectAccess({
+        session: ctx.session,
+        projectId: input.projectId,
+        scope: "projectGuardrails:read",
+      });
+      const isGuardrailAdmin = canEditGuardrailSettings({
+        email: ctx.session.user.email,
+        rawAdminList: env.CAIRO_GUARDRAIL_ADMINS,
+        signupClosed: selfSignupClosed(env),
+      });
+      const changes = await listModeChanges(ctx.prisma);
+      return changes
+        .filter(
+          (c) =>
+            (!input.from || c.createdAt >= input.from) &&
+            (!input.to || c.createdAt < input.to),
+        )
+        .reverse()
+        .slice(0, MODE_CHANGES_LISTED)
+        .map((c) => modeChangeForDisplay(c, isGuardrailAdmin));
+    }),
+
+  // ADR-0005-B part b: switch the guardrail mode. A new, audited settings
+  // version with the policy unchanged. The same authority as the policy:
+  // the named deployment administrators (D-B1), whose role on this project
+  // is not read-only. Enforce also needs the deployment ceiling to allow it
+  // (Q4), a typed confirmation and a reason, and by default switches itself
+  // back after 30 minutes (D-B2). Switching back to record is always
+  // allowed to the administrators, whatever the ceiling.
+  setMode: protectedProjectProcedure
+    .input(
+      z.object({
+        projectId: z.string(),
+        mode: z.enum(GUARDRAIL_MODES),
+        reason: z.string().max(REASON_MAX_LENGTH),
+        confirmation: z.string().max(32).nullable().default(null),
+        revertAfterMinutes: z.number().int().nullable(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      throwIfNoProjectAccess({
+        session: ctx.session,
+        projectId: input.projectId,
+        scope: "projectGuardrails:read",
+      });
+      const signupClosed = selfSignupClosed(env);
+      if (
+        !canEditGuardrailSettings({
+          email: ctx.session.user.email,
+          rawAdminList: env.CAIRO_GUARDRAIL_ADMINS,
+          signupClosed,
+        })
+      ) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: signupClosed
+            ? "Only the deployment's guardrail administrators can switch the guardrail mode."
+            : "Switching the guardrail mode is disabled while open sign-up is enabled on this deployment.",
+        });
+      }
+
+      let result;
+      try {
+        const { revertAt } = validateModeChange({
+          mode: input.mode,
+          ceiling: parseModeCeiling(env.CAIRO_GUARDRAIL_MODE_MAX),
+          confirmation: input.confirmation,
+          revertAfterMinutes: input.revertAfterMinutes,
+          now: new Date(),
+        });
+        result = await saveMode(
+          ctx.prisma,
+          {
+            mode: input.mode,
+            revertAt,
+            reason: input.reason,
+            userId: ctx.session.user.id,
+            userEmail: ctx.session.user.email ?? null,
+            projectId: input.projectId,
+          },
+          async (tx, { before, current }) => {
+            await auditLog(
+              {
+                session: ctx.session,
+                resourceType: "acmeGuardrailSettings",
+                resourceId: `v${current.version}`,
+                action: "set_mode",
+                before: before ? settingsForAudit(before) : null,
+                after: settingsForAudit(current),
+              },
+              // The audit row commits with the new version (Q1).
+              tx as unknown as typeof ctx.prisma,
+            );
+          },
+        );
+      } catch (e) {
+        if (e instanceof GuardrailModeNotAllowedError) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: e.message,
+          });
+        }
+        if (e instanceof GuardrailSettingsValidationError) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
+        }
+        throw e;
+      }
+
+      const nudged = result.changed
+        ? await nudgeGuardrailsPods(result.current.version)
+        : false;
+
+      return {
+        changed: result.changed,
+        version: result.current.version,
+        mode: result.current.mode,
+        revertAt: result.current.revertAt,
+        nudged,
       };
     }),
 
@@ -657,42 +912,10 @@ export const acmeGuardrailsRouter = createTRPCRouter({
         throw e;
       }
 
-      // Nudge one pod to pull now; the rest pick it up within 30 s. Sent
-      // with the full policy, so a rayin-guardrails build that predates
-      // part a still applies it (to the one pod it reaches) during rollout.
-      // Best effort: the stored version, not this call, is what counts.
-      let nudged = false;
-      if (
-        result.changed &&
-        env.RAYIN_GUARDRAILS_URL &&
-        env.RAYIN_GUARDRAILS_CONFIG_SECRET
-      ) {
-        try {
-          const res = await fetch(`${env.RAYIN_GUARDRAILS_URL}/v1/config`, {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Config-Secret": env.RAYIN_GUARDRAILS_CONFIG_SECRET,
-            },
-            body: JSON.stringify({
-              pii_entities: result.current.piiEntities,
-              jailbreak_enabled: result.current.jailbreakEnabled,
-              topical_enabled: result.current.topicalEnabled,
-            }),
-            signal: AbortSignal.timeout(5_000),
-          });
-          nudged = res.ok;
-          if (!res.ok) {
-            logger.warn(
-              `guardrail settings v${result.current.version} saved; rayin-guardrails nudge returned ${res.status}`,
-            );
-          }
-        } catch (e) {
-          logger.warn(
-            `guardrail settings v${result.current.version} saved; rayin-guardrails nudge failed: ${e instanceof Error ? e.message : String(e)}`,
-          );
-        }
-      }
+      // One pod pulls now; the rest pick it up within 30 s.
+      const nudged = result.changed
+        ? await nudgeGuardrailsPods(result.current.version)
+        : false;
 
       return {
         changed: result.changed,
@@ -701,14 +924,3 @@ export const acmeGuardrailsRouter = createTRPCRouter({
       };
     }),
 });
-
-function settingsForAudit(s: GuardrailSettingsVersion) {
-  return {
-    version: s.version,
-    mode: s.mode,
-    piiEntities: s.piiEntities,
-    jailbreakEnabled: s.jailbreakEnabled,
-    topicalEnabled: s.topicalEnabled,
-    reason: s.reason,
-  };
-}

@@ -14,6 +14,12 @@
  * them is a named list of deployment administrators (CAIRO_GUARDRAIL_ADMINS),
  * not an organisation or project role (ADR-0005-B §3.4, test B12).
  *
+ * Part b (the enforcement switch) adds the mode to the same versions:
+ * "record" or "enforce". Enforce takes effect only where the deployment
+ * ceiling, CAIRO_GUARDRAIL_MODE_MAX, allows it; an enforce version can carry
+ * an automatic switch-back time, after which it reads as record and the next
+ * pull writes an audited automatic version (owner decision D-B2).
+ *
  * The decision logic is in pure functions, unit-tested without a database
  * (acmeGuardrailSettings.servertest.ts); the Prisma calls are thin wrappers.
  */
@@ -32,8 +38,8 @@ export const ALL_PII_ENTITIES = [
 ] as const;
 type PiiEntity = (typeof ALL_PII_ENTITIES)[number];
 
-/** Part a never enforces; part b (the enforcement switch) widens this. */
-type GuardrailMode = "record";
+export const GUARDRAIL_MODES = ["record", "enforce"] as const;
+export type GuardrailMode = (typeof GUARDRAIL_MODES)[number];
 
 type GuardrailPolicy = {
   piiEntities: PiiEntity[];
@@ -44,11 +50,37 @@ type GuardrailPolicy = {
 export type GuardrailSettingsVersion = GuardrailPolicy & {
   version: number;
   mode: GuardrailMode;
+  /** Enforce versions only: when the automatic switch-back is due. */
+  revertAt: Date | null;
+  /** True for a version the automatic switch-back wrote. */
+  automatic: boolean;
   reason: string;
   createdBy: string;
   createdByEmail: string | null;
   createdAt: Date;
 };
+
+/** Switch-back choices offered for an enforce trial, in minutes (D-B2). */
+export const REVERT_AFTER_MINUTES_OPTIONS = [5, 15, 30, 60, 120] as const;
+export const DEFAULT_REVERT_AFTER_MINUTES = 30;
+
+/** Typed by the administrator to switch to enforce (ADR-0005-B §3.4). */
+export const ENFORCE_CONFIRMATION = "ENFORCE";
+
+/** createdBy of a version written by the automatic switch-back. */
+export const AUTOMATIC_CREATOR = "automatic";
+
+/** The Enforcement card's evidence covers this many days of decisions. */
+const EVIDENCE_WINDOW_DAYS = 7;
+
+/**
+ * A gateway replica reports only when a request passes through it, so the
+ * card lists those seen within this window, with when each was last seen.
+ */
+const GATEWAY_REPORT_WINDOW_HOURS = 24;
+
+/** At most this many settings versions are read for the mode history. */
+const MODE_HISTORY_MAX_VERSIONS = 500;
 
 /** A pod that has not pulled for this long is shown as not reporting. */
 export const POD_STALE_AFTER_SECONDS = 120;
@@ -77,6 +109,17 @@ export class GuardrailSettingsValidationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "GuardrailSettingsValidationError";
+  }
+}
+
+/**
+ * Enforce requested where the deployment ceiling is record. Not a bad input
+ * but a deployment decision the console cannot override (ADR-0005-B Q4).
+ */
+export class GuardrailModeNotAllowedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GuardrailModeNotAllowedError";
   }
 }
 
@@ -191,11 +234,153 @@ export function validateReason(reason: string): string {
   return trimmed;
 }
 
-/** The body a rayin-guardrails pod receives on a pull. */
-export function toSyncResponse(current: GuardrailSettingsVersion) {
+/**
+ * The deployment ceiling (CAIRO_GUARDRAIL_MODE_MAX). Anything but an explicit
+ * "enforce" is record, so an unset or mistyped value fails safe (Q4).
+ */
+export function parseModeCeiling(
+  raw: string | undefined | null,
+): GuardrailMode {
+  return raw?.trim().toLowerCase() === "enforce" ? "enforce" : "record";
+}
+
+/** Whether an enforce version's automatic switch-back time has passed. */
+export function trialExpired(
+  v: Pick<GuardrailSettingsVersion, "mode" | "revertAt">,
+  now: Date,
+): boolean {
+  return (
+    v.mode === "enforce" &&
+    v.revertAt !== null &&
+    v.revertAt.getTime() <= now.getTime()
+  );
+}
+
+/** The mode a version stands for now: an expired trial reads as record. */
+export function effectiveMode(
+  v: Pick<GuardrailSettingsVersion, "mode" | "revertAt">,
+  now: Date,
+): GuardrailMode {
+  return trialExpired(v, now) ? "record" : v.mode;
+}
+
+/**
+ * Checks a request to change the mode before anything is read or written,
+ * and returns the switch-back time for an enforce request. Switching to
+ * record needs no confirmation and is allowed under any ceiling.
+ */
+export function validateModeChange(input: {
+  mode: GuardrailMode;
+  ceiling: GuardrailMode;
+  confirmation: string | null | undefined;
+  revertAfterMinutes: number | null;
+  now: Date;
+}): { revertAt: Date | null } {
+  if (input.mode === "record") return { revertAt: null };
+  if (input.ceiling !== "enforce") {
+    throw new GuardrailModeNotAllowedError(
+      "This deployment's ceiling (CAIRO_GUARDRAIL_MODE_MAX) is record, so enforce cannot be chosen here.",
+    );
+  }
+  if ((input.confirmation ?? "").trim() !== ENFORCE_CONFIRMATION) {
+    throw new GuardrailSettingsValidationError(
+      `Type ${ENFORCE_CONFIRMATION} to confirm the switch to enforce.`,
+    );
+  }
+  if (input.revertAfterMinutes === null) return { revertAt: null };
+  if (
+    !(REVERT_AFTER_MINUTES_OPTIONS as readonly number[]).includes(
+      input.revertAfterMinutes,
+    )
+  ) {
+    throw new GuardrailSettingsValidationError(
+      `The automatic switch-back must be one of ${REVERT_AFTER_MINUTES_OPTIONS.join(", ")} minutes, or none.`,
+    );
+  }
+  return {
+    revertAt: new Date(input.now.getTime() + input.revertAfterMinutes * 60_000),
+  };
+}
+
+/** One change of mode in the settings history, for the console. */
+export type GuardrailModeChange = {
+  version: number;
+  mode: GuardrailMode;
+  previousMode: GuardrailMode | null;
+  revertAt: Date | null;
+  automatic: boolean;
+  reason: string;
+  createdBy: string;
+  createdByEmail: string | null;
+  createdAt: Date;
+};
+
+/**
+ * The versions that changed the mode, or changed an enforce trial's
+ * switch-back time, oldest first. `versions` must be in ascending order. A
+ * policy change that keeps the mode is not listed: it is in the Policies
+ * card's history and the audit log.
+ */
+export function modeChangesOf(
+  versions: readonly GuardrailSettingsVersion[],
+): GuardrailModeChange[] {
+  const changes: GuardrailModeChange[] = [];
+  let previous: GuardrailSettingsVersion | null = null;
+  for (const v of versions) {
+    const modeChanged = previous === null || previous.mode !== v.mode;
+    const revertChanged =
+      previous !== null &&
+      v.mode === "enforce" &&
+      (previous.revertAt?.getTime() ?? null) !==
+        (v.revertAt?.getTime() ?? null);
+    // The seeded first version in record mode is not a "change" of mode.
+    if (
+      (previous !== null || v.mode !== "record") &&
+      (modeChanged || revertChanged)
+    ) {
+      changes.push({
+        version: v.version,
+        mode: v.mode,
+        previousMode: previous?.mode ?? null,
+        revertAt: v.revertAt,
+        automatic: v.automatic,
+        reason: v.reason,
+        createdBy: v.createdBy,
+        createdByEmail: v.createdByEmail,
+        createdAt: v.createdAt,
+      });
+    }
+    previous = v;
+  }
+  return changes;
+}
+
+/** A version as the audit log records it, before and after a change. */
+export function settingsForAudit(s: GuardrailSettingsVersion) {
+  return {
+    version: s.version,
+    mode: s.mode,
+    revertAt: s.revertAt ? s.revertAt.toISOString() : null,
+    automatic: s.automatic,
+    piiEntities: s.piiEntities,
+    jailbreakEnabled: s.jailbreakEnabled,
+    topicalEnabled: s.topicalEnabled,
+    reason: s.reason,
+  };
+}
+
+/**
+ * The body a rayin-guardrails pod receives on a pull. The mode is the
+ * effective one, so an expired trial is served as record even before its
+ * automatic version is written.
+ */
+export function toSyncResponse(
+  current: GuardrailSettingsVersion,
+  now: Date = new Date(),
+) {
   return {
     version: current.version,
-    mode: current.mode,
+    mode: effectiveMode(current, now),
     pii_entities: [...current.piiEntities],
     jailbreak_enabled: current.jailbreakEnabled,
     topical_enabled: current.topicalEnabled,
@@ -220,12 +405,17 @@ function toVersion(row: {
   createdBy: string;
   createdByEmail: string | null;
   createdAt: Date;
+  revertAt: Date | null;
+  automatic: boolean;
 }): GuardrailSettingsVersion {
   return {
     ...normalisePolicy(row),
     version: row.version,
-    // Part a stores only "record" (a CHECK constraint holds it there).
-    mode: "record",
+    // A CHECK constraint holds the column to these two values; anything else
+    // is read as record, the mode that changes nothing.
+    mode: row.mode === "enforce" ? "enforce" : "record",
+    revertAt: row.mode === "enforce" ? row.revertAt : null,
+    automatic: row.automatic,
     reason: row.reason,
     createdBy: row.createdBy,
     createdByEmail: row.createdByEmail,
@@ -253,10 +443,33 @@ type SaveResult =
 
 type Tx = Parameters<Parameters<Db["$transaction"]>[0]>[0];
 
+type AuditFn = (
+  tx: Tx,
+  change: {
+    before: GuardrailSettingsVersion | null;
+    current: GuardrailSettingsVersion;
+  },
+) => Promise<void>;
+
 /**
- * Stores a new version if the policy differs from the one in force. Version
- * numbers are allocated inside the transaction; a concurrent save that takes
- * the same number fails on the unique version index and is retried once.
+ * Runs a save. Version numbers are allocated inside the transaction; a
+ * concurrent save that takes the same number fails on the unique version
+ * index and is retried once, against the version that won.
+ */
+async function withVersionRetry<T>(attempt: () => Promise<T>): Promise<T> {
+  try {
+    return await attempt();
+  } catch (e) {
+    if ((e as { code?: string }).code === "P2002") return await attempt();
+    throw e;
+  }
+}
+
+/**
+ * Stores a new version if the policy differs from the one in force. The mode
+ * is carried over: a policy change during an enforce trial keeps enforce and
+ * the trial's switch-back time; once the trial has ended, the new version is
+ * record.
  *
  * `audit` runs inside the same transaction, after the new version is
  * written, so a change and its audit-log entry commit together or not at all
@@ -270,28 +483,27 @@ export async function saveSettings(
     userId: string;
     userEmail: string | null;
     projectId: string;
+    now?: Date;
   },
-  audit: (
-    tx: Tx,
-    change: {
-      before: GuardrailSettingsVersion | null;
-      current: GuardrailSettingsVersion;
-    },
-  ) => Promise<void>,
+  audit: AuditFn,
 ): Promise<SaveResult> {
   const policy = normalisePolicy(input.policy);
   const reason = validateReason(input.reason);
+  const now = input.now ?? new Date();
 
-  const attempt = () =>
+  return withVersionRetry(() =>
     db.$transaction(async (tx) => {
       const before = await getCurrentSettings(tx);
       if (before && policiesEqual(before, policy)) {
         return { changed: false as const, current: before };
       }
+      const keepEnforce =
+        before !== null && effectiveMode(before, now) === "enforce";
       const row = await tx.acmeGuardrailSettings.create({
         data: {
           version: (before?.version ?? 0) + 1,
-          mode: "record",
+          mode: keepEnforce ? "enforce" : "record",
+          revertAt: keepEnforce ? before.revertAt : null,
           piiEntities: policy.piiEntities,
           jailbreakEnabled: policy.jailbreakEnabled,
           topicalEnabled: policy.topicalEnabled,
@@ -304,14 +516,122 @@ export async function saveSettings(
       const current = toVersion(row);
       await audit(tx, { before, current });
       return { changed: true as const, before, current };
-    });
+    }),
+  );
+}
 
-  try {
-    return await attempt();
-  } catch (e) {
-    if ((e as { code?: string }).code === "P2002") return await attempt();
-    throw e;
-  }
+/**
+ * Stores a new version that changes the mode and keeps the policy in force
+ * (ADR-0005-B §3.4). The caller has already checked the authority, the
+ * ceiling and the confirmation (validateModeChange). No change when the mode
+ * in force, and for enforce the switch-back time, already match. Audited in
+ * the same transaction, as saveSettings is.
+ */
+export async function saveMode(
+  db: Db,
+  input: {
+    mode: GuardrailMode;
+    revertAt: Date | null;
+    reason: string;
+    userId: string;
+    userEmail: string | null;
+    projectId: string;
+    now?: Date;
+  },
+  audit: AuditFn,
+): Promise<SaveResult> {
+  const reason = validateReason(input.reason);
+  const now = input.now ?? new Date();
+  const revertAt = input.mode === "enforce" ? input.revertAt : null;
+
+  return withVersionRetry(() =>
+    db.$transaction(async (tx) => {
+      const before = await getCurrentSettings(tx);
+      if (!before) {
+        throw new GuardrailSettingsValidationError(
+          "No guardrail settings are stored in CAIRO yet.",
+        );
+      }
+      const sameMode = effectiveMode(before, now) === input.mode;
+      const sameRevert =
+        input.mode === "record" ||
+        (before.revertAt?.getTime() ?? null) === (revertAt?.getTime() ?? null);
+      if (sameMode && sameRevert) {
+        return { changed: false as const, current: before };
+      }
+      const row = await tx.acmeGuardrailSettings.create({
+        data: {
+          version: before.version + 1,
+          mode: input.mode,
+          revertAt,
+          piiEntities: before.piiEntities,
+          jailbreakEnabled: before.jailbreakEnabled,
+          topicalEnabled: before.topicalEnabled,
+          reason,
+          createdBy: input.userId,
+          createdByEmail: input.userEmail,
+          projectId: input.projectId,
+        },
+      });
+      const current = toVersion(row);
+      await audit(tx, { before, current });
+      return { changed: true as const, before, current };
+    }),
+  );
+}
+
+/**
+ * Writes the automatic switch-back once an enforce trial's time has passed:
+ * a new record version with the same policy, marked automatic, audited in
+ * the same transaction. Called on each pod pull, so it is written within
+ * about 30 seconds of the switch-back time; pulls already serve the trial as
+ * record from that moment (toSyncResponse). Two pulls racing write it once:
+ * the loser's retry finds record in force and changes nothing.
+ */
+export async function applyExpiredRevert(
+  db: Db,
+  input: { projectId: string; now?: Date },
+  audit: AuditFn,
+): Promise<SaveResult | { changed: false; current: null }> {
+  const now = input.now ?? new Date();
+  return withVersionRetry(() =>
+    db.$transaction(async (tx) => {
+      const before = await getCurrentSettings(tx);
+      if (!before) return { changed: false as const, current: null };
+      if (!trialExpired(before, now) || before.revertAt === null) {
+        return { changed: false as const, current: before };
+      }
+      const row = await tx.acmeGuardrailSettings.create({
+        data: {
+          version: before.version + 1,
+          mode: "record",
+          revertAt: null,
+          automatic: true,
+          piiEntities: before.piiEntities,
+          jailbreakEnabled: before.jailbreakEnabled,
+          topicalEnabled: before.topicalEnabled,
+          reason: `Automatic switch-back to record: the enforce trial in version ${before.version} ended at ${before.revertAt.toISOString()}.`,
+          createdBy: AUTOMATIC_CREATOR,
+          createdByEmail: null,
+          projectId: input.projectId,
+        },
+      });
+      const current = toVersion(row);
+      await audit(tx, { before, current });
+      return { changed: true as const, before, current };
+    }),
+  );
+}
+
+/** The mode history: every version that changed the mode, oldest first. */
+export async function listModeChanges(
+  db: Pick<Db, "acmeGuardrailSettings">,
+): Promise<GuardrailModeChange[]> {
+  const rows = await db.acmeGuardrailSettings.findMany({
+    orderBy: { version: "desc" },
+    take: MODE_HISTORY_MAX_VERSIONS,
+  });
+  return modeChangesOf(rows.reverse().map(toVersion));
 }
 
 /**
@@ -360,4 +680,76 @@ export async function listReportingPods(
     take: MAX_LISTED_PODS,
     select: { pod: true, appliedVersion: true, lastSyncAt: true },
   });
+}
+
+type EventsDb = Pick<PrismaClient, "acmeGuardrailEvent">;
+
+/**
+ * Gateway replicas seen in guardrail events within the report window, newest
+ * report first, one row each (ADR-0005-B §3.4, build decision C1). A replica
+ * reports only when a request passes through it, so this is "last seen", not
+ * a live heartbeat.
+ */
+export async function listReportingGateways(
+  db: EventsDb,
+  input: { projectId: string; now?: Date },
+) {
+  const now = input.now ?? new Date();
+  const since = new Date(
+    now.getTime() - GATEWAY_REPORT_WINDOW_HOURS * 3600 * 1000,
+  );
+  const rows = await db.acmeGuardrailEvent.findMany({
+    where: {
+      projectId: input.projectId,
+      eventTime: { gte: since },
+      gatewayPod: { not: null },
+    },
+    orderBy: { eventTime: "desc" },
+    distinct: ["gatewayPod"],
+    take: MAX_LISTED_PODS,
+    select: {
+      gatewayPod: true,
+      gatewayMode: true,
+      gatewaySettingsVersion: true,
+      eventTime: true,
+    },
+  });
+  return rows.map((r) => ({
+    pod: r.gatewayPod as string,
+    mode:
+      r.gatewayMode === "enforce" || r.gatewayMode === "record"
+        ? (r.gatewayMode as GuardrailMode)
+        : null,
+    settingsVersion: r.gatewaySettingsVersion,
+    lastSeenAt: r.eventTime,
+  }));
+}
+
+/**
+ * The evidence the Enforcement card shows before a switch to enforce: the
+ * stored decisions of the last EVIDENCE_WINDOW_DAYS, and how many would have
+ * been refused. Guardrail availability and added latency are not stored in
+ * CAIRO yet (they are in the gateway's health log lines), so they are not
+ * computed here (build decision C5).
+ */
+export async function guardrailEvidence(
+  db: EventsDb,
+  input: { projectId: string; now?: Date },
+) {
+  const now = input.now ?? new Date();
+  const since = new Date(now.getTime() - EVIDENCE_WINDOW_DAYS * 86_400_000);
+  const groups = await db.acmeGuardrailEvent.groupBy({
+    by: ["action"],
+    where: { projectId: input.projectId, eventTime: { gte: since } },
+    _count: { _all: true },
+  });
+  const counts = { total: 0, blocked: 0, redacted: 0, allowed: 0 };
+  for (const g of groups) {
+    const n = g._count._all;
+    counts.total += n;
+    if (g.action === "BLOCK") counts.blocked += n;
+    if (g.action === "REDACT") counts.redacted += n;
+    if (g.action === "ALLOW") counts.allowed += n;
+  }
+  return { since, windowDays: EVIDENCE_WINDOW_DAYS, ...counts };
 }

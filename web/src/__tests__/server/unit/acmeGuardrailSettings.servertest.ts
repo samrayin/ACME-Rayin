@@ -1,7 +1,18 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   ALL_PII_ENTITIES,
+  applyExpiredRevert,
+  AUTOMATIC_CREATOR,
   canEditGuardrailSettings,
+  effectiveMode,
+  ENFORCE_CONFIRMATION,
+  GuardrailModeNotAllowedError,
+  listModeChanges,
+  modeChangesOf,
+  parseModeCeiling,
+  saveMode,
+  trialExpired,
+  validateModeChange,
   getCurrentSettings,
   GuardrailSettingsValidationError,
   isDeploymentAdmin,
@@ -36,6 +47,8 @@ type Row = {
   createdByEmail: string | null;
   projectId?: string | null;
   createdAt: Date;
+  revertAt?: Date | null;
+  automatic?: boolean;
 };
 
 function v1(): Row {
@@ -58,6 +71,9 @@ function fakeDb(rows: Row[], opts: { failCreateTimes?: number } = {}) {
   const settings = {
     findFirst: vi.fn(async () =>
       rows.length ? [...rows].sort((a, b) => b.version - a.version)[0] : null,
+    ),
+    findMany: vi.fn(async ({ take }: { take?: number } = {}) =>
+      [...rows].sort((a, b) => b.version - a.version).slice(0, take),
     ),
     create: vi.fn(async ({ data }: { data: Omit<Row, "createdAt"> }) => {
       if (failCreate > 0) {
@@ -419,5 +435,367 @@ describe("guardrail events carry the settings version and pod", () => {
     const row = buildEventRow("proj-1", { ...base }, undefined);
     expect(row.settingsVersion).toBeNull();
     expect(row.pod).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------- part b
+
+// ADR-0005-B part b (CHG-2026-089): the enforcement switch.
+
+const NOW = new Date("2026-10-02T10:00:00Z");
+const MINUTE = 60_000;
+
+function enforceRow(version: number, revertAt: Date | null): Row {
+  return {
+    ...v1(),
+    version,
+    mode: "enforce",
+    revertAt,
+    reason: "Supervised enforce trial",
+    createdBy: "user-1",
+    createdByEmail: "admin@example.com",
+    createdAt: new Date(NOW.getTime() - 5 * MINUTE),
+  };
+}
+
+describe("parseModeCeiling", () => {
+  it("is enforce only on an explicit 'enforce', and record otherwise", () => {
+    expect(parseModeCeiling("enforce")).toBe("enforce");
+    expect(parseModeCeiling(" Enforce ")).toBe("enforce");
+    for (const raw of [undefined, null, "", "record", "enforced", "true"]) {
+      expect(parseModeCeiling(raw)).toBe("record");
+    }
+  });
+});
+
+describe("trialExpired / effectiveMode", () => {
+  it("reads an enforce trial as record once its switch-back time has passed", () => {
+    const due = { mode: "enforce" as const, revertAt: NOW };
+    expect(trialExpired(due, NOW)).toBe(true);
+    expect(effectiveMode(due, NOW)).toBe("record");
+    const before = new Date(NOW.getTime() - 1);
+    expect(trialExpired(due, before)).toBe(false);
+    expect(effectiveMode(due, before)).toBe("enforce");
+  });
+
+  it("keeps enforce without a switch-back time, and record as record", () => {
+    expect(effectiveMode({ mode: "enforce", revertAt: null }, NOW)).toBe(
+      "enforce",
+    );
+    expect(effectiveMode({ mode: "record", revertAt: null }, NOW)).toBe(
+      "record",
+    );
+  });
+});
+
+describe("validateModeChange", () => {
+  const ok = {
+    mode: "enforce" as const,
+    ceiling: "enforce" as const,
+    confirmation: ENFORCE_CONFIRMATION,
+    revertAfterMinutes: 30,
+    now: NOW,
+  };
+
+  it("refuses enforce under a record ceiling, whatever else is right (B1)", () => {
+    expect(() => validateModeChange({ ...ok, ceiling: "record" })).toThrow(
+      GuardrailModeNotAllowedError,
+    );
+  });
+
+  it("needs the typed confirmation for enforce", () => {
+    expect(() =>
+      validateModeChange({ ...ok, confirmation: "enforce" }),
+    ).toThrow(GuardrailSettingsValidationError);
+    expect(() => validateModeChange({ ...ok, confirmation: null })).toThrow(
+      GuardrailSettingsValidationError,
+    );
+  });
+
+  it("sets the switch-back time from the chosen minutes, or none", () => {
+    expect(validateModeChange(ok).revertAt).toEqual(
+      new Date(NOW.getTime() + 30 * MINUTE),
+    );
+    expect(
+      validateModeChange({ ...ok, revertAfterMinutes: null }).revertAt,
+    ).toBeNull();
+  });
+
+  it("refuses a switch-back time that is not on offer", () => {
+    expect(() => validateModeChange({ ...ok, revertAfterMinutes: 7 })).toThrow(
+      GuardrailSettingsValidationError,
+    );
+  });
+
+  it("lets record through under any ceiling, with no confirmation", () => {
+    expect(
+      validateModeChange({
+        mode: "record",
+        ceiling: "record",
+        confirmation: null,
+        revertAfterMinutes: 30,
+        now: NOW,
+      }),
+    ).toEqual({ revertAt: null });
+  });
+});
+
+describe("toSyncResponse in part b", () => {
+  it("serves an enforce trial as enforce until its time, then as record", async () => {
+    const revertAt = new Date(NOW.getTime() + MINUTE);
+    const { db } = fakeDb([v1(), enforceRow(2, revertAt)]);
+    const current = (await getCurrentSettings(db)) as GuardrailSettingsVersion;
+    expect(toSyncResponse(current, NOW).mode).toBe("enforce");
+    expect(toSyncResponse(current, revertAt).mode).toBe("record");
+    expect(toSyncResponse(current, revertAt).version).toBe(2);
+  });
+});
+
+describe("saveMode", () => {
+  it("stores a new version with the mode, the switch-back time and the same policy, audited", async () => {
+    const { db, rows } = fakeDb([v1()]);
+    const audit = vi.fn(async () => {});
+    const revertAt = new Date(NOW.getTime() + 30 * MINUTE);
+    const result = await saveMode(
+      db,
+      { ...SAVE_INPUT, mode: "enforce", revertAt, now: NOW },
+      audit,
+    );
+    expect(result.changed).toBe(true);
+    expect(rows.find((r) => r.version === 2)).toMatchObject({
+      mode: "enforce",
+      revertAt,
+      piiEntities: ALL,
+      jailbreakEnabled: true,
+      topicalEnabled: true,
+      createdBy: "user-1",
+    });
+    expect(audit).toHaveBeenCalledTimes(1);
+  });
+
+  it("does nothing when the mode in force already matches", async () => {
+    const { db, settings } = fakeDb([v1()]);
+    const audit = vi.fn(async () => {});
+    const result = await saveMode(
+      db,
+      { ...SAVE_INPUT, mode: "record", revertAt: null, now: NOW },
+      audit,
+    );
+    expect(result.changed).toBe(false);
+    expect(settings.create).not.toHaveBeenCalled();
+    expect(audit).not.toHaveBeenCalled();
+  });
+
+  it("switches back to record and clears the switch-back time", async () => {
+    const { db, rows } = fakeDb([
+      v1(),
+      enforceRow(2, new Date(NOW.getTime() + MINUTE)),
+    ]);
+    await saveMode(
+      db,
+      { ...SAVE_INPUT, mode: "record", revertAt: new Date(), now: NOW },
+      async () => {},
+    );
+    expect(rows.find((r) => r.version === 3)).toMatchObject({
+      mode: "record",
+      revertAt: null,
+    });
+  });
+
+  it("refuses when no settings are stored", async () => {
+    const { db } = fakeDb([]);
+    await expect(
+      saveMode(
+        db,
+        { ...SAVE_INPUT, mode: "record", revertAt: null, now: NOW },
+        async () => {},
+      ),
+    ).rejects.toThrow(GuardrailSettingsValidationError);
+  });
+});
+
+describe("saveSettings keeps the mode", () => {
+  const policy = {
+    piiEntities: ["EMAIL_ADDRESS" as const],
+    jailbreakEnabled: true,
+    topicalEnabled: true,
+  };
+
+  it("keeps enforce and the trial's switch-back time on a policy change", async () => {
+    const revertAt = new Date(NOW.getTime() + 10 * MINUTE);
+    const { db, rows } = fakeDb([v1(), enforceRow(2, revertAt)]);
+    await saveSettings(db, { ...SAVE_INPUT, policy, now: NOW }, async () => {});
+    expect(rows.find((r) => r.version === 3)).toMatchObject({
+      mode: "enforce",
+      revertAt,
+      piiEntities: ["EMAIL_ADDRESS"],
+    });
+  });
+
+  it("writes record once the trial has ended", async () => {
+    const { db, rows } = fakeDb([v1(), enforceRow(2, NOW)]);
+    await saveSettings(db, { ...SAVE_INPUT, policy, now: NOW }, async () => {});
+    expect(rows.find((r) => r.version === 3)).toMatchObject({
+      mode: "record",
+      revertAt: null,
+    });
+  });
+});
+
+describe("applyExpiredRevert (B6)", () => {
+  it("does nothing while the trial runs, or in record", async () => {
+    for (const rows of [
+      [v1()],
+      [v1(), enforceRow(2, new Date(NOW.getTime() + MINUTE))],
+      [v1(), enforceRow(2, null)],
+    ]) {
+      const { db, settings } = fakeDb(rows);
+      const audit = vi.fn(async () => {});
+      const result = await applyExpiredRevert(
+        db,
+        { projectId: "proj-1", now: NOW },
+        audit,
+      );
+      expect(result.changed).toBe(false);
+      expect(settings.create).not.toHaveBeenCalled();
+      expect(audit).not.toHaveBeenCalled();
+    }
+  });
+
+  it("writes one automatic record version with the same policy, audited", async () => {
+    const { db, rows } = fakeDb([v1(), enforceRow(2, NOW)]);
+    const audit = vi.fn(async () => {});
+    const result = await applyExpiredRevert(
+      db,
+      { projectId: "proj-1", now: NOW },
+      audit,
+    );
+    expect(result.changed).toBe(true);
+    expect(rows.find((r) => r.version === 3)).toMatchObject({
+      mode: "record",
+      revertAt: null,
+      automatic: true,
+      createdBy: AUTOMATIC_CREATOR,
+      createdByEmail: null,
+      piiEntities: ALL,
+    });
+    expect(rows.find((r) => r.version === 3)?.reason).toMatch(
+      /Automatic switch-back to record/,
+    );
+    expect(audit).toHaveBeenCalledTimes(1);
+  });
+
+  it("writes it once when two pulls race: the loser finds record in force", async () => {
+    const { db, settings, rows } = fakeDb([v1(), enforceRow(2, NOW)]);
+    // The first create fails as if another pull had taken version 3; that
+    // pull's row is what the retry then reads.
+    settings.create.mockImplementationOnce(async () => {
+      rows.push({
+        ...v1(),
+        version: 3,
+        mode: "record",
+        revertAt: null,
+        automatic: true,
+        createdBy: AUTOMATIC_CREATOR,
+        createdAt: NOW,
+      });
+      throw Object.assign(new Error("Unique constraint failed"), {
+        code: "P2002",
+      });
+    });
+    const audit = vi.fn(async () => {});
+    const result = await applyExpiredRevert(
+      db,
+      { projectId: "proj-1", now: NOW },
+      audit,
+    );
+    expect(result.changed).toBe(false);
+    expect(rows.filter((r) => r.version === 3)).toHaveLength(1);
+    expect(audit).not.toHaveBeenCalled();
+  });
+});
+
+describe("mode history", () => {
+  it("lists the versions that changed the mode, not policy-only changes", async () => {
+    const { db } = fakeDb([
+      v1(),
+      { ...v1(), version: 2, piiEntities: ["EMAIL_ADDRESS"] },
+      enforceRow(3, new Date(NOW.getTime() + 30 * MINUTE)),
+      {
+        ...enforceRow(4, new Date(NOW.getTime() + 30 * MINUTE)),
+        piiEntities: ["PERSON"],
+      },
+      {
+        ...v1(),
+        version: 5,
+        automatic: true,
+        createdBy: AUTOMATIC_CREATOR,
+        reason: "Automatic switch-back to record",
+      },
+    ]);
+    const changes = await listModeChanges(db);
+    expect(changes.map((c) => [c.version, c.mode, c.previousMode])).toEqual([
+      [3, "enforce", "record"],
+      [5, "record", "enforce"],
+    ]);
+    expect(changes[1]?.automatic).toBe(true);
+  });
+
+  it("lists a change of an enforce trial's switch-back time", () => {
+    const first = new Date(NOW.getTime() + 30 * MINUTE);
+    const later = new Date(NOW.getTime() + 60 * MINUTE);
+    const asVersion = (r: Row) =>
+      ({
+        ...r,
+        mode: r.mode as "record" | "enforce",
+        revertAt: r.revertAt ?? null,
+        automatic: r.automatic ?? false,
+      }) as unknown as GuardrailSettingsVersion;
+    const changes = modeChangesOf([
+      asVersion(v1()),
+      asVersion(enforceRow(2, first)),
+      asVersion(enforceRow(3, later)),
+    ]);
+    expect(changes.map((c) => c.version)).toEqual([2, 3]);
+  });
+});
+
+describe("guardrail events carry the gateway's report (part b)", () => {
+  const base = {
+    eventId: "evt-2",
+    agentId: "agent-1",
+    traceId: null,
+    userId: null,
+    clientHost: null,
+    eventTime: "2026-10-02T10:00:00.000Z",
+    direction: "input" as const,
+    action: "allow" as const,
+    policyTriggered: null,
+    redactedText: null,
+    piiFindings: null,
+    rawContent: null,
+  };
+
+  it("stores the gateway pod, mode and settings version when sent", () => {
+    const row = buildEventRow(
+      "proj-1",
+      {
+        ...base,
+        gatewayPod: "litellm-6f9c-abcde",
+        gatewayMode: "record",
+        gatewaySettingsVersion: 4,
+      },
+      undefined,
+    );
+    expect(row.gatewayPod).toBe("litellm-6f9c-abcde");
+    expect(row.gatewayMode).toBe("record");
+    expect(row.gatewaySettingsVersion).toBe(4);
+  });
+
+  it("stores null when the caller does not report", () => {
+    const row = buildEventRow("proj-1", { ...base }, undefined);
+    expect(row.gatewayPod).toBeNull();
+    expect(row.gatewayMode).toBeNull();
+    expect(row.gatewaySettingsVersion).toBeNull();
   });
 });

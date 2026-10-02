@@ -69,10 +69,15 @@ const explodingPrisma = new Proxy(
   },
 );
 
-// getConfig reads the stored version and the pods' reports, nothing else.
+// getConfig reads the stored version, the mode history and the pods'
+// reports; for an administrator also the gateway reports and the evidence.
 const readOnlyPrisma = {
-  acmeGuardrailSettings: { findFirst: async () => null },
+  acmeGuardrailSettings: {
+    findFirst: async () => null,
+    findMany: async () => [],
+  },
   acmeGuardrailSettingsPod: { findMany: async () => [] },
+  acmeGuardrailEvent: { findMany: async () => [], groupBy: async () => [] },
 };
 
 function callerFor(
@@ -235,5 +240,144 @@ describe("guardrail settings authority (B12)", () => {
       ),
     ).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
     expect(touched).toHaveBeenCalled();
+  });
+});
+
+// ADR-0005-B part b (CHG-2026-089): the enforcement switch has the policy's
+// authority (D-B1) and the deployment ceiling on top (Q4, test B1). Every
+// refusal happens before the database is touched.
+describe("guardrail enforcement switch (part b)", () => {
+  const envRecord = env as unknown as Record<string, string | undefined>;
+  const original = {
+    admins: envRecord.CAIRO_GUARDRAIL_ADMINS,
+    disableSignup: envRecord.AUTH_DISABLE_SIGNUP,
+    ceiling: envRecord.CAIRO_GUARDRAIL_MODE_MAX,
+  };
+
+  const ENFORCE = {
+    projectId: PROJECT,
+    mode: "enforce" as const,
+    reason: "A supervised enforce trial",
+    confirmation: "ENFORCE",
+    revertAfterMinutes: 30,
+  };
+  const RECORD = {
+    projectId: PROJECT,
+    mode: "record" as const,
+    reason: "End of the supervised trial",
+    confirmation: null,
+    revertAfterMinutes: null,
+  };
+
+  beforeEach(() => {
+    envRecord.CAIRO_GUARDRAIL_ADMINS = ADMIN_EMAIL;
+    envRecord.AUTH_DISABLE_SIGNUP = "true";
+    envRecord.CAIRO_GUARDRAIL_MODE_MAX = "enforce";
+    touched.mockClear();
+  });
+
+  afterEach(() => {
+    envRecord.CAIRO_GUARDRAIL_ADMINS = original.admins;
+    envRecord.AUTH_DISABLE_SIGNUP = original.disableSignup;
+    envRecord.CAIRO_GUARDRAIL_MODE_MAX = original.ceiling;
+  });
+
+  it("refuses an OWNER who is not on the list (B12)", async () => {
+    await expect(
+      callerFor("OWNER", "owner@example.com").setMode(ENFORCE),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(
+      callerFor("OWNER", "owner@example.com").setMode(RECORD),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(touched).not.toHaveBeenCalled();
+  });
+
+  it("refuses a listed Security Analyst or Auditor: read-only roles", async () => {
+    await expect(
+      callerFor("SECURITY", ADMIN_EMAIL).setMode(RECORD),
+    ).rejects.toThrow(/Security Analyst role cannot access/);
+    await expect(
+      callerFor("AUDITOR", ADMIN_EMAIL).setMode(RECORD),
+    ).rejects.toThrow(/Auditor role cannot access/);
+    expect(touched).not.toHaveBeenCalled();
+  });
+
+  it("refuses enforce under a record ceiling, even for an administrator (B1)", async () => {
+    envRecord.CAIRO_GUARDRAIL_MODE_MAX = "record";
+    await expect(
+      callerFor("ADMIN", ADMIN_EMAIL).setMode(ENFORCE),
+    ).rejects.toMatchObject({
+      code: "PRECONDITION_FAILED",
+      message: expect.stringMatching(/ceiling/),
+    });
+    envRecord.CAIRO_GUARDRAIL_MODE_MAX = undefined;
+    await expect(
+      callerFor("ADMIN", ADMIN_EMAIL).setMode(ENFORCE),
+    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    expect(touched).not.toHaveBeenCalled();
+  });
+
+  it("refuses enforce without the typed confirmation", async () => {
+    await expect(
+      callerFor("ADMIN", ADMIN_EMAIL).setMode({
+        ...ENFORCE,
+        confirmation: "yes",
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(touched).not.toHaveBeenCalled();
+  });
+
+  it("lets a listed administrator switch, to either mode, through to the save", async () => {
+    // As for updateConfig: the call passes every check and reaches the
+    // database, which this test's client refuses.
+    await expect(
+      callerFor("ADMIN", ADMIN_EMAIL).setMode(ENFORCE),
+    ).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
+    expect(touched).toHaveBeenCalled();
+    touched.mockClear();
+    // Switching back is allowed under a record ceiling too.
+    envRecord.CAIRO_GUARDRAIL_MODE_MAX = "record";
+    await expect(
+      callerFor("ADMIN", ADMIN_EMAIL).setMode(RECORD),
+    ).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
+    expect(touched).toHaveBeenCalled();
+  });
+
+  it("shows the switch, the ceiling and the deployment-wide figures to an administrator only", async () => {
+    envRecord.CAIRO_GUARDRAIL_MODE_MAX = "record";
+    const admin = await callerFor(
+      "ADMIN",
+      ADMIN_EMAIL,
+      readOnlyPrisma,
+    ).getConfig({ projectId: PROJECT });
+    expect(admin.enforcement).toMatchObject({
+      ceiling: "record",
+      effectiveMode: "record",
+      canSwitch: true,
+      readOnlyRole: false,
+      gateways: [],
+    });
+    expect(admin.enforcement.evidence).toMatchObject({ total: 0 });
+
+    const other = await callerFor(
+      "OWNER",
+      "owner@example.com",
+      readOnlyPrisma,
+    ).getConfig({ projectId: PROJECT });
+    expect(other.enforcement).toMatchObject({
+      canSwitch: false,
+      gateways: null,
+      evidence: null,
+    });
+
+    const analyst = await callerFor(
+      "SECURITY",
+      ADMIN_EMAIL,
+      readOnlyPrisma,
+    ).getConfig({ projectId: PROJECT });
+    expect(analyst.enforcement).toMatchObject({
+      canSwitch: false,
+      readOnlyRole: true,
+    });
   });
 });

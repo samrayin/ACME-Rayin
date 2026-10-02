@@ -21,6 +21,7 @@ import { createAuthedProjectAPIRoute } from "@/src/features/public-api/server/cr
 import { withMiddlewares } from "@/src/features/public-api/server/withMiddlewares";
 import { ingestGuardrailsEvent } from "@/src/features/acme-enhancements/server/acmeGuardrailsEventsIngestService";
 import {
+  GUARDRAIL_MODES,
   MAX_SETTINGS_VERSION,
   POD_NAME_PATTERN,
 } from "@/src/features/acme-enhancements/server/acmeGuardrailSettings";
@@ -65,6 +66,18 @@ const GuardrailsEventPushBody = z.object({
     .nullable()
     .optional(),
   pod: z.string().regex(POD_NAME_PATTERN).nullable().optional(),
+  // ADR-0005-B part b: what the gateway replica that sent the request
+  // reported about itself, passed through by rayin-guardrails. Optional, so
+  // builds that predate part b still work; bounded like the fields above.
+  gateway_pod: z.string().regex(POD_NAME_PATTERN).nullable().optional(),
+  gateway_mode: z.enum(GUARDRAIL_MODES).nullable().optional(),
+  gateway_settings_version: z
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_SETTINGS_VERSION)
+    .nullable()
+    .optional(),
 });
 
 const GuardrailsEventPushResponse = z.object({
@@ -98,6 +111,9 @@ export default withMiddlewares({
         rawContent: body.raw_content,
         settingsVersion: body.settings_version ?? null,
         pod: body.pod ?? null,
+        gatewayPod: body.gateway_pod ?? null,
+        gatewayMode: body.gateway_mode ?? null,
+        gatewaySettingsVersion: body.gateway_settings_version ?? null,
       }),
   }),
 });

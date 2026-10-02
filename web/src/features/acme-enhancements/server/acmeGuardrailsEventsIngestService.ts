@@ -58,6 +58,11 @@ export type GuardrailsEventPushInput = {
   // the pod's name. Optional so existing callers and tests are unaffected.
   settingsVersion?: number | null;
   pod?: string | null;
+  // ADR-0005-B part b: the reporting gateway replica's own state, passed
+  // through by rayin-guardrails. Optional, like the two fields above.
+  gatewayPod?: string | null;
+  gatewayMode?: "record" | "enforce" | null;
+  gatewaySettingsVersion?: number | null;
   eventTime: string;
   direction: "input" | "output";
   action: "allow" | "redact" | "block";
@@ -110,6 +115,9 @@ export function buildEventRow(
     clientHost: input.clientHost,
     settingsVersion: input.settingsVersion ?? null,
     pod: input.pod ?? null,
+    gatewayPod: input.gatewayPod ?? null,
+    gatewayMode: input.gatewayMode ?? null,
+    gatewaySettingsVersion: input.gatewaySettingsVersion ?? null,
     source: "PUSH",
     eventTime: new Date(input.eventTime),
     direction: input.direction === "input" ? "INPUT" : "OUTPUT",
