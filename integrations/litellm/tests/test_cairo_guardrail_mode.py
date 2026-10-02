@@ -119,7 +119,7 @@ class TestCeiling(unittest.TestCase):
 class TestSettingsLabels(unittest.TestCase):
     def test_applied_labels_are_read(self):
         self.assertEqual(m.settings_labels(answer("allow", mode="record", version=4)),
-                         (4, "record", None))
+                         m.Labels(4, "record", None, True))
 
     def test_unusable_labels_are_none(self):
         for body in (
@@ -138,19 +138,28 @@ class TestSettingsLabels(unittest.TestCase):
 
     def test_revert_at_counts_on_enforce_only(self):
         later = datetime.now(timezone.utc) + timedelta(minutes=30)
-        version, mode, revert_at = m.settings_labels(
+        version, mode, revert_at, _ = m.settings_labels(
             answer("allow", mode="enforce", version=2, revert_at=iso(later)))
         self.assertEqual(mode, "enforce")
         self.assertIsNotNone(revert_at)
         self.assertIsNone(m.settings_labels(
             answer("allow", mode="record", version=2, revert_at=iso(later)))[2])
 
-    def test_a_malformed_revert_at_is_ignored_not_trusted(self):
+    def test_a_malformed_revert_at_makes_the_labels_unusable(self):
+        """P2-268-3: never run a trial with no end it was given."""
         for bad in ("tomorrow", "2026-10-02T12:00:00", "x" * 41, 12345):
             with self.subTest(bad=bad):
-                labels = m.settings_labels(answer("allow", mode="enforce", revert_at=bad))
-                self.assertIsNotNone(labels)
-                self.assertIsNone(labels[2])
+                self.assertIsNone(
+                    m.settings_labels(answer("allow", mode="enforce", revert_at=bad)))
+
+    def test_an_absent_revert_at_is_no_switch_back(self):
+        labels = m.settings_labels(answer("allow", mode="enforce"))
+        self.assertIsNotNone(labels)
+        self.assertIsNone(labels.revert_at)
+
+    def test_stale_settings_are_read_but_not_fresh(self):
+        labels = m.settings_labels(answer("allow", mode="record", status="stale"))
+        self.assertEqual(labels, m.Labels(1, "record", None, False))
 
 
 class TestModeTracker(unittest.TestCase):
@@ -159,47 +168,47 @@ class TestModeTracker(unittest.TestCase):
 
     def test_a_newer_version_sets_the_mode(self):
         t = m.ModeTracker()
-        self.assertTrue(t.observe((1, "record", None)))
-        self.assertTrue(t.observe((2, "enforce", None)))
+        self.assertTrue(t.observe(m.Labels(1, "record", None)))
+        self.assertTrue(t.observe(m.Labels(2, "enforce", None)))
         self.assertEqual((t.version, t.desired()), (2, "enforce"))
 
     def test_an_older_version_cannot_change_the_mode(self):
         """B11 at the tracker: a stale pod does not lower the mode."""
         t = m.ModeTracker()
-        t.observe((5, "enforce", None))
-        self.assertFalse(t.observe((4, "record", None)))
+        t.observe(m.Labels(5, "enforce", None))
+        self.assertFalse(t.observe(m.Labels(4, "record", None)))
         self.assertEqual((t.version, t.desired()), (5, "enforce"))
 
     def test_unusable_labels_change_nothing(self):
         t = m.ModeTracker()
-        t.observe((3, "enforce", None))
+        t.observe(m.Labels(3, "enforce", None))
         self.assertFalse(t.observe(None))
         self.assertEqual(t.desired(), "enforce")
 
     def test_at_the_same_version_a_trial_may_end(self):
         t = m.ModeTracker()
-        t.observe((7, "enforce", datetime.now(timezone.utc) + timedelta(minutes=30)))
-        self.assertTrue(t.observe((7, "record", None)))
+        t.observe(m.Labels(7, "enforce", datetime.now(timezone.utc) + timedelta(minutes=30)))
+        self.assertTrue(t.observe(m.Labels(7, "record", None)))
         self.assertEqual(t.desired(), "record")
 
     def test_at_the_same_version_record_never_becomes_enforce(self):
         t = m.ModeTracker()
-        t.observe((7, "record", None))
-        self.assertTrue(t.observe((7, "enforce", None)))
+        t.observe(m.Labels(7, "record", None))
+        self.assertTrue(t.observe(m.Labels(7, "enforce", None)))
         self.assertEqual(t.desired(), "record", "a pod that pulled before the trial ended")
 
     def test_a_trial_ends_at_its_switch_back_time_without_any_answer(self):
         t = m.ModeTracker()
         ends = datetime.now(timezone.utc) + timedelta(minutes=5)
-        t.observe((8, "enforce", ends))
+        t.observe(m.Labels(8, "enforce", ends))
         self.assertEqual(t.desired(ends - timedelta(seconds=1)), "enforce")
         self.assertEqual(t.desired(ends), "record")
 
     def test_the_same_trial_adopts_its_switch_back_time(self):
         t = m.ModeTracker()
-        t.observe((8, "enforce", None))
+        t.observe(m.Labels(8, "enforce", None))
         ends = datetime.now(timezone.utc) + timedelta(minutes=5)
-        t.observe((8, "enforce", ends))
+        t.observe(m.Labels(8, "enforce", ends))
         self.assertEqual(t.revert_at, ends)
 
 
@@ -357,7 +366,7 @@ class TestTrialEndsOnTime(unittest.TestCase):
         g = m.CairoGuardrail()
         g.ceiling = "enforce"
         ended = iso(datetime.now(timezone.utc) - timedelta(seconds=1))
-        g.tracker.observe((9, "enforce", m._parse_utc(ended)))
+        g.tracker.observe(m.Labels(9, "enforce", m._parse_utc(ended)))
         outcome, mode = g.judge(None)
         self.assertEqual(mode, "record")
         self.assertTrue(outcome.proceed)
@@ -439,6 +448,48 @@ class TestHealthLogExplainsTheMode(unittest.TestCase):
             m.log.removeHandler(handler)
         warnings = [c for c in captured if "asks for enforce" in c]
         self.assertEqual(len(warnings), 1)
+
+
+
+class TestStaleSettingsCannotMoveTheMode(unittest.TestCase):
+    """Security review P2-268-1: a guardrails pod cut off from CAIRO cannot
+    put a replica into record."""
+
+    def test_a_just_started_replica_does_not_adopt_stale_settings(self):
+        t = m.ModeTracker()
+        self.assertFalse(t.observe(m.Labels(9, "record", None, False)))
+        self.assertIsNone(t.desired())
+
+    def test_stale_settings_cannot_move_to_a_newer_version(self):
+        t = m.ModeTracker()
+        t.observe(m.Labels(9, "enforce", None))
+        self.assertFalse(t.observe(m.Labels(10, "record", None, False)))
+        self.assertEqual((t.version, t.desired()), (9, "enforce"))
+
+    def test_stale_settings_cannot_lower_the_mode_at_the_same_version(self):
+        t = m.ModeTracker()
+        t.observe(m.Labels(9, "enforce", None))
+        self.assertFalse(t.observe(m.Labels(9, "record", None, False)))
+        self.assertEqual(t.desired(), "enforce")
+
+    def test_stale_settings_can_confirm_the_mode_held(self):
+        t = m.ModeTracker()
+        t.observe(m.Labels(9, "enforce", None))
+        self.assertTrue(t.observe(m.Labels(9, "enforce", None, False)))
+
+    def test_the_reviewers_scenario_end_to_end(self):
+        """Ceiling enforce, a replica just restarted, the first answer from a
+        pod cut off from CAIRO at an older record version: refused, and the
+        replica stays fail-closed until a fresh answer arrives."""
+        hook = Hook("enforce", [
+            answer("block", mode="record", version=9, status="stale"),
+            answer("block", mode="enforce", version=10),
+        ])
+        self.assertIn("settings_unusable", hook.refused())
+        self.assertIsNone(hook.g.tracker.desired())
+        self.assertEqual(hook.g.current_mode(), "enforce")
+        self.assertIn("blocked", hook.refused())
+        self.assertEqual(hook.g.tracker.version, 10)
 
 
 if __name__ == "__main__":

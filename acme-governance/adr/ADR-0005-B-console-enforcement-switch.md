@@ -85,15 +85,17 @@ This ADR makes the mode a CAIRO control alongside the policy, and sets the bar a
 
 These complete §3.3. The owner decided the first; the others follow from §3.3 and SF-2026-024.
 
-- **No verdict: judge unavailable** (Readiness Ledger N-64; owner decision, 2026-10-02).
+- **No verdict: judge unavailable** (owner decision, 2026-10-02; see Readiness Ledger N-64).
   - **What rayin-guardrails sends:** when its judge model cannot be asked (a 429 for the judge key's rate limit, or any other failure), it answers HTTP 503 `{"verdict": "none", "reason": "judge_unavailable", "cause": "rate_limited" | "error"}` with its settings labels. It sends no `action`, because nothing was decided.
   - **What the gateway does:** a request decided in record proceeds and is logged as `judge_unavailable`. A request decided in enforce is **refused**, with the outcome code `judge_unavailable` and a message saying the request could not be checked.
-  - **Why refuse:** proceeding would let anyone bypass the jailbreak check by saturating the judge.
-  - **What closes N-64:** judge capacity, measured, by raising the limit or adding a fallback judge. It is **never** closed by relaxing this rule.
+  - **Why refuse:** a check that could not run is never treated as passed.
+  - **This rule is not relaxed.** Refusals of this kind are answered with judge capacity, not by changing the rule.
   - **Records:** rayin-guardrails records every case as an event with action `unavailable`, in both modes, so the record-mode evidence is not biased low. It counts the rate on `/healthz`, and the console warns when the rate is high.
 - **The labels on a no-verdict answer still count.** The settings do not depend on the judge, so a judge-unavailable answer moves the mode like a verdict, under the same version rules.
 - **Same version, different mode.** At one settings version, the only accepted change is enforce to record: an enforce trial past its switch-back time reads as record at the same version, until the automatic version is written. Record to enforce at one version comes only from a pod that pulled before the trial ended, so it is ignored. This settles the open case in SF-2026-024.
 - **Settings unknown or stale.** In a request decided in enforce, a verdict whose settings are unknown or older than the newest the replica has seen is refused (`settings_unusable`), as §3.3 already requires. A request decided in record still records what that verdict says.
+- **Settings unconfirmed for too long.** A guardrails pod whose pulls have failed for four pull intervals (at least 60 s) labels its answers `stale`. Those can confirm the mode a gateway replica already holds at that version, but never set it on a replica that has just started, move it to a newer version or lower it. So a pod cut off from CAIRO cannot put a freshly started replica into record.
+- **An unreadable switch-back time** on an enforce answer makes that answer unusable, so a trial never runs with no end it was given.
 - **A trial ends on time, everywhere** (SF-2026-024).
   - CAIRO's settings answer carries the switch-back time (`revert_at`) while a trial runs.
   - Each guardrails pod reads the mode as record from that time, at the same version, whether or not a pull succeeds.
@@ -204,7 +206,8 @@ All four were decided by the owner on 2026-10-02 ("D-B1 to D-B3 as recommended, 
 - **The gateway learns the mode only from verdicts.** If the guardrails service is unavailable while enforce is in force, no verdict arrives. The gateway then keeps refusing by its last mode (§3.3) until a usable verdict reaches it or the replica restarts and the ceiling decides.
 - **Narrowed in phase 2 (§3.3.1):** a trial with a switch-back time now ends at that time on the gateway too, verdict or no verdict. The limit remains for an enforce version with no switch-back time.
 - **This is fail-closed by design, but a supervised trial must plan for it.** Restoring the guardrails service, or setting the gateway ceiling to `record`, ends it.
-- **The judge's capacity bounds enforce** (N-64). Under enforce, every request the judge cannot answer is refused. Above the judge key's rate limit, enforce would therefore refuse ordinary traffic. N-64 is an enforce blocker until capacity is measured.
+- **The judge's capacity bounds enforce.** Under enforce, every request the judge cannot answer is refused (§3.3.1), so capacity must be measured before a trial (see Readiness Ledger N-64).
+- **Versions only move forward on a gateway replica.** After any restore or rollback of CAIRO's guardrail settings that lowers the version number, restart the gateway, or a replica holding the higher number keeps it.
 
 ## 9. Revisions
 

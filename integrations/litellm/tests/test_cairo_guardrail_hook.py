@@ -718,7 +718,9 @@ class TestHealthLogEmittedEndToEnd(unittest.TestCase):
         g.guard_secret = "test-secret"
 
         async def fake_post(payload):
-            await asyncio.sleep(0.01)  # a real, measurable round trip
+            # A real, measurable round trip. 30 ms, not 10: on Windows the
+            # event loop's timer can wake well before 10 ms by perf_counter.
+            await asyncio.sleep(0.03)
             return verdict
 
         g._post_guard = fake_post

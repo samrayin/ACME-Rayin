@@ -5355,12 +5355,17 @@ Gateway hook and configuration comment; no console code and no migration. ADR-00
 - **No verdict: judge unavailable** (Readiness Ledger N-64, owner decision): rayin-guardrails' explicit HTTP 503 answer is recognised.
   - **Record:** the request proceeds and is logged as `judge_unavailable`.
   - **Enforce:** the request is refused, with that outcome code and a message saying it could not be checked.
-  - It is never relaxed to proceed. N-64 closes only on measured judge capacity.
+  - The rule is not relaxed.
 - **A trial ends on time:** a running trial's switch-back time travels on each verdict, so a replica ends the trial at that time even if no verdict arrives (SF-2026-024).
 - **What each replica reports** (build decision C1): its pod name, the mode it was in, and the newest settings version it has seen, with every `/v1/guard` call.
 - **Health log:** each line now also carries the ceiling, the settings version and whether the request was refused. Enforce requested under a record ceiling is logged once per version.
 - **Tests:** 119 stdlib `unittest` tests pass (`python -m unittest discover -s integrations/litellm/tests`): the 79 existing ones, adapted to the ceiling, and 40 new ones for the ceiling, the labels, the tracker, the §3.3 table, B1, B10, B11, the judge-unavailable rule, the switch-back and the replica's report.
 - **Rollback:** no migration. Re-apply the previous `litellm-config` ConfigMap (both files) and restart the gateway.
 - **Release order (phase 3):** the console first (it must accept the `unavailable` event and send the switch-back time), then rayin-guardrails, then this ConfigMap and a gateway restart. Each step needs the owner's yes.
-- **Approval:** Pending. The owner merges after the security review, run from a fresh session, has reported. There is no human reviewer; the owner accepts that with compensating controls (Readiness Ledger N-48). Not a production approval.
+- **After the security review** (a fresh session, 2026-10-02; P2-268-1 to P2-268-6, all low except P2-268-1, medium):
+  - a guardrails pod's `stale` settings can confirm a replica's mode but never set, raise or lower it;
+  - an unreadable switch-back time makes an answer unusable;
+  - a new CI job runs the hook's tests;
+  - the ADR records that the gateway must be restarted after a settings restore that lowers the version.
+- **Approval:** Pending. The owner merges after the fresh-session security review and its re-check have reported, under the review controls recorded in Readiness Ledger N-48. Not a production approval.
 - **Deployment status:** not deployed.

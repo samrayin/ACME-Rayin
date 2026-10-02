@@ -209,20 +209,35 @@ def _parse_utc(value: Any) -> Optional[datetime]:
     return parsed.astimezone(timezone.utc)
 
 
-Labels = Tuple[int, str, Optional[datetime]]
+class Labels(NamedTuple):
+    """The settings an answer was decided under."""
+
+    version: int
+    mode: str
+    revert_at: Optional[datetime]
+    #: False when the guardrails pod says its settings are ``stale``: still
+    #: CAIRO's version, but unconfirmed for too long (security review
+    #: P2-268-1). Stale labels can confirm the mode a replica already holds;
+    #: they can never set or lower it.
+    fresh: bool = True
 
 
 def settings_labels(answer: Any) -> Optional[Labels]:
-    """``(version, mode, revert_at)`` from a verdict or a no-verdict answer,
-    or None when they cannot set the mode.
+    """The labels of a verdict or a no-verdict answer, or None when they
+    cannot be used for the mode.
 
-    Only an answer whose settings are ``applied``, with a version in range and
-    a known mode, can (§3.3). Settings unknown, a missing or malformed field,
-    or an older rayin-guardrails that sends no labels: None. ``revert_at``
-    counts on an enforce answer only.
+    Only settings ``applied`` (fresh) or ``stale`` (fresh=False), with a
+    version in range and a known mode, are read (§3.3). Settings unknown, a
+    missing or malformed field, or an older rayin-guardrails that sends no
+    labels: None. ``revert_at`` counts on an enforce answer only; one that is
+    present but cannot be read makes the labels unusable, so a trial is
+    never run with no end it was given (security review P2-268-3).
     """
     try:
-        if not isinstance(answer, dict) or answer.get("settings_status") != "applied":
+        if not isinstance(answer, dict):
+            return None
+        status = answer.get("settings_status")
+        if status not in ("applied", "stale"):
             return None
         version = answer.get("settings_version")
         mode = answer.get("mode")
@@ -230,8 +245,12 @@ def settings_labels(answer: Any) -> Optional[Labels]:
             return None
         if not 1 <= version <= MAX_SETTINGS_VERSION or mode not in MODES:
             return None
-        revert_at = _parse_utc(answer.get("revert_at")) if mode == "enforce" else None
-        return version, mode, revert_at
+        revert_at = None
+        if mode == "enforce" and answer.get("revert_at") is not None:
+            revert_at = _parse_utc(answer.get("revert_at"))
+            if revert_at is None:
+                return None
+        return Labels(version, mode, revert_at, status == "applied")
     except Exception:
         return None
 
@@ -252,6 +271,12 @@ class ModeTracker:
       ended, so it is ignored (SF-2026-024's open case, now defined).
     * **A trial ends on time here too.** An enforce mode with a switch-back time
       reads as record from that time, even if no answer arrives at all.
+    * **Stale settings cannot move the mode** (security review P2-268-1). A
+      guardrails pod whose pulls have failed for too long labels its answers
+      ``stale``. Those can confirm the mode this replica already holds at the
+      same version, but never set it on a replica that has just started,
+      never move it to a newer version and never lower it, so a pod cut off
+      from CAIRO cannot put a fresh replica into record.
     """
 
     def __init__(self) -> None:
@@ -264,12 +289,17 @@ class ModeTracker:
         unusable), so the answer can be acted on in enforce mode."""
         if labels is None:
             return False
-        version, mode, revert_at = labels
+        version, mode, revert_at, fresh = labels
         if self.version is None or version > self.version:
+            if not fresh:
+                return False
             self.version, self.mode, self.revert_at = version, mode, revert_at
             return True
         if version < self.version:
             return False
+        if not fresh:
+            # Same version: stale labels may only confirm what is held.
+            return mode == self.mode
         if mode == "record" and self.mode == "enforce":
             self.mode, self.revert_at = "record", None
         elif mode == "enforce" and self.mode == "enforce" and self.revert_at is None:
@@ -624,16 +654,14 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
     timeout / 5xx / down        proceed, guard_unavailable  refuse (fail closed)
     ==========================  ==========================  =========================
 
-    **Judge unavailable** (Readiness Ledger N-64; owner decision 2026-10-02).
-    rayin-guardrails answers HTTP 503 ``{"verdict": "none", "reason":
-    "judge_unavailable"}`` when its judge model could not be asked, for
-    example for its rate limit. Record mode proceeds and logs the outcome
-    ``judge_unavailable``. Enforce mode refuses, with that outcome code and a
-    message saying the request could not be checked: proceeding would let
-    anyone bypass the jailbreak check by saturating the judge. The fix for
-    refusals of this kind is judge capacity, never relaxing this rule.
-    rayin-guardrails records every such case as an event with action
-    ``unavailable``, in both modes.
+    **Judge unavailable** (owner decision 2026-10-02; see Readiness Ledger
+    N-64). rayin-guardrails answers HTTP 503 ``{"verdict": "none", "reason":
+    "judge_unavailable"}`` when its judge model could not be asked. Record
+    mode proceeds and logs the outcome ``judge_unavailable``. Enforce mode
+    refuses, with that outcome code and a message saying the request could
+    not be checked: a check that could not run is never treated as passed.
+    This rule is not relaxed. rayin-guardrails records every such case as an
+    event with action ``unavailable``, in both modes.
 
     **Settings unknown or stale.** A verdict from a guardrails pod that has
     not pulled CAIRO's settings, or that is on an older version than this
@@ -728,7 +756,7 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
         ceiling does not allow it (§3.3)."""
         if labels is None or self.ceiling == "enforce":
             return
-        version, mode, _ = labels
+        version, mode = labels.version, labels.mode
         if mode == "enforce" and self._ceiling_warned_version != version:
             self._ceiling_warned_version = version
             log.warning(
