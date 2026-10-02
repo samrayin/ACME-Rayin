@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  parseBufferedEvents,
   PULL_BACKFILL_MIN_AGE_MS,
   selectPullBackfillRows,
   type PulledGuardrailsEvent,
@@ -104,6 +105,36 @@ describe("selectPullBackfillRows and actions (CHG-2026-089 part b, phase 2)", ()
   it("skips an action this build does not know, never storing it as a block", () => {
     const rows = selectPullBackfillRows(
       [{ ...BASE, action: "quarantine" as unknown as "block" }],
+      "proj-1",
+      NOW,
+    );
+    expect(rows).toEqual([]);
+  });
+});
+
+describe("parseBufferedEvents (security review P2-269-1)", () => {
+  it("keeps every event it can read when one has an unknown action", () => {
+    const { events, dropped } = parseBufferedEvents([
+      BASE,
+      { ...BASE, event_id: "evt-2", action: "quarantine" },
+      { ...BASE, event_id: "evt-3", action: "allow" },
+      "not an event",
+    ]);
+    expect(events.map((e) => e.event_id)).toEqual(["evt-1", "evt-3"]);
+    expect(dropped).toBe(2);
+    expect(selectPullBackfillRows(events, "proj-1", NOW)).toHaveLength(2);
+  });
+
+  it("reads anything that is not a list as no events", () => {
+    expect(parseBufferedEvents({ events: [] })).toEqual({
+      events: [],
+      dropped: 0,
+    });
+  });
+
+  it("does not treat an inherited property name as an action", () => {
+    const rows = selectPullBackfillRows(
+      [{ ...BASE, action: "constructor" as unknown as "block" }],
       "proj-1",
       NOW,
     );

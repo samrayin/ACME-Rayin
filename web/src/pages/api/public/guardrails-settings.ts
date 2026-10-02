@@ -81,11 +81,15 @@ export default withMiddlewares({
         throw new ForbiddenError("This key may not sync guardrail settings.");
       }
       const now = new Date();
+      const ceiling = parseModeCeiling(env.CAIRO_GUARDRAIL_MODE_MAX);
 
       try {
+        // An ended trial, or an enforce version this console's ceiling does
+        // not allow, is written down as an automatic record version
+        // (security review P2-269-2).
         const reverted = await applyExpiredRevert(
           prisma,
-          { projectId: auth.scope.projectId, now },
+          { projectId: auth.scope.projectId, now, ceiling },
           async (tx, { before, current }) => {
             await auditLog(
               {
@@ -134,11 +138,7 @@ export default withMiddlewares({
       }
 
       // The console's own ceiling caps what the pods are told (SF-2026-023).
-      return toSyncResponse(
-        current,
-        now,
-        parseModeCeiling(env.CAIRO_GUARDRAIL_MODE_MAX),
-      );
+      return toSyncResponse(current, now, ceiling);
     },
   }),
 });

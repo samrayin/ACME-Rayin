@@ -1018,3 +1018,51 @@ describe("a pushed event with no verdict (N-64)", () => {
     expect(encrypt).not.toHaveBeenCalled();
   });
 });
+
+describe("an enforce version the ceiling does not allow is written down (P2-269-2)", () => {
+  it("writes an automatic record version, audited, under a record ceiling", async () => {
+    const { db, rows } = fakeDb([v1(), enforceRow(2, null)]);
+    const audit = vi.fn(async () => {});
+    const result = await applyExpiredRevert(
+      db,
+      { projectId: "proj-1", now: NOW, ceiling: "record" },
+      audit,
+    );
+    expect(result.changed).toBe(true);
+    const written = rows.find((r) => r.version === 3);
+    expect(written).toMatchObject({
+      mode: "record",
+      automatic: true,
+      revertAt: null,
+    });
+    expect(written?.reason).toMatch(
+      /ceiling \(CAIRO_GUARDRAIL_MODE_MAX\) is record/,
+    );
+    expect(audit).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a running trial alone when the ceiling allows enforce", async () => {
+    const { db, settings } = fakeDb([
+      v1(),
+      enforceRow(2, new Date(NOW.getTime() + MINUTE)),
+    ]);
+    const result = await applyExpiredRevert(
+      db,
+      { projectId: "proj-1", now: NOW, ceiling: "enforce" },
+      vi.fn(async () => {}),
+    );
+    expect(result.changed).toBe(false);
+    expect(settings.create).not.toHaveBeenCalled();
+  });
+
+  it("writes nothing for a record version under a record ceiling", async () => {
+    const { db, settings } = fakeDb([v1()]);
+    const result = await applyExpiredRevert(
+      db,
+      { projectId: "proj-1", now: NOW, ceiling: "record" },
+      vi.fn(async () => {}),
+    );
+    expect(result.changed).toBe(false);
+    expect(settings.create).not.toHaveBeenCalled();
+  });
+});

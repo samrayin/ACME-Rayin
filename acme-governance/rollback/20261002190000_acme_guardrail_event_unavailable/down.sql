@@ -10,6 +10,11 @@
 -- plain `psql -f down.sql`, or `prisma db execute --file`.
 BEGIN;
 
+-- Lock first, so no event can be written between the check and the rebuild.
+-- Event pushes wait (or fail and stay in rayin-guardrails' buffer) until
+-- COMMIT.
+LOCK TABLE "acme_guardrail_events" IN ACCESS EXCLUSIVE MODE;
+
 DO $$
 BEGIN
   IF EXISTS (

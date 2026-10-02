@@ -55,7 +55,11 @@ import {
 } from "@langfuse/shared/src/db";
 import { logger } from "@langfuse/shared/src/server";
 import { TRPCError } from "@trpc/server";
-import { selectPullBackfillRows } from "@/src/features/acme-enhancements/server/acmeGuardrailsPullBackfill";
+import {
+  parseBufferedEvents,
+  selectPullBackfillRows,
+  type PulledGuardrailsEvent,
+} from "@/src/features/acme-enhancements/server/acmeGuardrailsPullBackfill";
 import {
   buildHiddenTestTrafficWhere,
   buildHistoryWhere,
@@ -114,28 +118,16 @@ const ACTION_FROM_DB: Record<
   [AcmeGuardrailEventAction.UNAVAILABLE]: "unavailable",
 };
 
-// event_id, user_id and client_host are optional: older rayin-guardrails
-// builds don't include them in the buffer. Kept (not stripped) so pull rows
-// dedupe against push rows on event_id -- see acmeGuardrailsPullBackfill.ts.
-const GuardrailsEventSchema = z.object({
-  event_id: z.string().nullish(),
-  user_id: z.string().nullish(),
-  client_host: z.string().nullish(),
-  time: z.string(),
-  agent_id: z.string(),
-  trace_id: z.string().nullable(),
-  direction: z.enum(["input", "output"]),
-  policy_triggered: z.string().nullable(),
-  action: z.enum(["allow", "redact", "block", "unavailable"]),
-});
-
+// The events are checked one by one (parseBufferedEvents), so one event this
+// build cannot read never drops the rest (security review P2-269-1).
 const GuardrailsEventsResponseSchema = z.object({
-  events: z.array(GuardrailsEventSchema),
+  events: z.array(z.unknown()),
   summary: z.object({
     total: z.number(),
     blocked: z.number(),
     redacted: z.number(),
     allowed: z.number(),
+    unavailable: z.number().optional(),
   }),
 });
 
@@ -156,7 +148,17 @@ async function fetchBufferedEvents(limit: number) {
       `rayin-guardrails returned ${res.status} fetching /v1/events`,
     );
   }
-  return GuardrailsEventsResponseSchema.parse(await res.json());
+  const body = GuardrailsEventsResponseSchema.parse(await res.json());
+  const { events, dropped } = parseBufferedEvents(body.events);
+  if (dropped > 0) {
+    logger.warn(
+      `rayin-guardrails buffer: ${dropped} event(s) this build cannot read were skipped`,
+    );
+  }
+  return {
+    events,
+    summary: { ...body.summary, unavailable: body.summary.unavailable ?? 0 },
+  };
 }
 
 /**
@@ -164,7 +166,7 @@ async function fetchBufferedEvents(limit: number) {
  * not (see acmeGuardrailsPullBackfill.ts). A failure is logged, not thrown.
  */
 async function persistPullBackfill(
-  events: z.infer<typeof GuardrailsEventSchema>[],
+  events: PulledGuardrailsEvent[],
   projectId: string,
 ) {
   const backfill = selectPullBackfillRows(events, projectId, new Date());
@@ -346,9 +348,10 @@ export const acmeGuardrailsRouter = createTRPCRouter({
             if (event.action === "block") acc.blocked += 1;
             if (event.action === "redact") acc.redacted += 1;
             if (event.action === "allow") acc.allowed += 1;
+            if (event.action === "unavailable") acc.unavailable += 1;
             return acc;
           },
-          { total: 0, blocked: 0, redacted: 0, allowed: 0 },
+          { total: 0, blocked: 0, redacted: 0, allowed: 0, unavailable: 0 },
         );
 
         return { configured: true as const, events, summary };

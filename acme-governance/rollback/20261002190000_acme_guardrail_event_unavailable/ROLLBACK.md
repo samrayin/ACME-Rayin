@@ -19,7 +19,9 @@
 2. **Redeploy the previous console image** with `scripts/release/release.sh`.
    - The previous image's history and export map every stored action through a fixed list.
    - **A row with `unavailable` would break those pages** in the previous image. So if any such row exists, do not redeploy the previous image: forward-fix instead.
-3. **Only if the value must also go, and no event uses it:** run `down.sql` as the table owner or admin login, with `psql -v ON_ERROR_STOP=1 -f down.sql` or `prisma db execute --file down.sql`. The script is one transaction.
+3. **Only if the value must also go, and no event uses it:** run `down.sql` with `psql -v ON_ERROR_STOP=1 -f down.sql` or `prisma db execute --file down.sql`.
+   - **Who runs it:** the role that owns the type and the table (the admin login), because the rebuilt type is owned by whoever runs the script.
+   - **What it does:** the script is one transaction. It locks `acme_guardrail_events` first and rewrites the table, so event pushes are refused until it commits; they wait in rayin-guardrails' buffer and are backfilled.
 4. Verify (below).
 
 ## Verification after rollback

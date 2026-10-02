@@ -614,15 +614,25 @@ export async function saveMode(
  */
 export async function applyExpiredRevert(
   db: Db,
-  input: { projectId: string; now?: Date },
+  input: { projectId: string; now?: Date; ceiling?: GuardrailMode },
   audit: AuditFn,
 ): Promise<SaveResult | { changed: false; current: null }> {
   const now = input.now ?? new Date();
+  // Security review P2-269-2: an enforce version that the console's ceiling
+  // serves as record is written down as an automatic record version too, so
+  // raising the ceiling later never brings enforce back without a fresh,
+  // confirmed choice. Without a ceiling the old behaviour holds.
+  const ceiling = input.ceiling ?? "enforce";
   return withVersionRetry(() =>
     db.$transaction(async (tx) => {
       const before = await getCurrentSettings(tx);
       if (!before) return { changed: false as const, current: null };
-      if (!trialExpired(before, now) || before.revertAt === null) {
+      const expired = trialExpired(before, now) && before.revertAt !== null;
+      const capped =
+        !expired &&
+        ceiling !== "enforce" &&
+        effectiveMode(before, now) === "enforce";
+      if (!expired && !capped) {
         return { changed: false as const, current: before };
       }
       const row = await tx.acmeGuardrailSettings.create({
@@ -634,7 +644,10 @@ export async function applyExpiredRevert(
           piiEntities: before.piiEntities,
           jailbreakEnabled: before.jailbreakEnabled,
           topicalEnabled: before.topicalEnabled,
-          reason: `Automatic switch-back to record: the enforce trial in version ${before.version} ended at ${before.revertAt.toISOString()}.`,
+          reason:
+            expired && before.revertAt
+              ? `Automatic switch-back to record: the enforce trial in version ${before.version} ended at ${before.revertAt.toISOString()}.`
+              : `Automatic switch-back to record: the deployment ceiling (CAIRO_GUARDRAIL_MODE_MAX) is record, so the enforce version ${before.version} is not kept.`,
           createdBy: AUTOMATIC_CREATOR,
           createdByEmail: null,
           projectId: input.projectId,
@@ -835,7 +848,7 @@ async function countByAction(
 }
 
 /** The window the judge-availability figure and its alert cover. */
-export const JUDGE_REPORT_WINDOW_HOURS = 24;
+const JUDGE_REPORT_WINDOW_HOURS = 24;
 
 /**
  * The share of guard calls without a verdict at which the console raises its

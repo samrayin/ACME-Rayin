@@ -193,7 +193,7 @@ export function AcmeGuardrailsEnforcement({
             className="border-destructive text-destructive rounded-md border p-3 text-xs"
           >
             <b>Alert: the guardrail&apos;s judge model could not answer</b>{" "}
-            {judge.unavailable} of {judge.calls} guard calls (
+            {judge.unavailable} of {judge.calls} stored guard events (
             {percent(judge.unavailable, judge.calls)}) in the last{" "}
             {judge.windowHours} hours. In enforce, each of these requests would
             be refused. Raise the judge&apos;s capacity before any enforce
@@ -203,7 +203,9 @@ export function AcmeGuardrailsEnforcement({
 
         {gateways !== null && (
           <div className="border-t pt-3">
-            <div className="text-xs font-bold">Gateway replicas</div>
+            <div className="text-xs font-bold">
+              Gateway replicas (as each reports itself; not verified)
+            </div>
             {gateways.length === 0 ? (
               <div className="text-muted-foreground text-xs">
                 No gateway replica has reported its mode in the last 24 hours. A
@@ -242,13 +244,16 @@ export function AcmeGuardrailsEnforcement({
             {judge !== null && (
               <div className="text-muted-foreground text-xs">
                 Judge availability, last {judge.windowHours} hours:{" "}
-                {judge.unavailable} of {judge.calls} guard calls without a
-                verdict
+                {judge.unavailable} of {judge.calls} stored guard events without
+                a verdict
                 {judge.calls > 0
                   ? ` (${percent(judge.unavailable, judge.calls)})`
                   : ""}
-                . The alert shows at {Math.round(judge.alertRate * 100)}% or
-                more.
+                . This counts every stored event, both directions and checks
+                that ask no judge, so the judge&apos;s own failure rate is
+                higher; each guardrails pod reports that one on its health
+                endpoint. The alert shows here, on this card, at{" "}
+                {Math.round(judge.alertRate * 100)}% or more.
               </div>
             )}
             <div className="text-muted-foreground text-xs">
