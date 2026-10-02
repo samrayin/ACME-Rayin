@@ -22,8 +22,10 @@ import { Role } from "@langfuse/shared/src/db";
 import { TRPCError } from "@trpc/server";
 
 const SECURITY_ROLE_ALLOWED_PROCEDURES: ReadonlySet<string> = new Set([
-  // Guardrail events and policies (updateConfig stays blocked: it isn't here,
-  // and it also requires project:update, which SECURITY does not hold).
+  // Guardrail events and policies. updateConfig stays blocked: it isn't
+  // here. Since ADR-0005-B part a this list is its only role gate, so
+  // getConfig reads it too before offering the Policies card's editing
+  // (CHG-2026-091).
   "acmeGuardrails.recentEvents",
   // ADR-0013: the stored history. Its CSV export is not here: the export
   // writes the audit log, so it is a mutation, and these roles are limited
@@ -143,6 +145,20 @@ export function isAllowedForSecurityRole(procedurePath: string): boolean {
 }
 
 /**
+ * The decision throwIfSecurityRoleBlocked enforces, without throwing: false
+ * only when a content-free role would be refused `procedurePath`. For a
+ * screen that should not offer an action the server will refuse.
+ */
+export function mayCallProjectProcedure(p: {
+  projectRole: Role | undefined;
+  procedurePath: string;
+  isInstanceAdmin?: boolean;
+}): boolean {
+  if (p.isInstanceAdmin) return true;
+  return isAllowedForRole(p.projectRole, p.procedurePath);
+}
+
+/**
  * Throws FORBIDDEN when a content-free role calls a project procedure that is
  * not on its allow-list. No-op for every other role and for Langfuse instance
  * admins. (Name kept from when SECURITY was the only such role.)
@@ -152,8 +168,7 @@ export function throwIfSecurityRoleBlocked(p: {
   procedurePath: string;
   isInstanceAdmin?: boolean;
 }): void {
-  if (p.isInstanceAdmin) return;
-  if (isAllowedForRole(p.projectRole, p.procedurePath)) return;
+  if (mayCallProjectProcedure(p)) return;
   throw new TRPCError({
     code: "FORBIDDEN",
     message: ROLE_LABEL[p.projectRole as Role] ?? "Access denied.",

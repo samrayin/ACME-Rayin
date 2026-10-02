@@ -25,7 +25,9 @@
  * settings are stored in CAIRO and versioned (acmeGuardrailSettings.ts).
  * They apply to every project and every gateway caller, so a change needs a
  * named deployment administrator (CAIRO_GUARDRAIL_ADMINS), not a project
- * role. Every rayin-guardrails pod pulls the current version itself.
+ * role. The content-free roles' allow-lists still apply on top, so a listed
+ * Security Analyst or Auditor stays read-only. Every rayin-guardrails pod
+ * pulls the current version itself.
  *
  * Every call to rayin-guardrails from here — reads and the write — carries
  * the shared secret (RAYIN_GUARDRAILS_CONFIG_SECRET) as X-Config-Secret.
@@ -62,6 +64,7 @@ import {
   TEST_TRAFFIC_AGENT_PREFIXES,
 } from "@/src/features/acme-enhancements/server/acmeGuardrailsHistory";
 import { auditLog } from "@/src/features/audit-logs/auditLog";
+import { mayCallProjectProcedure } from "@/src/features/rbac/server/securityRoleAllowList";
 import {
   ALL_PII_ENTITIES,
   getCurrentSettings,
@@ -191,6 +194,9 @@ const EVENT_ROW_SELECT = {
   userId: true,
   clientHost: true,
 } satisfies Prisma.AcmeGuardrailEventSelect;
+
+// updateConfig's path as the content-free roles' allow-lists name it.
+const UPDATE_CONFIG_PROCEDURE = "acmeGuardrails.updateConfig";
 
 /** Newest first; the id breaks ties so cursor paging never skips a row. */
 const HISTORY_ORDER: Prisma.AcmeGuardrailEventOrderByWithRelationInput[] = [
@@ -531,11 +537,20 @@ export const acmeGuardrailsRouter = createTRPCRouter({
         listReportingPods(ctx.prisma),
       ]);
       const signupClosed = selfSignupClosed(env);
-      const canEdit = canEditGuardrailSettings({
+      const isGuardrailAdmin = canEditGuardrailSettings({
         email: ctx.session.user.email,
         rawAdminList: env.CAIRO_GUARDRAIL_ADMINS,
         signupClosed,
       });
+      // CHG-2026-091: updateConfig is also gated by the content-free roles'
+      // allow-lists, which refuse a listed Security Analyst or Auditor. Offer
+      // editing only when both checks would let the save through.
+      const roleMaySave = mayCallProjectProcedure({
+        projectRole: ctx.session.projectRole,
+        procedurePath: UPDATE_CONFIG_PROCEDURE,
+        isInstanceAdmin: ctx.session.user.admin === true,
+      });
+      const canEdit = isGuardrailAdmin && roleMaySave;
 
       return {
         // Whether a rayin-guardrails service is wired to this deployment.
@@ -551,7 +566,7 @@ export const acmeGuardrailsRouter = createTRPCRouter({
               // Shown to the administrators only: the settings are visible
               // from every organisation, the editor's email need not be
               // (security review SF-2026-018).
-              createdByEmail: canEdit ? current.createdByEmail : null,
+              createdByEmail: isGuardrailAdmin ? current.createdByEmail : null,
               // The seeded first version was written by the migration.
               createdByInitialSetup: current.createdBy === "migration",
               createdAt: current.createdAt,
@@ -561,6 +576,8 @@ export const acmeGuardrailsRouter = createTRPCRouter({
         pods,
         podStaleAfterSeconds: POD_STALE_AFTER_SECONDS,
         canEdit,
+        // A listed administrator whose role on this project may not save.
+        readOnlyRole: isGuardrailAdmin && !roleMaySave,
         adminsConfigured: parseAdminList(env.CAIRO_GUARDRAIL_ADMINS).length > 0,
         signupClosed,
       };
