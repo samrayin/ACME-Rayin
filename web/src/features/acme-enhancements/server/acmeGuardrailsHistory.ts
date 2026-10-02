@@ -28,8 +28,8 @@ export const GuardrailHistoryFilterSchema = z.object({
   /** Exclusive upper bound on the decision time. */
   to: z.date().optional(),
   actions: z
-    .array(z.enum(["allow", "redact", "block"]))
-    .max(3)
+    .array(z.enum(["allow", "redact", "block", "unavailable"]))
+    .max(4)
     .optional(),
   direction: z.enum(["input", "output"]).optional(),
   /** Case-insensitive substring of the agent id. */
@@ -42,12 +42,13 @@ export const GuardrailHistoryFilterSchema = z.object({
 type GuardrailHistoryFilter = z.infer<typeof GuardrailHistoryFilterSchema>;
 
 const ACTION_TO_DB: Record<
-  "allow" | "redact" | "block",
+  "allow" | "redact" | "block" | "unavailable",
   AcmeGuardrailEventAction
 > = {
   allow: AcmeGuardrailEventAction.ALLOW,
   redact: AcmeGuardrailEventAction.REDACT,
   block: AcmeGuardrailEventAction.BLOCK,
+  unavailable: AcmeGuardrailEventAction.UNAVAILABLE,
 };
 
 const DIRECTION_TO_DB: Record<"input" | "output", AcmeGuardrailEventDirection> =

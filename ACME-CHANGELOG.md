@@ -5342,3 +5342,26 @@ Console change, with a database migration. ADR-0005-B part b, console half. **No
 - **Tests:** unit tests for the ceiling, trial expiry, the mode checks, saving a mode, keeping a trial through a policy change, the automatic switch-back (including two pulls racing), the mode history and the gateway fields; router tests for the authority, the read-only roles, the ceiling (B1), the confirmation, and what `getConfig` shows to whom.
 - **Approval:** Pending. The owner merges after the security-agent review has reported; the implementer does not approve its own change. Not a production approval.
 - **Deployment status:** not deployed.
+
+## 2026-10-02 — Console parts of the enforcement switch's phase 2 (CHG-2026-089 part b, phase 2: console)
+
+Console change, with a database migration. ADR-0005-B §3.3.1. The owner asked for the console parts of the phase 2 security fixes in a PR of their own. The gateway half is #268; the rayin-guardrails half is rayin-guardrails #24.
+- **Why:**
+  - three low security-review findings on part b phase 1 (SF-2026-023, -024 and -026) need console changes;
+  - the owner decided that every case where the judge model cannot answer is recorded as an event, in both modes, with a metric and an alert on its rate (Readiness Ledger N-64).
+- **Events with no verdict:**
+  - migration `20261002190000` adds the action value `unavailable`;
+  - the push route accepts it, and stores no content for it;
+  - the history, its filter and counts, the CSV export and the Guardrails page show it as "No verdict";
+  - the pull backfill asks rayin-guardrails for these events, and now skips any action it does not know. Before this, it stored an unknown action as a block, and so did the push ingest mapping.
+- **The alert:** for the guardrail administrators, the Enforcement card shows how many guard calls in the last 24 hours had no verdict. It raises an alert at 1% or more, with at least one case: in enforce each of those requests would be refused, and the rule is not relaxed. CAIRO has no paging or monitoring stack, so this console alert and rayin-guardrails' `/healthz` counter are the metric and the alert.
+- **The console's ceiling caps what it serves** (SF-2026-023): while `CAIRO_GUARDRAIL_MODE_MAX` is record, the pods are served record whatever is stored. The card says so and no longer claims what the gateway does.
+- **The switch-back time travels with the settings** (SF-2026-024): while a trial is served as enforce, the pull answer carries `revert_at`. Pods and gateways then end the trial on time even when pulls fail.
+- **Bounded figures** (SF-2026-026):
+  - the gateway-replica list is aggregated in the database, by pod, mode and version;
+  - that list, the evidence and the judge figure ignore events timed more than 5 minutes in the future.
+- **Rollback:** `down.sql`, `ROLLBACK.md` and an inventory note. Reversible only while no event uses `unavailable`; after that, forward-fix only. The rehearsal waits for the owner's go.
+- **Tests:** unit tests for the ceiling cap, the switch-back time, the aggregated replica list and its time bound, the evidence and judge figures and the alert threshold, the no-verdict event's storage, and the backfill's handling of known and unknown actions. Router tests cover the capped mode and the administrator-only figures.
+- **Release order (phase 3):** this console first, then rayin-guardrails, then the gateway ConfigMap. Each step needs the owner's yes.
+- **Approval:** Pending. The owner merges after the security review, run from a fresh session, has reported. There is no human reviewer; the owner accepts that with compensating controls (Readiness Ledger N-48). Not a production approval.
+- **Deployment status:** not deployed.

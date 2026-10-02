@@ -6,7 +6,13 @@ import {
   canEditGuardrailSettings,
   effectiveMode,
   ENFORCE_CONFIRMATION,
+  EVENT_FUTURE_SKEW_MS,
+  guardrailEvidence,
   GuardrailModeNotAllowedError,
+  judgeAvailability,
+  JUDGE_UNAVAILABLE_ALERT_RATE,
+  listReportingGateways,
+  servedMode,
   listModeChanges,
   modeChangesOf,
   parseModeCeiling,
@@ -234,6 +240,7 @@ describe("toSyncResponse", () => {
       jailbreak_enabled: true,
       topical_enabled: true,
       updated_at: "2026-10-01T12:00:00.000Z",
+      revert_at: null,
     });
   });
 });
@@ -545,9 +552,9 @@ describe("toSyncResponse in part b", () => {
     const revertAt = new Date(NOW.getTime() + MINUTE);
     const { db } = fakeDb([v1(), enforceRow(2, revertAt)]);
     const current = (await getCurrentSettings(db)) as GuardrailSettingsVersion;
-    expect(toSyncResponse(current, NOW).mode).toBe("enforce");
-    expect(toSyncResponse(current, revertAt).mode).toBe("record");
-    expect(toSyncResponse(current, revertAt).version).toBe(2);
+    expect(toSyncResponse(current, NOW, "enforce").mode).toBe("enforce");
+    expect(toSyncResponse(current, revertAt, "enforce").mode).toBe("record");
+    expect(toSyncResponse(current, revertAt, "enforce").version).toBe(2);
   });
 });
 
@@ -797,5 +804,217 @@ describe("guardrail events carry the gateway's report (part b)", () => {
     expect(row.gatewayPod).toBeNull();
     expect(row.gatewayMode).toBeNull();
     expect(row.gatewaySettingsVersion).toBeNull();
+  });
+});
+
+// CHG-2026-089 part b, phase 2: the console parts (owner decision 2026-10-02:
+// a separate console PR for SF-2026-023, -024 and -026, and the judge-
+// unavailable events of Readiness Ledger N-64).
+
+describe("the console's ceiling caps what it serves (SF-2026-023)", () => {
+  it("serves a stored enforce as record while the ceiling is record", async () => {
+    const revertAt = new Date(NOW.getTime() + 30 * MINUTE);
+    const { db } = fakeDb([v1(), enforceRow(2, revertAt)]);
+    const current = (await getCurrentSettings(db)) as GuardrailSettingsVersion;
+    expect(servedMode(current, NOW, "record")).toBe("record");
+    expect(servedMode(current, NOW, "enforce")).toBe("enforce");
+    const body = toSyncResponse(current, NOW, "record");
+    expect(body.mode).toBe("record");
+    expect(body.revert_at).toBeNull();
+  });
+
+  it("defaults to the record ceiling when none is passed", async () => {
+    const { db } = fakeDb([v1(), enforceRow(2, null)]);
+    const current = (await getCurrentSettings(db)) as GuardrailSettingsVersion;
+    expect(toSyncResponse(current, NOW).mode).toBe("record");
+  });
+});
+
+describe("the switch-back time travels with the settings (SF-2026-024)", () => {
+  it("is sent while a trial is served as enforce, and not after", async () => {
+    const revertAt = new Date(NOW.getTime() + 30 * MINUTE);
+    const { db } = fakeDb([v1(), enforceRow(2, revertAt)]);
+    const current = (await getCurrentSettings(db)) as GuardrailSettingsVersion;
+    expect(toSyncResponse(current, NOW, "enforce").revert_at).toBe(
+      revertAt.toISOString(),
+    );
+    const after = toSyncResponse(current, revertAt, "enforce");
+    expect(after.mode).toBe("record");
+    expect(after.revert_at).toBeNull();
+  });
+
+  it("is null for an enforce version with no switch-back", async () => {
+    const { db } = fakeDb([v1(), enforceRow(2, null)]);
+    const current = (await getCurrentSettings(db)) as GuardrailSettingsVersion;
+    const body = toSyncResponse(current, NOW, "enforce");
+    expect(body.mode).toBe("enforce");
+    expect(body.revert_at).toBeNull();
+  });
+});
+
+function eventsDb(groups: unknown[]) {
+  const groupBy = vi.fn(async (_args: unknown) => groups);
+  return { db: { acmeGuardrailEvent: { groupBy } } as never, groupBy };
+}
+
+describe("gateway replicas are aggregated in the database (SF-2026-026)", () => {
+  it("keeps each pod's latest report and orders by it", async () => {
+    const t = (min: number) => new Date(NOW.getTime() - min * MINUTE);
+    const { db, groupBy } = eventsDb([
+      {
+        gatewayPod: "gw-a",
+        gatewayMode: "record",
+        gatewaySettingsVersion: 3,
+        _max: { eventTime: t(30) },
+      },
+      {
+        gatewayPod: "gw-a",
+        gatewayMode: "enforce",
+        gatewaySettingsVersion: 4,
+        _max: { eventTime: t(5) },
+      },
+      {
+        gatewayPod: "gw-b",
+        gatewayMode: "record",
+        gatewaySettingsVersion: 4,
+        _max: { eventTime: t(10) },
+      },
+      {
+        gatewayPod: null,
+        gatewayMode: null,
+        gatewaySettingsVersion: null,
+        _max: { eventTime: t(1) },
+      },
+    ]);
+    const rows = await listReportingGateways(db, { projectId: "p", now: NOW });
+    expect(rows).toEqual([
+      { pod: "gw-a", mode: "enforce", settingsVersion: 4, lastSeenAt: t(5) },
+      { pod: "gw-b", mode: "record", settingsVersion: 4, lastSeenAt: t(10) },
+    ]);
+    const args = groupBy.mock.calls[0]![0] as {
+      by: string[];
+      where: { eventTime: { gte: Date; lte: Date } };
+    };
+    expect(args.by).toEqual([
+      "gatewayPod",
+      "gatewayMode",
+      "gatewaySettingsVersion",
+    ]);
+    expect(args.where.eventTime.lte).toEqual(
+      new Date(NOW.getTime() + EVENT_FUTURE_SKEW_MS),
+    );
+  });
+
+  it("reads an unknown mode as unknown, not as a mode", async () => {
+    const { db } = eventsDb([
+      {
+        gatewayPod: "gw-a",
+        gatewayMode: "block",
+        gatewaySettingsVersion: 1,
+        _max: { eventTime: NOW },
+      },
+    ]);
+    const [row] = await listReportingGateways(db, { projectId: "p", now: NOW });
+    expect(row?.mode).toBeNull();
+  });
+});
+
+describe("evidence and judge availability (N-64)", () => {
+  const groups = [
+    { action: "ALLOW", _count: { _all: 90 } },
+    { action: "BLOCK", _count: { _all: 5 } },
+    { action: "REDACT", _count: { _all: 3 } },
+    { action: "UNAVAILABLE", _count: { _all: 2 } },
+  ];
+
+  it("counts decisions without a verdict in the evidence", async () => {
+    const { db, groupBy } = eventsDb(groups);
+    const evidence = await guardrailEvidence(db, { projectId: "p", now: NOW });
+    expect(evidence).toMatchObject({
+      total: 100,
+      blocked: 5,
+      redacted: 3,
+      allowed: 90,
+      unavailable: 2,
+    });
+    const args = groupBy.mock.calls[0]![0] as {
+      where: { eventTime: { lte: Date } };
+    };
+    expect(args.where.eventTime.lte).toEqual(
+      new Date(NOW.getTime() + EVENT_FUTURE_SKEW_MS),
+    );
+  });
+
+  it("raises the alert at the alert rate, with at least one case", async () => {
+    const { db } = eventsDb(groups);
+    const judge = await judgeAvailability(db, { projectId: "p", now: NOW });
+    expect(judge).toMatchObject({
+      calls: 100,
+      unavailable: 2,
+      rate: 0.02,
+      alertRate: JUDGE_UNAVAILABLE_ALERT_RATE,
+      alert: true,
+      windowHours: 24,
+    });
+  });
+
+  it("stays quiet below the rate, and with no calls at all", async () => {
+    const below = eventsDb([
+      { action: "ALLOW", _count: { _all: 999 } },
+      { action: "UNAVAILABLE", _count: { _all: 1 } },
+    ]);
+    expect(
+      (await judgeAvailability(below.db, { projectId: "p", now: NOW })).alert,
+    ).toBe(false);
+    const none = eventsDb([]);
+    const judge = await judgeAvailability(none.db, {
+      projectId: "p",
+      now: NOW,
+    });
+    expect(judge).toMatchObject({ calls: 0, rate: null, alert: false });
+  });
+});
+
+describe("a pushed event with no verdict (N-64)", () => {
+  const base = {
+    eventId: "evt-nv",
+    agentId: "agent-1",
+    traceId: null,
+    userId: null,
+    clientHost: null,
+    eventTime: "2026-10-02T10:00:00.000Z",
+    direction: "input" as const,
+    action: "unavailable" as const,
+    policyTriggered: "Judge unavailable: rate limited",
+    redactedText: null,
+    piiFindings: null,
+    rawContent: null,
+  };
+
+  it("is stored as UNAVAILABLE", () => {
+    const row = buildEventRow("proj-1", base, undefined);
+    expect(row.action).toBe("UNAVAILABLE");
+    expect(row.policyTriggered).toBe("Judge unavailable: rate limited");
+  });
+
+  it("stores no content even if some is sent", () => {
+    const encrypt = vi.fn(() => "cipher");
+    const row = buildEventRow(
+      "proj-1",
+      {
+        ...base,
+        redactedText: "my email is <EMAIL>",
+        rawContent: "raw text",
+        piiFindings: [
+          { entity_type: "EMAIL_ADDRESS", start: 0, end: 1, score: 1 },
+        ],
+      },
+      "a".repeat(64),
+      encrypt,
+    );
+    expect(row.redactedText).toBeNull();
+    expect(row.rawContentEncrypted).toBeNull();
+    expect(row.piiFindings).toBeUndefined();
+    expect(encrypt).not.toHaveBeenCalled();
   });
 });

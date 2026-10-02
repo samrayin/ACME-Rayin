@@ -40,6 +40,13 @@ anything. It was rehearsed up, down and up again on 2026-10-02 (7 of 7 steps
 PASS), and its `down.sql` was shown to refuse once an enforce version exists
 (see its `ROLLBACK.md`).
 
+Added with CHG-2026-089 part b, phase 2: `20261002190000_acme_guardrail_event_unavailable` adds the value
+`unavailable` to the guardrail event action enum (a check the judge model could
+not answer, Readiness Ledger N-64). It is **reversible only while no event uses
+the value**; after that it is **forward-fix only**, because Postgres cannot drop
+an enum value in use. Its `down.sql` checks this first and stops without
+changing anything. Rehearsal pending (see its `ROLLBACK.md`).
+
 ## Reading this
 - Nothing here is *safely reversible*: every ACME migration either holds audit data or changes something Postgres cannot undo.
 - Nothing is classed *backup-and-restore* on its own, but that is the only complete answer for 3, and the fallback for all of them. It depends on a restore that has actually been rehearsed; see the dev restore rehearsal plan.

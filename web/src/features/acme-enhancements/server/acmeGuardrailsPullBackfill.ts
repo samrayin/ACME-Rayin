@@ -32,7 +32,17 @@ export type PulledGuardrailsEvent = {
   client_host?: string | null;
   direction: "input" | "output";
   policy_triggered: string | null;
-  action: "allow" | "redact" | "block";
+  action: "allow" | "redact" | "block" | "unavailable";
+};
+
+const PULLED_ACTION_TO_DB: Record<
+  string,
+  "ALLOW" | "REDACT" | "BLOCK" | "UNAVAILABLE"
+> = {
+  allow: "ALLOW",
+  redact: "REDACT",
+  block: "BLOCK",
+  unavailable: "UNAVAILABLE",
 };
 
 export function selectPullBackfillRows(
@@ -43,6 +53,10 @@ export function selectPullBackfillRows(
   return events
     .filter((event) => {
       if (!event.event_id) return false;
+      // An action this build does not know is skipped, never stored as
+      // something else (an older build stored every unknown action as a
+      // block).
+      if (!(event.action in PULLED_ACTION_TO_DB)) return false;
       const eventTime = new Date(event.time).getTime();
       if (Number.isNaN(eventTime)) return false;
       return now.getTime() - eventTime >= PULL_BACKFILL_MIN_AGE_MS;
@@ -57,12 +71,7 @@ export function selectPullBackfillRows(
       clientHost: event.client_host ?? null,
       direction: event.direction === "input" ? "INPUT" : "OUTPUT",
       policyTriggered: event.policy_triggered,
-      action:
-        event.action === "allow"
-          ? "ALLOW"
-          : event.action === "redact"
-            ? "REDACT"
-            : "BLOCK",
+      action: PULLED_ACTION_TO_DB[event.action],
       source: "PULL",
     }));
 }

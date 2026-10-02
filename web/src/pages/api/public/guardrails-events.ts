@@ -46,7 +46,9 @@ const GuardrailsEventPushBody = z.object({
   client_host: z.string().max(255).nullable().optional(),
   event_time: z.string().datetime(),
   direction: z.enum(["input", "output"]),
-  action: z.enum(["allow", "redact", "block"]),
+  // "unavailable": no verdict, the judge model could not answer (N-64).
+  // Metadata only: no content tier applies to it.
+  action: z.enum(["allow", "redact", "block", "unavailable"]),
   policy_triggered: z.string().nullable(),
   redacted_text: z.string().nullable(),
   pii_findings: z.array(PiiFindingSchema).nullable(),

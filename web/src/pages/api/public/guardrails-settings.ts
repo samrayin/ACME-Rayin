@@ -43,6 +43,7 @@ import {
   getCurrentSettings,
   GUARDRAIL_MODES,
   MAX_SETTINGS_VERSION,
+  parseModeCeiling,
   POD_NAME_PATTERN,
   recordPodSync,
   settingsForAudit,
@@ -63,6 +64,8 @@ const GuardrailsSettingsSyncResponse = z.object({
   jailbreak_enabled: z.boolean(),
   topical_enabled: z.boolean(),
   updated_at: z.string(),
+  // While a trial is served as enforce: when it switches back (SF-2026-024).
+  revert_at: z.iso.datetime().nullable(),
 });
 
 export default withMiddlewares({
@@ -130,7 +133,12 @@ export default withMiddlewares({
         );
       }
 
-      return toSyncResponse(current, now);
+      // The console's own ceiling caps what the pods are told (SF-2026-023).
+      return toSyncResponse(
+        current,
+        now,
+        parseModeCeiling(env.CAIRO_GUARDRAIL_MODE_MAX),
+      );
     },
   }),
 });

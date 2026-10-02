@@ -357,7 +357,15 @@ describe("guardrail enforcement switch (part b)", () => {
       readOnlyRole: false,
       gateways: [],
     });
-    expect(admin.enforcement.evidence).toMatchObject({ total: 0 });
+    expect(admin.enforcement.evidence).toMatchObject({
+      total: 0,
+      unavailable: 0,
+    });
+    expect(admin.enforcement.judge).toMatchObject({
+      calls: 0,
+      rate: null,
+      alert: false,
+    });
 
     const other = await callerFor(
       "OWNER",
@@ -368,6 +376,7 @@ describe("guardrail enforcement switch (part b)", () => {
       canSwitch: false,
       gateways: null,
       evidence: null,
+      judge: null,
     });
 
     const analyst = await callerFor(
@@ -379,5 +388,70 @@ describe("guardrail enforcement switch (part b)", () => {
       canSwitch: false,
       readOnlyRole: true,
     });
+  });
+});
+
+describe("the console's ceiling caps the mode it shows and serves (SF-2026-023)", () => {
+  const envRecord = env as unknown as Record<string, string | undefined>;
+  const saved = {
+    admins: envRecord.CAIRO_GUARDRAIL_ADMINS,
+    disableSignup: envRecord.AUTH_DISABLE_SIGNUP,
+  };
+
+  beforeEach(() => {
+    envRecord.CAIRO_GUARDRAIL_ADMINS = ADMIN_EMAIL;
+    envRecord.AUTH_DISABLE_SIGNUP = "true";
+  });
+
+  afterEach(() => {
+    envRecord.CAIRO_GUARDRAIL_ADMINS = saved.admins;
+    envRecord.AUTH_DISABLE_SIGNUP = saved.disableSignup;
+  });
+
+  it("shows a stored enforce as record, and says so, under a record ceiling", async () => {
+    const original = envRecord.CAIRO_GUARDRAIL_MODE_MAX;
+    const stored = {
+      id: "v2",
+      version: 2,
+      mode: "enforce",
+      revertAt: null,
+      automatic: false,
+      piiEntities: ["EMAIL_ADDRESS"],
+      jailbreakEnabled: true,
+      topicalEnabled: true,
+      reason: "A trial reason that is long enough",
+      createdBy: "user-1",
+      createdByEmail: ADMIN_EMAIL,
+      createdAt: new Date("2026-10-02T10:00:00.000Z"),
+    };
+    const db = {
+      ...readOnlyPrisma,
+      acmeGuardrailSettings: {
+        findFirst: async () => stored,
+        findMany: async () => [stored],
+      },
+    };
+    try {
+      envRecord.CAIRO_GUARDRAIL_MODE_MAX = "record";
+      const capped = await callerFor("ADMIN", ADMIN_EMAIL, db).getConfig({
+        projectId: PROJECT,
+      });
+      expect(capped.enforcement).toMatchObject({
+        storedMode: "enforce",
+        effectiveMode: "record",
+        cappedByCeiling: true,
+      });
+
+      envRecord.CAIRO_GUARDRAIL_MODE_MAX = "enforce";
+      const allowed = await callerFor("ADMIN", ADMIN_EMAIL, db).getConfig({
+        projectId: PROJECT,
+      });
+      expect(allowed.enforcement).toMatchObject({
+        effectiveMode: "enforce",
+        cappedByCeiling: false,
+      });
+    } finally {
+      envRecord.CAIRO_GUARDRAIL_MODE_MAX = original;
+    }
   });
 });

@@ -370,21 +370,45 @@ export function settingsForAudit(s: GuardrailSettingsVersion) {
 }
 
 /**
- * The body a rayin-guardrails pod receives on a pull. The mode is the
- * effective one, so an expired trial is served as record even before its
- * automatic version is written.
+ * The mode CAIRO serves for a version: its effective mode, capped by this
+ * console's own ceiling. A stored enforce version is served as record while
+ * the ceiling is record (security review SF-2026-023), so lowering the
+ * ceiling during a trial takes effect at the next pull, whatever is stored.
+ */
+export function servedMode(
+  v: Pick<GuardrailSettingsVersion, "mode" | "revertAt">,
+  now: Date,
+  ceiling: GuardrailMode,
+): GuardrailMode {
+  return ceiling === "enforce" ? effectiveMode(v, now) : "record";
+}
+
+/**
+ * The body a rayin-guardrails pod receives on a pull.
+ * - The mode is the served one: an expired trial reads as record even before
+ *   its automatic version is written, and the ceiling caps it.
+ * - While a trial is served as enforce, its switch-back time comes too, so
+ *   the pods and gateways end it on time even if later pulls fail
+ *   (SF-2026-024).
+ * - The ceiling defaults to record, so a caller that forgets it errs safe.
  */
 export function toSyncResponse(
   current: GuardrailSettingsVersion,
   now: Date = new Date(),
+  ceiling: GuardrailMode = "record",
 ) {
+  const mode = servedMode(current, now, ceiling);
   return {
     version: current.version,
-    mode: effectiveMode(current, now),
+    mode,
     pii_entities: [...current.piiEntities],
     jailbreak_enabled: current.jailbreakEnabled,
     topical_enabled: current.topicalEnabled,
     updated_at: current.createdAt.toISOString(),
+    revert_at:
+      mode === "enforce" && current.revertAt
+        ? current.revertAt.toISOString()
+        : null,
   };
 }
 
@@ -685,10 +709,30 @@ export async function listReportingPods(
 type EventsDb = Pick<PrismaClient, "acmeGuardrailEvent">;
 
 /**
+ * How far ahead of the console's clock a stored event time may be and still
+ * count. Event times are pushed by rayin-guardrails, so a far-future time
+ * could otherwise pin a replica's mode or skew the figures (SF-2026-026).
+ */
+export const EVENT_FUTURE_SKEW_MS = 5 * 60_000;
+
+/** The event-time window [since, now + skew] the console's figures read. */
+function eventTimeWindow(now: Date, since: Date) {
+  return { gte: since, lte: new Date(now.getTime() + EVENT_FUTURE_SKEW_MS) };
+}
+
+/** Distinct (pod, mode, version) combinations aggregated at most per call. */
+const MAX_GATEWAY_REPORT_GROUPS = 500;
+
+/**
  * Gateway replicas seen in guardrail events within the report window, newest
  * report first, one row each (ADR-0005-B §3.4, build decision C1). A replica
  * reports only when a request passes through it, so this is "last seen", not
  * a live heartbeat.
+ *
+ * Aggregated in the database by (pod, mode, version) with each group's latest
+ * time, then reduced to one row per pod here, so a poll reads a handful of
+ * groups instead of a day of events (SF-2026-026). Events timed in the future
+ * beyond the skew allowance are ignored.
  */
 export async function listReportingGateways(
   db: EventsDb,
@@ -698,31 +742,50 @@ export async function listReportingGateways(
   const since = new Date(
     now.getTime() - GATEWAY_REPORT_WINDOW_HOURS * 3600 * 1000,
   );
-  const rows = await db.acmeGuardrailEvent.findMany({
+  const groups = await db.acmeGuardrailEvent.groupBy({
+    by: ["gatewayPod", "gatewayMode", "gatewaySettingsVersion"],
     where: {
       projectId: input.projectId,
-      eventTime: { gte: since },
+      eventTime: eventTimeWindow(now, since),
       gatewayPod: { not: null },
     },
-    orderBy: { eventTime: "desc" },
-    distinct: ["gatewayPod"],
-    take: MAX_LISTED_PODS,
-    select: {
-      gatewayPod: true,
-      gatewayMode: true,
-      gatewaySettingsVersion: true,
-      eventTime: true,
-    },
+    _max: { eventTime: true },
+    orderBy: { _max: { eventTime: "desc" } },
+    take: MAX_GATEWAY_REPORT_GROUPS,
   });
-  return rows.map((r) => ({
-    pod: r.gatewayPod as string,
-    mode:
-      r.gatewayMode === "enforce" || r.gatewayMode === "record"
-        ? (r.gatewayMode as GuardrailMode)
-        : null,
-    settingsVersion: r.gatewaySettingsVersion,
-    lastSeenAt: r.eventTime,
-  }));
+  const latest = new Map<
+    string,
+    {
+      mode: string | null;
+      settingsVersion: number | null;
+      lastSeenAt: Date;
+    }
+  >();
+  for (const g of groups) {
+    const pod = g.gatewayPod;
+    const seen = g._max?.eventTime ?? null;
+    if (!pod || !seen) continue;
+    const known = latest.get(pod);
+    if (!known || seen.getTime() > known.lastSeenAt.getTime()) {
+      latest.set(pod, {
+        mode: g.gatewayMode,
+        settingsVersion: g.gatewaySettingsVersion,
+        lastSeenAt: seen,
+      });
+    }
+  }
+  return [...latest.entries()]
+    .sort((a, b) => b[1].lastSeenAt.getTime() - a[1].lastSeenAt.getTime())
+    .slice(0, MAX_LISTED_PODS)
+    .map(([pod, r]) => ({
+      pod,
+      mode:
+        r.mode === "enforce" || r.mode === "record"
+          ? (r.mode as GuardrailMode)
+          : null,
+      settingsVersion: r.settingsVersion,
+      lastSeenAt: r.lastSeenAt,
+    }));
 }
 
 /**
@@ -738,18 +801,76 @@ export async function guardrailEvidence(
 ) {
   const now = input.now ?? new Date();
   const since = new Date(now.getTime() - EVIDENCE_WINDOW_DAYS * 86_400_000);
+  const counts = await countByAction(db, input.projectId, now, since);
+  return { since, windowDays: EVIDENCE_WINDOW_DAYS, ...counts };
+}
+
+async function countByAction(
+  db: EventsDb,
+  projectId: string,
+  now: Date,
+  since: Date,
+) {
   const groups = await db.acmeGuardrailEvent.groupBy({
     by: ["action"],
-    where: { projectId: input.projectId, eventTime: { gte: since } },
+    where: { projectId, eventTime: eventTimeWindow(now, since) },
     _count: { _all: true },
   });
-  const counts = { total: 0, blocked: 0, redacted: 0, allowed: 0 };
+  const counts = {
+    total: 0,
+    blocked: 0,
+    redacted: 0,
+    allowed: 0,
+    unavailable: 0,
+  };
   for (const g of groups) {
     const n = g._count._all;
     counts.total += n;
     if (g.action === "BLOCK") counts.blocked += n;
     if (g.action === "REDACT") counts.redacted += n;
     if (g.action === "ALLOW") counts.allowed += n;
+    if (g.action === "UNAVAILABLE") counts.unavailable += n;
   }
-  return { since, windowDays: EVIDENCE_WINDOW_DAYS, ...counts };
+  return counts;
+}
+
+/** The window the judge-availability figure and its alert cover. */
+export const JUDGE_REPORT_WINDOW_HOURS = 24;
+
+/**
+ * The share of guard calls without a verdict at which the console raises its
+ * alert (owner decision 2026-10-02: a metric and an alert on the
+ * judge-unavailable rate). At or above it, and with at least one case, the
+ * Enforcement card shows the alert to the guardrail administrators.
+ */
+export const JUDGE_UNAVAILABLE_ALERT_RATE = 0.01;
+
+/**
+ * How often the judge model could not answer, among the guard calls stored in
+ * the last JUDGE_REPORT_WINDOW_HOURS (Readiness Ledger N-64). Each stored
+ * event is one guard call; an `unavailable` event is one with no verdict.
+ * Under enforce, each of those requests is refused.
+ */
+export async function judgeAvailability(
+  db: EventsDb,
+  input: { projectId: string; now?: Date },
+) {
+  const now = input.now ?? new Date();
+  const since = new Date(
+    now.getTime() - JUDGE_REPORT_WINDOW_HOURS * 3600 * 1000,
+  );
+  const counts = await countByAction(db, input.projectId, now, since);
+  const rate = counts.total > 0 ? counts.unavailable / counts.total : null;
+  return {
+    since,
+    windowHours: JUDGE_REPORT_WINDOW_HOURS,
+    calls: counts.total,
+    unavailable: counts.unavailable,
+    rate,
+    alertRate: JUDGE_UNAVAILABLE_ALERT_RATE,
+    alert:
+      counts.unavailable > 0 &&
+      rate !== null &&
+      rate >= JUDGE_UNAVAILABLE_ALERT_RATE,
+  };
 }

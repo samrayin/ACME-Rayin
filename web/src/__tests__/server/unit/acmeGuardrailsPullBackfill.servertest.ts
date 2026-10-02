@@ -84,3 +84,29 @@ describe("selectPullBackfillRows", () => {
     expect(row?.clientHost).toBeNull();
   });
 });
+
+describe("selectPullBackfillRows and actions (CHG-2026-089 part b, phase 2)", () => {
+  it("stores a buffered no-verdict event as UNAVAILABLE", () => {
+    const [row] = selectPullBackfillRows(
+      [
+        {
+          ...BASE,
+          action: "unavailable",
+          policy_triggered: "Judge unavailable: error",
+        },
+      ],
+      "proj-1",
+      NOW,
+    );
+    expect(row?.action).toBe("UNAVAILABLE");
+  });
+
+  it("skips an action this build does not know, never storing it as a block", () => {
+    const rows = selectPullBackfillRows(
+      [{ ...BASE, action: "quarantine" as unknown as "block" }],
+      "proj-1",
+      NOW,
+    );
+    expect(rows).toEqual([]);
+  });
+});
