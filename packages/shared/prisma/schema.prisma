@@ -956,6 +956,9 @@ enum AcmeGuardrailEventAction {
   ALLOW  @map("allow")
   REDACT @map("redact")
   BLOCK  @map("block")
+  // CHG-2026-089 part b, phase 2 (Readiness Ledger N-64): the judge model
+  // could not answer, so no verdict exists. Recorded in every mode.
+  UNAVAILABLE @map("unavailable")
 }
 
 // Which capture path wrote an AcmeGuardrailEvent row -- see the model.
@@ -1026,6 +1029,14 @@ model AcmeGuardrailEvent {
   settingsVersion Int?    @map("settings_version")
   pod             String? @map("pod")
 
+  // ADR-0005-B part b: what the gateway replica that sent the request
+  // reported about itself (its pod, its effective mode, the newest settings
+  // version it had seen), passed through by rayin-guardrails. Null when the
+  // caller did not report, or the event predates these columns.
+  gatewayPod             String? @map("gateway_pod")
+  gatewayMode            String? @map("gateway_mode")
+  gatewaySettingsVersion Int?    @map("gateway_settings_version")
+
   // Dedup key: pre-dates eventId (rayin-guardrails' ring buffer originally
   // had no event id of its own). Kept in place until the eventId backfill
   // is complete and every consumer emits it, then dropped in a follow-up
@@ -1045,20 +1056,26 @@ model AcmeGuardrailEvent {
 model AcmeGuardrailSettings {
   id               String   @id @default(cuid())
   version          Int      @unique(map: "acme_guardrail_settings_version_key")
-  // Part a: always "record" (a CHECK constraint holds it there). Part b
-  // (the enforcement switch) widens it.
-  mode             String   @default("record")
-  piiEntities      String[] @map("pii_entities")
-  jailbreakEnabled Boolean  @map("jailbreak_enabled")
-  topicalEnabled   Boolean  @map("topical_enabled")
+  // "record" or "enforce" (a CHECK constraint holds it there). Enforce takes
+  // effect only where the deployment ceiling allows it (ADR-0005-B part b).
+  mode             String    @default("record")
+  piiEntities      String[]  @map("pii_entities")
+  jailbreakEnabled Boolean   @map("jailbreak_enabled")
+  topicalEnabled   Boolean   @map("topical_enabled")
   reason           String
-  // A user id, or "migration" for the seeded first version.
-  createdBy        String   @map("created_by")
-  createdByEmail   String?  @map("created_by_email")
+  // A user id, "migration" for the seeded first version, or "automatic" for
+  // a version written by the automatic switch-back.
+  createdBy        String    @map("created_by")
+  createdByEmail   String?   @map("created_by_email")
   // The project page the change was made from: context only, the settings
   // themselves apply to the whole deployment.
-  projectId        String?  @map("project_id")
-  createdAt        DateTime @default(now()) @map("created_at")
+  projectId        String?   @map("project_id")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  // Enforce versions only: from this time the version reads as record, and
+  // the next pull writes an automatic switch-back version.
+  revertAt         DateTime? @map("revert_at")
+  // True for a version written by the automatic switch-back.
+  automatic        Boolean   @default(false)
 
   @@map("acme_guardrail_settings")
 }

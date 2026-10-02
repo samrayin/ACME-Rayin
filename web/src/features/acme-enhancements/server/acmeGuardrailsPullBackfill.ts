@@ -19,9 +19,46 @@
  *    (rayin_push.py: 3 attempts x 5 s timeout, plus 0.5 s and 2 s backoff,
  *    ~17.5 s worst case), so by then pull is only ever filling a real gap.
  */
+import { z } from "zod";
 import { type Prisma } from "@langfuse/shared/src/db";
 
 export const PULL_BACKFILL_MIN_AGE_MS = 60_000;
+
+// event_id, user_id and client_host are optional: older rayin-guardrails
+// builds don't include them in the buffer. Kept (not stripped) so pull rows
+// dedupe against push rows on event_id.
+const PulledGuardrailsEventSchema = z.object({
+  event_id: z.string().nullish(),
+  user_id: z.string().nullish(),
+  client_host: z.string().nullish(),
+  time: z.string(),
+  agent_id: z.string(),
+  trace_id: z.string().nullable(),
+  direction: z.enum(["input", "output"]),
+  policy_triggered: z.string().nullable(),
+  action: z.enum(["allow", "redact", "block", "unavailable"]),
+});
+
+/**
+ * The buffer's events, each checked on its own (security review P2-269-1):
+ * one event this build cannot read (an unknown action from a newer
+ * rayin-guardrails, say) is dropped and counted, and never stops the others
+ * from being backfilled.
+ */
+export function parseBufferedEvents(raw: unknown): {
+  events: PulledGuardrailsEvent[];
+  dropped: number;
+} {
+  const list = Array.isArray(raw) ? raw : [];
+  const events: PulledGuardrailsEvent[] = [];
+  let dropped = 0;
+  for (const item of list) {
+    const parsed = PulledGuardrailsEventSchema.safeParse(item);
+    if (parsed.success) events.push(parsed.data);
+    else dropped += 1;
+  }
+  return { events, dropped };
+}
 
 export type PulledGuardrailsEvent = {
   event_id?: string | null;
@@ -32,7 +69,17 @@ export type PulledGuardrailsEvent = {
   client_host?: string | null;
   direction: "input" | "output";
   policy_triggered: string | null;
-  action: "allow" | "redact" | "block";
+  action: "allow" | "redact" | "block" | "unavailable";
+};
+
+const PULLED_ACTION_TO_DB: Record<
+  string,
+  "ALLOW" | "REDACT" | "BLOCK" | "UNAVAILABLE"
+> = {
+  allow: "ALLOW",
+  redact: "REDACT",
+  block: "BLOCK",
+  unavailable: "UNAVAILABLE",
 };
 
 export function selectPullBackfillRows(
@@ -43,6 +90,10 @@ export function selectPullBackfillRows(
   return events
     .filter((event) => {
       if (!event.event_id) return false;
+      // An action this build does not know is skipped, never stored as
+      // something else (an older build stored every unknown action as a
+      // block).
+      if (!Object.hasOwn(PULLED_ACTION_TO_DB, event.action)) return false;
       const eventTime = new Date(event.time).getTime();
       if (Number.isNaN(eventTime)) return false;
       return now.getTime() - eventTime >= PULL_BACKFILL_MIN_AGE_MS;
@@ -57,12 +108,7 @@ export function selectPullBackfillRows(
       clientHost: event.client_host ?? null,
       direction: event.direction === "input" ? "INPUT" : "OUTPUT",
       policyTriggered: event.policy_triggered,
-      action:
-        event.action === "allow"
-          ? "ALLOW"
-          : event.action === "redact"
-            ? "REDACT"
-            : "BLOCK",
+      action: PULLED_ACTION_TO_DB[event.action],
       source: "PULL",
     }));
 }

@@ -33,6 +33,9 @@ const SECURITY_ROLE_ALLOWED_PROCEDURES: ReadonlySet<string> = new Set([
   "acmeGuardrails.eventHistory",
   "acmeGuardrails.eventDetail",
   "acmeGuardrails.getConfig",
+  // ADR-0005-B part b: the mode changes listed beside the event history.
+  // Read-only; setMode, the switch itself, is not here, so it stays blocked.
+  "acmeGuardrails.modeChanges",
   // Project audit log.
   "acmeAuditLogs.all",
   // Append-only record of LiteLLM gateway management actions (ADR-0003).

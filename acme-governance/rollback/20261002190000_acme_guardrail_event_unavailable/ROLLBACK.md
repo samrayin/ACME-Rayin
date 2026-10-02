@@ -1,0 +1,60 @@
+# Rollback plan — 20261002190000_acme_guardrail_event_unavailable
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-089 (part b, phase 2, console) |
+| **ADR** | [ADR-0005-B](../../adr/ADR-0005-B-console-enforcement-switch.md) §3.3.1 |
+| **Forward migration** | `packages/shared/prisma/migrations/20261002190000_acme_guardrail_event_unavailable/migration.sql` |
+| **Rollback script** | `./down.sql` |
+| **Test status** | **Rehearsed locally on 2026-10-02** on a throwaway Postgres 16.4 (portable binaries, scratch data directory, removed afterwards; nothing on the cluster): up, down and up again, 7 of 7 steps PASS, plus the extra checks below. **The cluster rehearsal on Postgres 15** (`acme-governance/scripts/rehearsal-db.sh`) waits for the owner's decision. |
+| **Reversible** | **Only while no event uses the value `unavailable`.** Postgres cannot drop one enum value, so `down.sql` rebuilds the type without it, and that fails once a row uses it. `down.sql` checks first and stops without changing anything. After that point, roll back the code and keep the value. |
+| **Data lost on rollback** | None: `down.sql` runs only while no row uses the value. |
+
+## When to roll back
+- **A defect in the released image:** steps 1 and 2. The extra enum value is harmless to the previous image as long as no row uses it.
+- **The value itself must go, and no event uses it:** step 3. The owner decides.
+
+## Order of operations
+1. **Stop the events that use it.** Roll back rayin-guardrails to the release before CHG-2026-089 part b phase 2, if it was released: that build records no `unavailable` events.
+2. **Redeploy the previous console image** with `scripts/release/release.sh`.
+   - The previous image's history and export map every stored action through a fixed list.
+   - **A row with `unavailable` would break those pages** in the previous image. So if any such row exists, do not redeploy the previous image: forward-fix instead.
+3. **Only if the value must also go, and no event uses it:** run `down.sql` with `psql -v ON_ERROR_STOP=1 -f down.sql` or `prisma db execute --file down.sql`.
+   - **Who runs it:** the role that owns the type and the table (the admin login), because the rebuilt type is owned by whoever runs the script.
+   - **What it does:** the script is one transaction. It locks `acme_guardrail_events` first and rewrites the table.
+   - **While it runs:**
+     - event pushes wait on the lock; past rayin-guardrails' client timeout (3 attempts of 5 s) they give up and stay in its buffer, and a waiting insert may still commit once the lock is released (the unique `event_id` index prevents duplicates);
+     - reads of the event history wait too;
+     - buffered events are backfilled only when someone next opens the event history or the recent-events view.
+4. Verify (below).
+
+## Verification after rollback
+- [ ] `npx prisma migrate status` lists this migration as not applied, with no drift
+- [ ] `enum_range(NULL::"AcmeGuardrailEventAction")` is `{allow,redact,block}`
+- [ ] `acme_guardrail_events` row count is unchanged
+- [ ] the application starts on the previous image, and the smoke test passes
+
+## Rehearsal log
+`Staging: not available; isolated migration and rollback rehearsal performed.`
+
+**Local rehearsal, 2026-10-02.** Postgres 16.4 from portable binaries; the same shape as the cluster script: a non-superuser admin login `postgres` that owns database `langfuse`, the full migration chain applied with `prisma migrate deploy`. Run with the `down.sql` that locks the table first.
+
+| Step | Command | Result | Started (UTC) |
+|---|---|---|---|
+| Up | `prisma migrate deploy` (empty database, all migrations) | PASS | 2026-10-02T15:49:23Z |
+| Up check | migration row present; enum = allow, redact, block, unavailable | PASS | 2026-10-02T15:49:41Z |
+| Down | `prisma db execute --file …/down.sql` | PASS | 2026-10-02T15:49:41Z |
+| Down check | migration row removed; enum = allow, redact, block | PASS | 2026-10-02T15:49:44Z |
+| Status after down | `prisma migrate status` lists it as pending again | PASS | 2026-10-02T15:49:44Z |
+| Up again | `prisma migrate deploy` | PASS | 2026-10-02T15:49:48Z |
+| Status after up again | "Database schema is up to date" | PASS | 2026-10-02T15:49:51Z |
+
+**Extra checks** (after "Up again"):
+
+| Check | Result |
+|---|---|
+| The runtime role `rayin_app_runtime` can insert an event with action `unavailable` (in a rolled-back transaction) | PASS |
+| **Down guard, plain `psql -f`** (no `ON_ERROR_STOP`), with an `unavailable` event stored: refused at the first check, every later statement ignored in the aborted transaction; the migration row, the enum value and the event are all still there | PASS |
+| **Down guard, `prisma db execute`**, same state: refused, nothing changed | PASS |
+
+**Still to run on the cluster's Postgres 15,** if the owner wants it: the same steps with `acme-governance/scripts/rehearsal-db.sh rehearse 20261002190000_acme_guardrail_event_unavailable`.

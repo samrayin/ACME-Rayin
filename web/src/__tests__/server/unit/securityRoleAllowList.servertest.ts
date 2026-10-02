@@ -31,6 +31,7 @@ const ALLOWED_PROCEDURES = [
   "acmeGuardrails.eventHistory",
   "acmeGuardrails.eventDetail",
   "acmeGuardrails.getConfig",
+  "acmeGuardrails.modeChanges",
   "acmeAuditLogs.all",
   "acmeTheme.get",
 ];
@@ -62,6 +63,17 @@ describe("Security Analyst allow-list", () => {
         procedurePath: "acmeGuardrails.updateConfig",
       }),
     ).toThrow();
+  });
+
+  it("blocks switching the guardrail mode (ADR-0005-B part b)", () => {
+    for (const role of [Role.SECURITY, Role.AUDITOR]) {
+      expect(() =>
+        throwIfSecurityRoleBlocked({
+          projectRole: role,
+          procedurePath: "acmeGuardrails.setMode",
+        }),
+      ).toThrow();
+    }
   });
 
   it("blocks exporting the guardrail history (a mutation: it writes the audit log)", () => {

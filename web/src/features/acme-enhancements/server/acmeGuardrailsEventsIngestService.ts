@@ -58,9 +58,14 @@ export type GuardrailsEventPushInput = {
   // the pod's name. Optional so existing callers and tests are unaffected.
   settingsVersion?: number | null;
   pod?: string | null;
+  // ADR-0005-B part b: the reporting gateway replica's own state, passed
+  // through by rayin-guardrails. Optional, like the two fields above.
+  gatewayPod?: string | null;
+  gatewayMode?: "record" | "enforce" | null;
+  gatewaySettingsVersion?: number | null;
   eventTime: string;
   direction: "input" | "output";
-  action: "allow" | "redact" | "block";
+  action: "allow" | "redact" | "block" | "unavailable";
   policyTriggered: string | null;
   redactedText: string | null;
   piiFindings: Array<{
@@ -71,6 +76,18 @@ export type GuardrailsEventPushInput = {
   }> | null;
   rawContent: string | null;
 };
+
+// Explicit, so an action this build does not know is a type error here
+// rather than silently stored as a block.
+const PUSHED_ACTION_TO_DB = {
+  allow: "ALLOW",
+  redact: "REDACT",
+  block: "BLOCK",
+  unavailable: "UNAVAILABLE",
+} as const satisfies Record<
+  GuardrailsEventPushInput["action"],
+  "ALLOW" | "REDACT" | "BLOCK" | "UNAVAILABLE"
+>;
 
 /**
  * Pure transformation: tiered content by action (framework doc §1.1),
@@ -110,16 +127,14 @@ export function buildEventRow(
     clientHost: input.clientHost,
     settingsVersion: input.settingsVersion ?? null,
     pod: input.pod ?? null,
+    gatewayPod: input.gatewayPod ?? null,
+    gatewayMode: input.gatewayMode ?? null,
+    gatewaySettingsVersion: input.gatewaySettingsVersion ?? null,
     source: "PUSH",
     eventTime: new Date(input.eventTime),
     direction: input.direction === "input" ? "INPUT" : "OUTPUT",
     policyTriggered: input.policyTriggered,
-    action:
-      input.action === "allow"
-        ? "ALLOW"
-        : input.action === "redact"
-          ? "REDACT"
-          : "BLOCK",
+    action: PUSHED_ACTION_TO_DB[input.action],
     redactedText: input.action === "redact" ? input.redactedText : null,
     piiFindings:
       input.action === "redact" && input.piiFindings

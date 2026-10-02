@@ -5286,8 +5286,10 @@ Tier 1 (authorisation shown in the console). Console only, no schema change. Und
   - a listed Admin gets `canEdit` true from `getConfig`, and an Owner not on the list gets false;
   - a listed Security Analyst gets `canEdit` false and `readOnlyRole` true from `getConfig`, and FORBIDDEN from `updateConfig` before the database is touched.
 - **Rollback:** revert the commit and redeploy the previous console image.
-- **Approval:** Pending. The owner merges after the security-agent review has reported; the implementer does not approve its own change. Not a production approval.
-- **Deployment status:** not deployed.
+- **Approval:** the owner merged #259 and the follow-up tests #260 on 2026-10-02. Human approval by merge; delegated auto-approval was not used. Not a production approval.
+  - Before each merge the security agent reviewed the change and reported no Critical or High finding. The session that wrote the change launched that agent, so it was not a fully independent review.
+  - The author and the merger are the same GitHub account, so GitHub holds no formal review (Readiness Ledger N-47).
+- **Deployment status:** live in dev as console `acme-v4.38.0.30` (commit `33cf774d9`), released 2026-10-02 with the owner's approval; `verify-deployed.sh` TRACED, health 200, no migration. The read-only view for a listed Security Analyst or Auditor has not been checked live yet; router tests only.
 
 ## 2026-10-02 — Two more router tests for the Policies card (CHG-2026-091, follow-up)
 
@@ -5297,3 +5299,105 @@ Test only, no product code. The pre-merge review of #259 named two cases without
 - an instance admin whose project role is Security Analyst, and who is listed, gets `canEdit` true from `getConfig`, and `updateConfig` lets the call through to the save. Instance admins skip the content-free allow-lists, so the card and the server agree.
 
 Rollback: revert the commit.
+
+## 2026-10-02 — Continuous Assurance card hidden (CHG-2026-082)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-082 · Tier 2 (removes one card; no procedure, scope or data change) · owner: Anees Ur Rahman |
+| **Dates** | Written 2026-09-27, rebased on main 2026-10-02, merged 2026-10-02 (#264). Dev: `acme-v4.38.0.30`, 2026-10-02 · Prod: none exists |
+| **Impact** | The Guardrails page no longer shows the Continuous Assurance card |
+| **Rollback** | Set `SHOW_CONTINUOUS_ASSURANCE` back to `true` and redeploy, or redeploy the previous console image. No data change |
+
+**Why:** the card says the jailbreak rail's promptfoo red-team suite is "checked on a schedule", but nothing runs promptfoo on a schedule. The two runs so far (2026-09-20 and -21) were manual, used the benign corpus with score export switched off on purpose, and wrote their results inside a pod that was then deleted. No `promptfoo-pass` score has ever reached CAIRO, so the card could only show "Loading…" or an empty state. A card that promises a measurement nobody makes is worse than no card (owner request 2026-09-27).
+
+**What:** `AcmeGuardrailsTable.tsx` gains a `SHOW_CONTINUOUS_ASSURANCE` constant, set to `false`, that gates the card. The card's code and its queries are kept, and they no longer run while it is hidden. It returns by setting the constant to `true` once a scheduled run pushes its scores to the project.
+
+**Deployment status:** live in dev as console `acme-v4.38.0.30` (commit `33cf774d9`), released 2026-10-02 with the owner's approval; `verify-deployed.sh` TRACED, health 200, no migration.
+
+## 2026-10-02 — The guardrail enforcement switch in the console (CHG-2026-089 part b, phase 1)
+
+Console change, with a database migration. ADR-0005-B part b, console half. **Nothing changes in the gateway, and nothing can be enforced yet:** the gateway hook that reads the mode from each verdict is phase 2, and the deployment ceiling stays `record` until a supervised trial (owner decision D-B3).
+- **Why:** the owner asked for a switch inside CAIRO between record and block, with the same controls as the policy (audited, durable, applied everywhere) plus a deployment ceiling and an automatic switch-back.
+- **Settings store:**
+  - a version's mode may now be `record` or `enforce`;
+  - an enforce version can carry a switch-back time (`revert_at`), and a version written by the switch-back is marked `automatic`;
+  - guardrail events gain three optional fields the gateway will report through rayin-guardrails: its pod, its effective mode, and the newest settings version it has seen.
+- **The switch** (`setMode`):
+  - **Who:** the same named administrators as the policy (D-B1), from a role that is not read-only. The Security Analyst and Auditor are refused by their allow-lists.
+  - **Enforce needs:**
+    - the deployment ceiling, `CAIRO_GUARDRAIL_MODE_MAX`, to be `enforce` (unset means record);
+    - the typed confirmation `ENFORCE`;
+    - a reason.
+  - **Switch-back:** by default after 30 minutes (D-B2); 5, 15, 60, 120 minutes or none can be chosen.
+  - **Switching back to record** is always allowed to the administrators.
+  - **Records:** each change is a new version with the policy unchanged, audited before and after in the same transaction.
+- **Automatic switch-back:** from its time, an enforce trial reads as record wherever it is read, including the pods' pull. The next pull writes the audited automatic version, in the name of the pull's API key.
+- **Enforcement card** on the Guardrails page:
+  - the mode in force, the ceiling, any pending switch-back and the last change;
+  - the guardrails pods' version;
+  - **administrators only:** the gateway replicas' last reported mode, and the evidence: the share of stored decisions over 7 days that enforce would have refused or redacted. Availability and added latency are not stored in CAIRO yet, and the card says so.
+- **Event history:** the mode changes of the period shown are listed beside the decisions. They are read from the settings history; no event row is added.
+- **Rollback:** `down.sql`, `ROLLBACK.md` and an inventory note. Reversible only while no enforce or automatic version is stored: the table is append-only, so `down.sql` checks first and stops, inside one transaction so that nothing changes under any runner. Rehearsed on a throwaway database on 2026-10-02 (owner: "go rehearsal"): up, down and up again, 7 of 7 PASS, and `down.sql` refused once an enforce version existed.
+- **Tests:** unit tests for the ceiling, trial expiry, the mode checks, saving a mode, keeping a trial through a policy change, the automatic switch-back (including two pulls racing), the mode history and the gateway fields; router tests for the authority, the read-only roles, the ceiling (B1), the confirmation, and what `getConfig` shows to whom.
+- **Approval:** Pending. The owner merges after the security-agent review has reported; the implementer does not approve its own change. Not a production approval.
+- **Deployment status:** not deployed.
+
+## 2026-10-02 — Console parts of the enforcement switch's phase 2 (CHG-2026-089 part b, phase 2: console)
+
+Console change, with a database migration. ADR-0005-B §3.3.1. The owner asked for the console parts of the phase 2 security fixes in a PR of their own. The gateway half is #268; the rayin-guardrails half is rayin-guardrails #24.
+- **Why:**
+  - three low security-review findings on part b phase 1 (SF-2026-023, -024 and -026) need console changes;
+  - the owner decided that every case where the judge model cannot answer is recorded as an event, in both modes, with a metric and an alert on its rate (Readiness Ledger N-64).
+- **Events with no verdict:**
+  - migration `20261002190000` adds the action value `unavailable`;
+  - the push route accepts it, and stores no content for it;
+  - the history, its filter and counts, the CSV export and the Guardrails page show it as "No verdict";
+  - the pull backfill asks rayin-guardrails for these events, and now skips any action it does not know. Before this, it stored an unknown action as a block, and so did the push ingest mapping.
+- **The alert:** for the guardrail administrators, the Enforcement card shows the share of stored guard events in the last 24 hours that had no verdict. It raises an alert at 1% or more, with at least one case: in enforce each of those requests would be refused, and the rule is not relaxed. The card says the share counts every stored event, so the judge's own rate, on each guardrails pod's health endpoint, is higher. Alerting: see Readiness Ledger N-64.
+- **The console's ceiling caps what it serves** (SF-2026-023): while `CAIRO_GUARDRAIL_MODE_MAX` is record, the pods are served record whatever is stored. The card says so and no longer claims what the gateway does.
+- **The switch-back time travels with the settings** (SF-2026-024): while a trial is served as enforce, the pull answer carries `revert_at`. Pods and gateways then end the trial on time even when pulls fail.
+- **Bounded figures** (SF-2026-026):
+  - the gateway-replica list is aggregated in the database, by pod, mode and version;
+  - that list, the evidence and the judge figure ignore events timed more than 5 minutes in the future.
+- **Rollback:** `down.sql`, `ROLLBACK.md` and an inventory note. Reversible only while no event uses `unavailable`; after that, forward-fix only. The rehearsal waits for the owner's go.
+- **Tests:** unit tests for the ceiling cap, the switch-back time, the aggregated replica list and its time bound, the evidence and judge figures and the alert threshold, the no-verdict event's storage, and the backfill's handling of known and unknown actions. Router tests cover the capped mode and the administrator-only figures.
+- **Release order (phase 3):** this console first, then rayin-guardrails, then the gateway ConfigMap. Each step needs the owner's yes.
+- **After the security review** (a fresh session, 2026-10-02; P2-269-1 to P2-269-7, all low or informational):
+  - the buffer's events are parsed one by one, so an unknown one is skipped, not every one;
+  - an enforce version the console's ceiling does not allow is written down as an automatic record version, so raising the ceiling never resumes enforce silently;
+  - the judge figure and the gateway replicas are labelled for what they are;
+  - the recent-events summary counts no-verdict events;
+  - `down.sql` locks the table before its check.
+- **Approval:** Pending. The owner merges after the fresh-session security review and its re-check have reported, under the review controls recorded in Readiness Ledger N-48. Not a production approval.
+- **Deployment status:** not deployed.
+
+## 2026-10-02 — The gateway takes the guardrail mode from CAIRO, within a ceiling (CHG-2026-089 part b, phase 2: gateway)
+
+Gateway hook and configuration comment; no console code and no migration. ADR-0005-B §3.3 and the new §3.3.1. The rayin-guardrails half is rayin-guardrails #24; the console parts follow in their own PR (owner decision).
+- **Why:** the hook read its mode once, at start, from `CAIRO_GUARDRAIL_MODE`. Part b phase 1 put the mode in the console; this makes the gateway follow it, bounded by a deployment ceiling.
+- **The ceiling:** `CAIRO_GUARDRAIL_MODE_MAX`. Only exactly `enforce` allows enforce; unset or anything else means record. The older `CAIRO_GUARDRAIL_MODE` is read as the ceiling when it is unset. Both are unset in dev, so **nothing changes in dev**: every request is still decided in record.
+- **The mode from verdicts:** each gateway replica keeps the newest CAIRO settings version it has seen.
+  - Versions only move forward.
+  - At one version, only enforce to record is accepted, because that is how a trial ends.
+  - Under enforce, a verdict with unknown or stale settings is refused (`settings_unusable`), so an unsynced or stale guardrails pod cannot let a request through (tests B10, B11).
+- **No verdict: judge unavailable** (Readiness Ledger N-64, owner decision): rayin-guardrails' explicit HTTP 503 answer is recognised.
+  - **Record:** the request proceeds and is logged as `judge_unavailable`.
+  - **Enforce:** the request is refused, with that outcome code and a message saying it could not be checked.
+  - The rule is not relaxed.
+- **A trial ends on time:** a running trial's switch-back time travels on each verdict, so a replica ends the trial at that time even if no verdict arrives (SF-2026-024).
+- **What each replica reports** (build decision C1): its pod name, the mode it was in, and the newest settings version it has seen, with every `/v1/guard` call.
+- **Health log:** each line now also carries the ceiling, the settings version and whether the request was refused. Enforce requested under a record ceiling is logged once per version.
+- **Tests:** 129 guardrail-hook tests pass, 161 with the trace hook's (`python -m unittest discover -s integrations/litellm/tests`).
+  - The 79 existing tests are adapted to the ceiling.
+  - 50 new ones cover the ceiling, the labels, the tracker, the §3.3 table, B1, B10, B11, the judge-unavailable rule, the switch-back, `stale` settings and the replica's report.
+  - A new CI job runs them on every pull request that touches the gateway integration.
+- **Rollback:** no migration. Re-apply the previous `litellm-config` ConfigMap (both files) and restart the gateway.
+- **Release order (phase 3):** the console first (it must accept the `unavailable` event and send the switch-back time), then rayin-guardrails, then this ConfigMap and a gateway restart. Each step needs the owner's yes.
+- **After the security review** (a fresh session, 2026-10-02; P2-268-1 to P2-268-6, all low except P2-268-1, medium):
+  - a guardrails pod's `stale` settings can raise a replica's mode to enforce, never lower it;
+  - an unreadable switch-back time makes an answer unusable;
+  - a new CI job runs the hook's tests;
+  - the ADR records that the gateway must be restarted after a settings restore that lowers the version.
+- **Approval:** Pending. The owner merges after the fresh-session security review and its re-check have reported, under the review controls recorded in Readiness Ledger N-48. Not a production approval.
+- **Deployment status:** not deployed.

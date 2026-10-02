@@ -56,6 +56,7 @@ import { showErrorToast, showSuccessToast } from "@/src/features/notifications";
 import { cn } from "@/src/utils/tailwind";
 import { useReadPath } from "@/src/features/events/hooks/useReadPath";
 import { type QueryType, type ViewVersion } from "@langfuse/shared/query";
+import { AcmeGuardrailsEnforcement } from "@/src/features/acme-enhancements/components/AcmeGuardrailsEnforcement";
 
 const ALL_PII_ENTITIES = [
   "EMAIL_ADDRESS",
@@ -80,9 +81,17 @@ const ENTITY_LABELS: Record<string, string> = {
   BH_CPR: "Bahrain CPR number",
 };
 
-function ActionBadge({ action }: { action: "allow" | "redact" | "block" }) {
+function ActionBadge({
+  action,
+}: {
+  action: "allow" | "redact" | "block" | "unavailable";
+}) {
   if (action === "block") return <Badge variant="error">Blocked</Badge>;
   if (action === "redact") return <Badge variant="warning">Redacted</Badge>;
+  // N-64: the judge model could not answer, so there is no verdict. In
+  // enforce the gateway refuses such a request.
+  if (action === "unavailable")
+    return <Badge variant="secondary">No verdict</Badge>;
   return <Badge variant="success">Allowed</Badge>;
 }
 
@@ -292,6 +301,13 @@ type AssuranceRow = { time_dimension?: string; avg_value?: number };
 // mechanism ScoresChartView already uses, just a fixed query instead of a
 // user-configurable one.
 const RECENT_RESULTS_LIMIT = 20;
+
+// CHG-2026-082: the card is hidden until a scheduled promptfoo run pushes its
+// scores here. Nothing runs promptfoo on a schedule today and no run has sent
+// scores to CAIRO, so the card could only show "Loading…" or an empty state
+// while promising results "checked on a schedule". Set to true to bring it
+// back once a scheduled run exists; nothing else needs to change.
+const SHOW_CONTINUOUS_ASSURANCE = false as boolean;
 
 function AcmeGuardrailsAssurance({ projectId }: { projectId: string }) {
   const { isV4 } = useReadPath();
@@ -863,7 +879,7 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
           View every event
         </Link>
       </p>
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
         <Card>
           <CardHeader className="pb-1">
             <CardTitle className="text-muted-foreground text-xs font-bold tracking-wide uppercase">
@@ -904,11 +920,25 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
             {summary.allowed}
           </CardContent>
         </Card>
+        <Card>
+          <CardHeader className="pb-1">
+            <CardTitle className="text-muted-foreground text-xs font-bold tracking-wide uppercase">
+              No verdict
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 text-2xl font-bold">
+            {summary.unavailable}
+          </CardContent>
+        </Card>
       </div>
 
       <AcmeGuardrailsPolicies projectId={projectId} />
 
-      {canReadProjectData && <AcmeGuardrailsAssurance projectId={projectId} />}
+      <AcmeGuardrailsEnforcement projectId={projectId} />
+
+      {SHOW_CONTINUOUS_ASSURANCE && canReadProjectData && (
+        <AcmeGuardrailsAssurance projectId={projectId} />
+      )}
     </div>
   );
 }
@@ -916,7 +946,7 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
 type HistoryFilterForm = {
   from: string;
   to: string;
-  action: "all" | "block" | "redact" | "allow";
+  action: "all" | "block" | "redact" | "allow" | "unavailable";
   direction: "all" | "input" | "output";
   agent: string;
   user: string;
@@ -1044,6 +1074,13 @@ export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
     },
   );
 
+  // ADR-0005-B part b: mode changes in the same period, so a switch to or
+  // from enforce shows next to the decisions it affected.
+  const modeChanges = api.acmeGuardrails.modeChanges.useQuery(
+    { projectId, from: filter.from, to: filter.to },
+    { refetchInterval: cursor ? false : 30_000 },
+  );
+
   const exportHistory = api.acmeGuardrails.exportEventHistory.useMutation({
     onSuccess: (result) => {
       const day = new Date().toISOString().slice(0, 10);
@@ -1126,6 +1163,9 @@ export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
                   <SelectItem value="block">Blocked</SelectItem>
                   <SelectItem value="redact">Redacted</SelectItem>
                   <SelectItem value="allow">Allowed</SelectItem>
+                  <SelectItem value="unavailable">
+                    No verdict (judge unavailable)
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1200,7 +1240,8 @@ export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
                 <span className="text-muted-foreground">
                   {" "}
                   · {counts.blocked} blocked · {counts.redacted} redacted ·{" "}
-                  {counts.allowed} allowed
+                  {counts.allowed} allowed · {counts.unavailable} without a
+                  verdict
                   {applied.hideTestTraffic &&
                   history &&
                   history.hiddenTestEvents > 0
@@ -1236,11 +1277,33 @@ export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
           ) : null
         }
         notice={
-          history?.liveSync === "unavailable" ? (
-            <p className="text-muted-foreground text-xs">
-              rayin-guardrails did not answer, so events whose push failed in
-              the last few minutes may be missing. Stored events are shown.
-            </p>
+          history?.liveSync === "unavailable" ||
+          (modeChanges.data && modeChanges.data.length > 0) ? (
+            <div className="flex flex-col gap-1">
+              {history?.liveSync === "unavailable" && (
+                <p className="text-muted-foreground text-xs">
+                  rayin-guardrails did not answer, so events whose push failed
+                  in the last few minutes may be missing. Stored events are
+                  shown.
+                </p>
+              )}
+              {modeChanges.data && modeChanges.data.length > 0 && (
+                <p className="text-muted-foreground text-xs">
+                  Guardrail mode changes in this period:{" "}
+                  {modeChanges.data
+                    .map(
+                      (c) =>
+                        `${formatDateTime(new Date(c.createdAt).toISOString())} to ${c.mode} (version ${c.version}, ${
+                          c.automatic
+                            ? "automatic switch-back"
+                            : `by ${c.createdByEmail ?? "a guardrail administrator"}`
+                        })`,
+                    )
+                    .join("; ")}
+                  .
+                </p>
+              )}
+            </div>
           ) : null
         }
         columns={GUARDRAIL_EVENT_COLUMNS}
