@@ -65,14 +65,24 @@ const explodingPrisma = new Proxy(
   },
 );
 
-function callerFor(role: string, email: string | null) {
+// getConfig reads the stored version and the pods' reports, nothing else.
+const readOnlyPrisma = {
+  acmeGuardrailSettings: { findFirst: async () => null },
+  acmeGuardrailSettingsPod: { findMany: async () => [] },
+};
+
+function callerFor(
+  role: string,
+  email: string | null,
+  db: object = explodingPrisma,
+) {
   const ctx = createInnerTRPCContext({
     session: sessionFor(role, email),
     headers: {},
   });
   return router.createCaller({
     ...ctx,
-    prisma: explodingPrisma as typeof ctx.prisma,
+    prisma: db as typeof ctx.prisma,
   }).acmeGuardrails;
 }
 
@@ -153,6 +163,40 @@ describe("guardrail settings authority (B12)", () => {
     await expect(
       callerFor("AUDITOR", ADMIN_EMAIL).updateConfig(SAVE),
     ).rejects.toThrow(/Auditor role cannot access/);
+    expect(touched).not.toHaveBeenCalled();
+  });
+
+  // CHG-2026-091: getConfig's canEdit must match what updateConfig allows.
+  it("offers editing to a listed administrator whose role may save", async () => {
+    const listed = await callerFor(
+      "ADMIN",
+      ADMIN_EMAIL,
+      readOnlyPrisma,
+    ).getConfig({ projectId: PROJECT });
+    expect(listed).toMatchObject({ canEdit: true, readOnlyRole: false });
+
+    const unlisted = await callerFor(
+      "OWNER",
+      "owner@example.com",
+      readOnlyPrisma,
+    ).getConfig({ projectId: PROJECT });
+    expect(unlisted).toMatchObject({ canEdit: false, readOnlyRole: false });
+  });
+
+  it("does not offer editing to a listed Security Analyst, whose save is refused", async () => {
+    const config = await callerFor(
+      "SECURITY",
+      ADMIN_EMAIL,
+      readOnlyPrisma,
+    ).getConfig({ projectId: PROJECT });
+    expect(config).toMatchObject({ canEdit: false, readOnlyRole: true });
+
+    await expect(
+      callerFor("SECURITY", ADMIN_EMAIL).updateConfig(SAVE),
+    ).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      message: expect.stringMatching(/Security Analyst role cannot access/),
+    });
     expect(touched).not.toHaveBeenCalled();
   });
 });

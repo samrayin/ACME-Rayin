@@ -5270,3 +5270,21 @@ Console change, with a database migration. ADR-0005-B part a. Nothing changes in
 - **Tests:**
   - unit tests for the settings logic: the admin list, the sign-up guard, normalisation, reason, versioning, audit within the transaction, the concurrent-save retry, pod-name bounds, pod-status cleanup and cap, and the event fields;
   - router tests for B12: an Owner not on the list is refused, as is a listed admin while sign-up is open; refusals happen before the database is touched; and the Auditor's read-only limit still applies.
+
+## 2026-10-02 — Guardrails Policies card: no edit controls for a read-only role (CHG-2026-091)
+
+Tier 1 (authorisation shown in the console). Console only, no schema change. Under ADR-0005-B §3.4 and ADR-0011 §4; no new ADR.
+
+- **Why:** in an acceptance check on 2026-10-02, the Policies card offered its edit controls to a person named in `CAIRO_GUARDRAIL_ADMINS` whose role on the project is Security Analyst. Saving was refused by the server, correctly: `updateConfig` is also gated by the content-free roles' allow-lists. `getConfig`'s `canEdit` checked the admin list only.
+- **Server:** `getConfig`'s `canEdit` is now true only when the admin-list check passes **and** the caller's role may call `acmeGuardrails.updateConfig`.
+  - The role check is the allow-list decision the tRPC middleware already enforces, exposed as `mayCallProjectProcedure` in `securityRoleAllowList.ts`. `throwIfSecurityRoleBlocked` now uses it, so the card and the server cannot disagree.
+  - A new `readOnlyRole` flag is true for a listed administrator whose role may not save.
+  - The editor's email is still shown to listed administrators, as before.
+- **Console:** in that case the card says "Editing is off: your role here is read-only", with the switches disabled.
+- **Unchanged:** `updateConfig` and its checks, and so who can save.
+- **Tests:** two router tests in `acmeGuardrailsSettingsRouter.servertest.ts`:
+  - a listed Admin gets `canEdit` true from `getConfig`, and an Owner not on the list gets false;
+  - a listed Security Analyst gets `canEdit` false and `readOnlyRole` true from `getConfig`, and FORBIDDEN from `updateConfig` before the database is touched.
+- **Rollback:** revert the commit and redeploy the previous console image.
+- **Approval:** Pending. The owner merges after the security-agent review has reported; the implementer does not approve its own change. Not a production approval.
+- **Deployment status:** not deployed.

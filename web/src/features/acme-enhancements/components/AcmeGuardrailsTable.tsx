@@ -486,7 +486,8 @@ const SETTINGS_REASON_MIN_LENGTH = 10;
 // ADR-0005-B part a (CHG-2026-089): the settings are stored in CAIRO as
 // versions, and every rayin-guardrails pod pulls the current one. This card
 // shows the stored version and which version each pod reports; only the
-// deployment's guardrail administrators can save a new one.
+// deployment's guardrail administrators can save a new one, and only from a
+// role that is not read-only (CHG-2026-091).
 function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
   const utils = api.useUtils();
   // Polled so "n of n pods on version v" follows a save without a reload.
@@ -575,6 +576,7 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
     availablePiiEntities,
     pods,
     canEdit,
+    readOnlyRole,
     adminsConfigured,
     signupClosed,
   } = config.data;
@@ -639,11 +641,13 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
         </CardTitle>
         {!canEdit && (
           <span className="text-muted-foreground text-xs">
-            {!adminsConfigured
-              ? "Editing is off: no guardrail administrators are configured"
-              : !signupClosed
-                ? "Editing is off while open sign-up is enabled"
-                : "Only the deployment's guardrail administrators can edit"}
+            {readOnlyRole
+              ? "Editing is off: your role here is read-only"
+              : !adminsConfigured
+                ? "Editing is off: no guardrail administrators are configured"
+                : !signupClosed
+                  ? "Editing is off while open sign-up is enabled"
+                  : "Only the deployment's guardrail administrators can edit"}
           </span>
         )}
       </CardHeader>
