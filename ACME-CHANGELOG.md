@@ -5270,3 +5270,12 @@ Console change, with a database migration. ADR-0005-B part a. Nothing changes in
 - **Tests:**
   - unit tests for the settings logic: the admin list, the sign-up guard, normalisation, reason, versioning, audit within the transaction, the concurrent-save retry, pod-name bounds, pod-status cleanup and cap, and the event fields;
   - router tests for B12: an Owner not on the list is refused, as is a listed admin while sign-up is open; refusals happen before the database is touched; and the Auditor's read-only limit still applies.
+
+## 2026-10-01 — Public API auth parity test covers the ACME routes (CHG-2026-090)
+
+Test only. No product code changes, and nothing to release.
+- **Why:** the parity test's "covers every public route" check walks `web/src/pages/api/public/` and compares it with the test's route tables. Three ACME routes were never added, so the check has failed on `main`: `guardrails-events`, `litellm-request-logs` and, since #253, `guardrails-settings`.
+- **Project routes:** `guardrails-events` and `guardrails-settings`, both `POST` only. Both authenticate through `createAuthedProjectAPIRoute`, so the test now sweeps them across every key kind and migration mode.
+- **Denylist:** `litellm-request-logs`. It has its own auth path (a dedicated bearer secret, not an API key), like the routes already on the denylist.
+- **Enforce divergences:** none added. Against a real Postgres, shadow and enforce both equal legacy on all 14 new cells.
+- **Snapshot:** not yet regenerated. The legacy baseline needs a `-u` run with Postgres, ClickHouse and Redis, as in CI's test stack. Until it lands in this change, the baseline assertion fails on the 14 new cells.
