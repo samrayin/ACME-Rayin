@@ -29,8 +29,8 @@ def _main() -> int:
         event_hook="pre_call",
         default_on=True,
     )
-    if hook.mode != "record":
-        print(f"FAIL: mode is {hook.mode!r}; this check only runs in record mode")
+    if hook.current_mode() != "record":
+        print(f"FAIL: mode is {hook.current_mode()!r}; this check only runs in record mode")
         return 1
 
     captured = _io.StringIO()
