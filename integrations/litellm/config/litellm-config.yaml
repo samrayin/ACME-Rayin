@@ -155,7 +155,12 @@ general_settings:
 #
 # ON IN RECORD MODE since 2026-09-23 03:35Z (owner-gated switch-on B1-B5, record
 # in acme-rayin-ops). `default_on: true` sends every request through the hook;
-# CAIRO_GUARDRAIL_MODE is unset, so the mode is record and nothing is refused.
+# The mode comes from CAIRO with each verdict (ADR-0005-B part b), bounded by
+# the deployment ceiling CAIRO_GUARDRAIL_MODE_MAX (the older CAIRO_GUARDRAIL_MODE
+# is read in its place when unset). Both are unset, so the ceiling is record and
+# nothing is refused, whatever the console says. Raising the ceiling to enforce
+# is owner-gated: ADR-0005 Step 4, Readiness Ledger N-64, N-59's re-confirmation
+# and SF-2026-015 must all be closed first.
 # Each request waits for one guard call (measured median ~360 ms, max 1.6 s, cap
 # 2 s). To switch off: set `default_on: false` and restart, or restore the
 # previous ConfigMap. Keep this file matching live: applying it with `false`
