@@ -250,7 +250,7 @@ export function AcmeGuardrailsEnforcement({
                   ? ` (${percent(judge.unavailable, judge.calls)})`
                   : ""}
                 . This counts every stored event, both directions and checks
-                that ask no judge, so the judge&apos;s own failure rate is
+                that ask no judge, so the judge&apos;s own failure rate can be
                 higher; each guardrails pod reports that one on its health
                 endpoint. The alert shows here, on this card, at{" "}
                 {Math.round(judge.alertRate * 100)}% or more.

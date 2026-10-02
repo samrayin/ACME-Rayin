@@ -21,7 +21,11 @@
    - **A row with `unavailable` would break those pages** in the previous image. So if any such row exists, do not redeploy the previous image: forward-fix instead.
 3. **Only if the value must also go, and no event uses it:** run `down.sql` with `psql -v ON_ERROR_STOP=1 -f down.sql` or `prisma db execute --file down.sql`.
    - **Who runs it:** the role that owns the type and the table (the admin login), because the rebuilt type is owned by whoever runs the script.
-   - **What it does:** the script is one transaction. It locks `acme_guardrail_events` first and rewrites the table, so event pushes are refused until it commits; they wait in rayin-guardrails' buffer and are backfilled.
+   - **What it does:** the script is one transaction. It locks `acme_guardrail_events` first and rewrites the table.
+   - **While it runs:**
+     - event pushes wait on the lock; past rayin-guardrails' client timeout (3 attempts of 5 s) they give up and stay in its buffer, and a waiting insert may still commit once the lock is released (the unique `event_id` index prevents duplicates);
+     - reads of the event history wait too;
+     - buffered events are backfilled only when someone next opens the event history or the recent-events view.
 4. Verify (below).
 
 ## Verification after rollback

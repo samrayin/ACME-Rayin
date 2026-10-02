@@ -27,7 +27,7 @@ export const PULL_BACKFILL_MIN_AGE_MS = 60_000;
 // event_id, user_id and client_host are optional: older rayin-guardrails
 // builds don't include them in the buffer. Kept (not stripped) so pull rows
 // dedupe against push rows on event_id.
-export const PulledGuardrailsEventSchema = z.object({
+const PulledGuardrailsEventSchema = z.object({
   event_id: z.string().nullish(),
   user_id: z.string().nullish(),
   client_host: z.string().nullish(),
