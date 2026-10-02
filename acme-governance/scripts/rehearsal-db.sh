@@ -34,6 +34,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 STATE_DIR="${TMPDIR:-${TEMP:-/tmp}}/cairo-rehearsal-${NS}"
 PW_FILE="${STATE_DIR}/pw"
 PF_PID_FILE="${STATE_DIR}/port-forward.pid"
+STEP_OUT_FILE="${STATE_DIR}/step-out.txt"
 SCHEMA="${REPO_ROOT}/packages/shared/prisma/schema.prisma"
 
 now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
@@ -102,7 +103,13 @@ step() { # step <label> <expected-grep> <command...>
   # exits non-zero when a migration is pending, which is the expected state
   # right after a rollback.
   out="$("$@" || true)"
-  if grep -q "${expect}" <<<"${out}"; then
+  # Grep a file, not a here-string or a pipe. On Git Bash for Windows the
+  # here-string of a full-chain `migrate deploy` output blocked `grep -q` for
+  # ~15 minutes after prisma had finished (2026-10-02). In a pipe, `grep -q`
+  # exits at the first match, and under pipefail the writer's SIGPIPE can
+  # turn that match into a failure.
+  printf '%s\n' "${out}" >"${STEP_OUT_FILE}"
+  if grep -q "${expect}" "${STEP_OUT_FILE}"; then
     printf '| %s | `%s` | PASS | %s |\n' "${label}" "$*" "${started}"
   else
     printf '| %s | `%s` | **FAIL** | %s |\n' "${label}" "$*" "${started}"
