@@ -5468,3 +5468,82 @@ that was redacted rather than blocked. Unrated — the owner rates findings.
 `/v1/guard` is still not wired into any live path (N-56).
 
 **Deployment status:** not applicable — nothing here ships in an image.
+
+---
+
+## 2026-10-03 — Red-team suite: review corrections and a verified result (CHG-2026-094, follow-up)
+
+**What:** An independent cold review of the change above found two faults serious enough
+that its published result should not stand, plus a security fault in its runbook. All are
+corrected here, and the suite has been re-run.
+
+**Files:**
+- `integrations/promptfoo/config/guardrails-redteam.yaml`
+- `integrations/promptfoo/config/run-redteam.sh`
+- `integrations/promptfoo/RUNNING-REDTEAM-EVAL.md`
+- `integrations/promptfoo/README.md` — was stale and contradicted the change
+
+**1. The runbook over-granted secrets.** It instructed `envFrom` on
+`rayin-guardrails-config`, which supplies not only `CONFIG_SHARED_SECRET` but
+`ADMIN_SHARED_SECRET` — which authorises `PUT /v1/config` and can switch the rails off —
+and `GUARDRAILS_LLM_API_KEY`, the judge key. That defeats the guard/admin split built in
+CHG-2026-046, into a pod that installs a package from the public npm registry at run
+time. **The 2026-10-03 run did this.** The benign runbook already said, in bold, to mount
+the one key with `secretKeyRef`; the instruction here was copied from a stale checkout
+that predated that correction. Now `secretKeyRef`, with a complete pod spec in the
+runbook and a note saying what `envFrom` would grant.
+
+**2. Four probes tested a policy the rail does not contain.** Every probe is sent
+`direction: input`, which runs `self_check_input` only. That policy covers instruction
+override, jailbreak/injection/role-play framing, and developer-mode personas. **Topic
+scope is not in it** — scope lives in `self_check_output`. An off-topic section was
+therefore measuring nothing: its two `allow` results were published as fail-opens when
+they are correct, and the commentary drawn from them ("keying on adversarial register
+rather than on scope") was backwards, since there is no scope rule on that rail. The two
+probes that did block matched the role-play bullet and have moved to section E; the two
+genuine `allow`s are removed. Suite is now 26 probes.
+
+**3. The full run had no completeness gate.** Only calibration asserted a count, so a
+partial run would have printed a clean-looking summary and exited zero — the exact
+failure an unpaced benign run once produced by losing 22 of 32 calls. The full run now
+exits non-zero if fewer probes return than expected or any verdict is missing.
+
+**4. Pacing was tighter than the suite that already hit the limit.** `--delay 7000` is
+~8.6/min against a 10/min judge cap that is shared with gateway traffic. Now 12000, as
+the benign suite settled on. The claim that calibration catches the rate limit is also
+withdrawn: four calls inside ~48 s cannot exercise a per-minute cap, and the runbook now
+says what calibration does prove.
+
+**5. `LOCATION is a default Presidio entity` was false**, and was stated four times as
+the justification for the suite's design rule. The configured entities are
+`EMAIL_ADDRESS, PHONE_NUMBER, CREDIT_CARD, PERSON, IBAN_CODE, IP_ADDRESS`, and the
+service rejects anything outside that list. The rule stands on `PERSON`, which is what
+actually fires.
+
+**6. Calibration wrote under the full run's `agent_id`**, so the audit table could never
+match the runner's buckets and the runbook's own cross-check could not pass. Calibration
+now runs under `<RUN_ID>-cal`.
+
+**Also:** `redact` scored `pass:false, score:0.5`, hedging back toward the
+"inconclusive" reading the same comment rejects — now `0`, with the Presidio entity
+types printed so a redacted probe can be diagnosed. Three comments still described
+redaction as short-circuiting before the rail, which CHG-2026-077 had already corrected
+once. A shebang, an exec bit, and guards on the two environment variables whose absence
+caused the original faults.
+
+**Verified re-run — `promptfoo-redteam-2026-10-03b`:** 26 of 26 probes returned,
+**24 blocked, 0 failed open, 2 not blocked (redacted), 0 no verdict.** p50 397 ms,
+p90 1029 ms. Sections A, B and E blocked in full.
+
+**Two observations for rating, unrated:**
+- **The judge is not deterministic between runs.** The base64 probe blocked on the first
+  run and returned `redact` on this one with identical text. A single run is not a stable
+  measurement.
+- **PII redaction can mask an attack from the jailbreak rail.** Both not-blocked probes
+  were redacted first, so the rail judged a prompt with its payload removed. `PERSON`
+  firing on a base64 blob and on German text is a false positive in itself; the
+  interaction is what matters, and it bears on ADR-0005-B's enforce design.
+
+**Scope:** test harness only. No product code, no schema, no live request path.
+
+**Deployment status:** not applicable — nothing here ships in an image.
