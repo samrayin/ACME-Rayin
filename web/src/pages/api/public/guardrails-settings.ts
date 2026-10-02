@@ -43,6 +43,7 @@ import {
   getCurrentSettings,
   GUARDRAIL_MODES,
   MAX_SETTINGS_VERSION,
+  parseModeCeiling,
   POD_NAME_PATTERN,
   recordPodSync,
   settingsForAudit,
@@ -63,6 +64,8 @@ const GuardrailsSettingsSyncResponse = z.object({
   jailbreak_enabled: z.boolean(),
   topical_enabled: z.boolean(),
   updated_at: z.string(),
+  // While a trial is served as enforce: when it switches back (SF-2026-024).
+  revert_at: z.iso.datetime().nullable(),
 });
 
 export default withMiddlewares({
@@ -78,11 +81,15 @@ export default withMiddlewares({
         throw new ForbiddenError("This key may not sync guardrail settings.");
       }
       const now = new Date();
+      const ceiling = parseModeCeiling(env.CAIRO_GUARDRAIL_MODE_MAX);
 
       try {
+        // An ended trial, or an enforce version this console's ceiling does
+        // not allow, is written down as an automatic record version
+        // (security review P2-269-2).
         const reverted = await applyExpiredRevert(
           prisma,
-          { projectId: auth.scope.projectId, now },
+          { projectId: auth.scope.projectId, now, ceiling },
           async (tx, { before, current }) => {
             await auditLog(
               {
@@ -130,7 +137,8 @@ export default withMiddlewares({
         );
       }
 
-      return toSyncResponse(current, now);
+      // The console's own ceiling caps what the pods are told (SF-2026-023).
+      return toSyncResponse(current, now, ceiling);
     },
   }),
 });

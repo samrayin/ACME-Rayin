@@ -55,7 +55,11 @@ import {
 } from "@langfuse/shared/src/db";
 import { logger } from "@langfuse/shared/src/server";
 import { TRPCError } from "@trpc/server";
-import { selectPullBackfillRows } from "@/src/features/acme-enhancements/server/acmeGuardrailsPullBackfill";
+import {
+  parseBufferedEvents,
+  selectPullBackfillRows,
+  type PulledGuardrailsEvent,
+} from "@/src/features/acme-enhancements/server/acmeGuardrailsPullBackfill";
 import {
   buildHiddenTestTrafficWhere,
   buildHistoryWhere,
@@ -78,6 +82,7 @@ import {
   type GuardrailModeChange,
   GuardrailSettingsValidationError,
   guardrailEvidence,
+  judgeAvailability,
   listModeChanges,
   listReportingGateways,
   listReportingPods,
@@ -90,6 +95,7 @@ import {
   saveSettings,
   selfSignupClosed,
   settingsForAudit,
+  servedMode,
   trialExpired,
   validateModeChange,
 } from "@/src/features/acme-enhancements/server/acmeGuardrailSettings";
@@ -104,42 +110,34 @@ const DIRECTION_FROM_DB: Record<
 
 const ACTION_FROM_DB: Record<
   AcmeGuardrailEventAction,
-  "allow" | "redact" | "block"
+  "allow" | "redact" | "block" | "unavailable"
 > = {
   [AcmeGuardrailEventAction.ALLOW]: "allow",
   [AcmeGuardrailEventAction.REDACT]: "redact",
   [AcmeGuardrailEventAction.BLOCK]: "block",
+  [AcmeGuardrailEventAction.UNAVAILABLE]: "unavailable",
 };
 
-// event_id, user_id and client_host are optional: older rayin-guardrails
-// builds don't include them in the buffer. Kept (not stripped) so pull rows
-// dedupe against push rows on event_id -- see acmeGuardrailsPullBackfill.ts.
-const GuardrailsEventSchema = z.object({
-  event_id: z.string().nullish(),
-  user_id: z.string().nullish(),
-  client_host: z.string().nullish(),
-  time: z.string(),
-  agent_id: z.string(),
-  trace_id: z.string().nullable(),
-  direction: z.enum(["input", "output"]),
-  policy_triggered: z.string().nullable(),
-  action: z.enum(["allow", "redact", "block"]),
-});
-
+// The events are checked one by one (parseBufferedEvents), so one event this
+// build cannot read never drops the rest (security review P2-269-1).
 const GuardrailsEventsResponseSchema = z.object({
-  events: z.array(GuardrailsEventSchema),
+  events: z.array(z.unknown()),
   summary: z.object({
     total: z.number(),
     blocked: z.number(),
     redacted: z.number(),
     allowed: z.number(),
+    unavailable: z.number().optional(),
   }),
 });
 
 /** Reads rayin-guardrails' in-memory event buffer (newest `limit` events). */
 async function fetchBufferedEvents(limit: number) {
   const res = await fetch(
-    `${env.RAYIN_GUARDRAILS_URL}/v1/events?limit=${limit}`,
+    // include_no_verdict: this build understands "unavailable" events; an
+    // older one would read them as blocks, so the service lists them only
+    // when asked (CHG-2026-089 part b, phase 2).
+    `${env.RAYIN_GUARDRAILS_URL}/v1/events?limit=${limit}&include_no_verdict=true`,
     {
       headers: { "X-Config-Secret": env.RAYIN_GUARDRAILS_CONFIG_SECRET ?? "" },
       signal: AbortSignal.timeout(5_000),
@@ -150,7 +148,17 @@ async function fetchBufferedEvents(limit: number) {
       `rayin-guardrails returned ${res.status} fetching /v1/events`,
     );
   }
-  return GuardrailsEventsResponseSchema.parse(await res.json());
+  const body = GuardrailsEventsResponseSchema.parse(await res.json());
+  const { events, dropped } = parseBufferedEvents(body.events);
+  if (dropped > 0) {
+    logger.warn(
+      `rayin-guardrails buffer: ${dropped} event(s) this build cannot read were skipped`,
+    );
+  }
+  return {
+    events,
+    summary: { ...body.summary, unavailable: body.summary.unavailable ?? 0 },
+  };
 }
 
 /**
@@ -158,7 +166,7 @@ async function fetchBufferedEvents(limit: number) {
  * not (see acmeGuardrailsPullBackfill.ts). A failure is logged, not thrown.
  */
 async function persistPullBackfill(
-  events: z.infer<typeof GuardrailsEventSchema>[],
+  events: PulledGuardrailsEvent[],
   projectId: string,
 ) {
   const backfill = selectPullBackfillRows(events, projectId, new Date());
@@ -340,9 +348,10 @@ export const acmeGuardrailsRouter = createTRPCRouter({
             if (event.action === "block") acc.blocked += 1;
             if (event.action === "redact") acc.redacted += 1;
             if (event.action === "allow") acc.allowed += 1;
+            if (event.action === "unavailable") acc.unavailable += 1;
             return acc;
           },
-          { total: 0, blocked: 0, redacted: 0, allowed: 0 },
+          { total: 0, blocked: 0, redacted: 0, allowed: 0, unavailable: 0 },
         );
 
         return { configured: true as const, events, summary };
@@ -422,7 +431,13 @@ export const acmeGuardrailsRouter = createTRPCRouter({
           : Promise.resolve(0),
       ]);
 
-      const counts = { total: 0, blocked: 0, redacted: 0, allowed: 0 };
+      const counts = {
+        total: 0,
+        blocked: 0,
+        redacted: 0,
+        allowed: 0,
+        unavailable: 0,
+      };
       for (const group of byAction) {
         const n = group._count._all;
         counts.total += n;
@@ -432,6 +447,8 @@ export const acmeGuardrailsRouter = createTRPCRouter({
           counts.redacted += n;
         if (group.action === AcmeGuardrailEventAction.ALLOW)
           counts.allowed += n;
+        if (group.action === AcmeGuardrailEventAction.UNAVAILABLE)
+          counts.unavailable += n;
       }
 
       const page = rows.slice(0, input.pageSize);
@@ -638,7 +655,7 @@ export const acmeGuardrailsRouter = createTRPCRouter({
       // administrators only: other viewers see this project's own counts.
       const eventsProject =
         env.CAIRO_GUARDRAILS_SYNC_PROJECT_ID ?? input.projectId;
-      const [modeChanges, gateways, evidence] = await Promise.all([
+      const [modeChanges, gateways, evidence, judge] = await Promise.all([
         listModeChanges(ctx.prisma),
         isGuardrailAdmin
           ? listReportingGateways(ctx.prisma, {
@@ -648,6 +665,10 @@ export const acmeGuardrailsRouter = createTRPCRouter({
           : Promise.resolve(null),
         isGuardrailAdmin
           ? guardrailEvidence(ctx.prisma, { projectId: eventsProject, now })
+          : Promise.resolve(null),
+        // N-64: the judge-unavailable rate and its alert, administrators only.
+        isGuardrailAdmin
+          ? judgeAvailability(ctx.prisma, { projectId: eventsProject, now })
           : Promise.resolve(null),
       ]);
       const lastModeChange = modeChanges[modeChanges.length - 1];
@@ -683,11 +704,16 @@ export const acmeGuardrailsRouter = createTRPCRouter({
         enforcement: {
           ceiling,
           storedMode: current?.mode ?? ("record" as const),
-          // An enforce trial whose switch-back time has passed reads as
-          // record, even before its automatic version is written.
+          // The mode CAIRO serves: an enforce trial whose switch-back time
+          // has passed reads as record, even before its automatic version is
+          // written, and this console's ceiling caps it (SF-2026-023).
           effectiveMode: current
-            ? effectiveMode(current, now)
+            ? servedMode(current, now, ceiling)
             : ("record" as const),
+          // A stored enforce that the ceiling serves as record.
+          cappedByCeiling: current
+            ? effectiveMode(current, now) === "enforce" && ceiling !== "enforce"
+            : false,
           revertAt: current?.mode === "enforce" ? current.revertAt : null,
           trialEnded: current ? trialExpired(current, now) : false,
           lastChange: lastModeChange
@@ -701,6 +727,7 @@ export const acmeGuardrailsRouter = createTRPCRouter({
           // Administrators only; null for everyone else.
           gateways,
           evidence,
+          judge,
         },
       };
     }),

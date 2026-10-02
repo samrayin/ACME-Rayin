@@ -81,9 +81,17 @@ const ENTITY_LABELS: Record<string, string> = {
   BH_CPR: "Bahrain CPR number",
 };
 
-function ActionBadge({ action }: { action: "allow" | "redact" | "block" }) {
+function ActionBadge({
+  action,
+}: {
+  action: "allow" | "redact" | "block" | "unavailable";
+}) {
   if (action === "block") return <Badge variant="error">Blocked</Badge>;
   if (action === "redact") return <Badge variant="warning">Redacted</Badge>;
+  // N-64: the judge model could not answer, so there is no verdict. In
+  // enforce the gateway refuses such a request.
+  if (action === "unavailable")
+    return <Badge variant="secondary">No verdict</Badge>;
   return <Badge variant="success">Allowed</Badge>;
 }
 
@@ -871,7 +879,7 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
           View every event
         </Link>
       </p>
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
         <Card>
           <CardHeader className="pb-1">
             <CardTitle className="text-muted-foreground text-xs font-bold tracking-wide uppercase">
@@ -912,6 +920,16 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
             {summary.allowed}
           </CardContent>
         </Card>
+        <Card>
+          <CardHeader className="pb-1">
+            <CardTitle className="text-muted-foreground text-xs font-bold tracking-wide uppercase">
+              No verdict
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 text-2xl font-bold">
+            {summary.unavailable}
+          </CardContent>
+        </Card>
       </div>
 
       <AcmeGuardrailsPolicies projectId={projectId} />
@@ -928,7 +946,7 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
 type HistoryFilterForm = {
   from: string;
   to: string;
-  action: "all" | "block" | "redact" | "allow";
+  action: "all" | "block" | "redact" | "allow" | "unavailable";
   direction: "all" | "input" | "output";
   agent: string;
   user: string;
@@ -1145,6 +1163,9 @@ export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
                   <SelectItem value="block">Blocked</SelectItem>
                   <SelectItem value="redact">Redacted</SelectItem>
                   <SelectItem value="allow">Allowed</SelectItem>
+                  <SelectItem value="unavailable">
+                    No verdict (judge unavailable)
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1219,7 +1240,8 @@ export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
                 <span className="text-muted-foreground">
                   {" "}
                   · {counts.blocked} blocked · {counts.redacted} redacted ·{" "}
-                  {counts.allowed} allowed
+                  {counts.allowed} allowed · {counts.unavailable} without a
+                  verdict
                   {applied.hideTestTraffic &&
                   history &&
                   history.hiddenTestEvents > 0

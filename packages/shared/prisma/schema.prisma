@@ -956,6 +956,9 @@ enum AcmeGuardrailEventAction {
   ALLOW  @map("allow")
   REDACT @map("redact")
   BLOCK  @map("block")
+  // CHG-2026-089 part b, phase 2 (Readiness Ledger N-64): the judge model
+  // could not answer, so no verdict exists. Recorded in every mode.
+  UNAVAILABLE @map("unavailable")
 }
 
 // Which capture path wrote an AcmeGuardrailEvent row -- see the model.

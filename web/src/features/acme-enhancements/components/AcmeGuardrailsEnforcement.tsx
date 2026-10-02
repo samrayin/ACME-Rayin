@@ -110,6 +110,8 @@ export function AcmeGuardrailsEnforcement({
     confirmationWord,
     gateways,
     evidence,
+    judge,
+    cappedByCeiling,
   } = enforcement;
 
   const chosenRevert = revertChoice ?? String(defaultRevertMinutes);
@@ -144,9 +146,15 @@ export function AcmeGuardrailsEnforcement({
           <div>
             Deployment ceiling: <b>{ceiling}</b>
             {ceiling === "record"
-              ? ". Enforce cannot be chosen here; the gateway also keeps to record whatever is chosen."
+              ? ". Enforce cannot be chosen here, and the console serves record to the guardrails pods whatever is stored. Each gateway also has its own ceiling."
               : "."}
           </div>
+          {cappedByCeiling && (
+            <div>
+              The stored version is enforce, but this ceiling serves it as
+              record.
+            </div>
+          )}
           {effectiveMode === "enforce" && revertAt && (
             <div>
               Switches back to record automatically at{" "}
@@ -179,9 +187,25 @@ export function AcmeGuardrailsEnforcement({
           </div>
         </div>
 
+        {judge !== null && judge.alert && (
+          <div
+            role="alert"
+            className="border-destructive text-destructive rounded-md border p-3 text-xs"
+          >
+            <b>Alert: the guardrail&apos;s judge model could not answer</b>{" "}
+            {judge.unavailable} of {judge.calls} stored guard events (
+            {percent(judge.unavailable, judge.calls)}) in the last{" "}
+            {judge.windowHours} hours. In enforce, each of these requests would
+            be refused. Raise the judge&apos;s capacity before any enforce
+            trial; the refusal rule is not relaxed.
+          </div>
+        )}
+
         {gateways !== null && (
           <div className="border-t pt-3">
-            <div className="text-xs font-bold">Gateway replicas</div>
+            <div className="text-xs font-bold">
+              Gateway replicas (as each reports itself; not verified)
+            </div>
             {gateways.length === 0 ? (
               <div className="text-muted-foreground text-xs">
                 No gateway replica has reported its mode in the last 24 hours. A
@@ -213,12 +237,28 @@ export function AcmeGuardrailsEnforcement({
               {percent(evidence.blocked, evidence.total)} would be refused in
               enforce), {evidence.redacted} redacted (
               {percent(evidence.redacted, evidence.total)} would be sent
-              redacted), {evidence.allowed} allowed.
+              redacted), {evidence.allowed} allowed, {evidence.unavailable}{" "}
+              without a verdict ({percent(evidence.unavailable, evidence.total)}{" "}
+              would be refused because the judge model could not answer).
             </div>
+            {judge !== null && (
+              <div className="text-muted-foreground text-xs">
+                Judge availability, last {judge.windowHours} hours:{" "}
+                {judge.unavailable} of {judge.calls} stored guard events without
+                a verdict
+                {judge.calls > 0
+                  ? ` (${percent(judge.unavailable, judge.calls)})`
+                  : ""}
+                . This counts every stored event, both directions and checks
+                that ask no judge, so the judge&apos;s own failure rate can be
+                higher; each guardrails pod reports that one on its health
+                endpoint. The alert shows here, on this card, at{" "}
+                {Math.round(judge.alertRate * 100)}% or more.
+              </div>
+            )}
             <div className="text-muted-foreground text-xs">
-              Guardrail availability and added latency are not measured in CAIRO
-              yet; check the gateway&apos;s guardrail health records before a
-              trial.
+              Added latency is not measured in CAIRO yet; check the
+              gateway&apos;s guardrail health records before a trial.
             </div>
           </div>
         )}
