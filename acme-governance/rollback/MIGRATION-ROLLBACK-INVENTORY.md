@@ -45,7 +45,10 @@ Added with CHG-2026-089 part b, phase 2: `20261002190000_acme_guardrail_event_un
 not answer, Readiness Ledger N-64). It is **reversible only while no event uses
 the value**; after that it is **forward-fix only**, because Postgres cannot drop
 an enum value in use. Its `down.sql` checks this first and stops without
-changing anything. Rehearsal pending (see its `ROLLBACK.md`).
+changing anything. Rehearsed locally on Postgres 16.4 on 2026-10-02 (7 of 7
+steps PASS, and its `down.sql` refuses once an `unavailable` event exists);
+the cluster rehearsal on Postgres 15 waits for the owner (see its
+`ROLLBACK.md`).
 
 ## Reading this
 - Nothing here is *safely reversible*: every ACME migration either holds audit data or changes something Postgres cannot undo.
