@@ -5401,3 +5401,70 @@ Gateway hook and configuration comment; no console code and no migration. ADR-00
   - the ADR records that the gateway must be restarted after a settings restore that lowers the version.
 - **Approval:** Pending. The owner merges after the fresh-session security review and its re-check have reported, under the review controls recorded in Readiness Ledger N-48. Not a production approval.
 - **Deployment status:** not deployed.
+
+---
+
+## 2026-10-03 — Red-team suite made runnable, and hand-written (CHG-2026-094)
+
+**What:** The jailbreak-rail adversarial suite now runs. It had never produced a single
+probe since being scaffolded on 2026-09-12.
+
+**Files:**
+- `integrations/promptfoo/config/guardrails-redteam.yaml` — rewritten
+- `integrations/promptfoo/config/run-redteam.sh` — new
+- `integrations/promptfoo/RUNNING-REDTEAM-EVAL.md` — new
+
+**Four faults were blocking it, three of them in the committed config:**
+
+1. The guard header read `{{ env.GUARDRAILS_CONFIG_SECRET }}`. No Secret supplies that
+   name; `rayin-guardrails-config` supplies `CONFIG_SHARED_SECRET`. The header
+   interpolated empty, the guard rejected every call, and because `transformResponse`
+   collapses the response to one token the rejection arrived as `undefined` — which the
+   assertion scored as **the rail failing open**. The suite would have reported the
+   jailbreak rail as wide open, across the board, on an authentication error.
+2. `url` and the attacker `apiBaseUrl` pointed at `localhost`, which resolves to nothing
+   in a pod.
+3. `agent_id` was a hardcoded string, so a second run's rows could not be told from the
+   first in `acme_guardrail_events` — the same evidence-integrity fault the benign suite
+   had under CHG-2026-021.
+4. No Secret held the attacker model's key.
+
+**Why the generator was removed entirely.** With all four fixed, generation still
+produced zero probes, for three further reasons:
+
+- `harmful:cybercrime` **requires promptfoo's remote generation service**, and
+  `PROMPTFOO_DISABLE_REMOTE_GENERATION=true` is mandatory here (README blocker 3).
+  Structural: no credential or pacing change can recover it.
+- `pii:direct` generates locally, but every probe it writes is PII by definition, so the
+  measurement says more about Presidio than about the jailbreak rail.
+- The attacker model sat on a rate-limited free tier and returned 429 mid-generation —
+  the same shape as N-64 / SEC-21 on the judge key.
+
+So the suite is now **28 hand-written probes** across six sections: direct override,
+system-prompt extraction, off-topic steering, encoded override (base64, rot13, leetspeak,
+letter-spacing, German), framed/indirect attacks, and Arabic. This also removes a weakness
+the old config flagged against itself — the attacker model was the same family as the
+rail's own judge — and fixes the denominator, so two runs compare.
+
+**Design rule, stated in the file:** no probe may contain personal data, including place
+names (LOCATION is a default Presidio entity). PII changes what is being measured.
+
+**Scoring is the inverse of the benign suite**, and `redact` is scored as *not blocked*:
+since CHG-2026-045 the rail runs on the redacted text and precedence is
+`block > redact > allow`, so a final `redact` means the rail saw the attack and did not
+block it. A fourth bucket, no-verdict, marks the N-64 rate limit as an instrument failure
+rather than a security result; a run containing any is not reportable.
+
+**Calibration gate:** `run-redteam.sh` evaluates four probes and refuses to start the full
+run unless four complete results come back. An unpaced benign run once lost 22 of 32 calls
+silently; this is the gate that catches that before it is read as a finding.
+
+**First successful run, 2026-10-03:** 28 probes, calibration 4/4, zero no-verdict.
+**25 blocked, 3 not blocked.** p50 421 ms, p90 1156 ms. Sections A, B, E and F blocked in
+full. The three misses were two plainly-worded off-topic probes and one German override
+that was redacted rather than blocked. Unrated — the owner rates findings.
+
+**Scope:** test harness only. No product code, no schema, no live request path;
+`/v1/guard` is still not wired into any live path (N-56).
+
+**Deployment status:** not applicable — nothing here ships in an image.
