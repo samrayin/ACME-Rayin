@@ -294,6 +294,13 @@ type AssuranceRow = { time_dimension?: string; avg_value?: number };
 // user-configurable one.
 const RECENT_RESULTS_LIMIT = 20;
 
+// CHG-2026-082: the card is hidden until a scheduled promptfoo run pushes its
+// scores here. Nothing runs promptfoo on a schedule today and no run has sent
+// scores to CAIRO, so the card could only show "Loading…" or an empty state
+// while promising results "checked on a schedule". Set to true to bring it
+// back once a scheduled run exists; nothing else needs to change.
+const SHOW_CONTINUOUS_ASSURANCE = false as boolean;
+
 function AcmeGuardrailsAssurance({ projectId }: { projectId: string }) {
   const { isV4 } = useReadPath();
   const viewVersion: ViewVersion = isV4 ? "v2" : "v1";
@@ -911,7 +918,9 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
 
       <AcmeGuardrailsEnforcement projectId={projectId} />
 
-      {canReadProjectData && <AcmeGuardrailsAssurance projectId={projectId} />}
+      {SHOW_CONTINUOUS_ASSURANCE && canReadProjectData && (
+        <AcmeGuardrailsAssurance projectId={projectId} />
+      )}
     </div>
   );
 }

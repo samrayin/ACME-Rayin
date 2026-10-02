@@ -5298,6 +5298,21 @@ Test only, no product code. The pre-merge review of #259 named two cases without
 
 Rollback: revert the commit.
 
+## 2026-10-02 — Continuous Assurance card hidden (CHG-2026-082)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-082 · Tier 2 (removes one card; no procedure, scope or data change) · owner: Anees Ur Rahman |
+| **Dates** | Written 2026-09-27, rebased on main 2026-10-02. Dev: not deployed · Prod: none exists |
+| **Impact** | The Guardrails page no longer shows the Continuous Assurance card |
+| **Rollback** | Set `SHOW_CONTINUOUS_ASSURANCE` back to `true` and redeploy, or redeploy the previous console image. No data change |
+
+**Why:** the card says the jailbreak rail's promptfoo red-team suite is "checked on a schedule", but nothing runs promptfoo on a schedule. The two runs so far (2026-09-20 and -21) were manual, used the benign corpus with score export switched off on purpose, and wrote their results inside a pod that was then deleted. No `promptfoo-pass` score has ever reached CAIRO, so the card could only show "Loading…" or an empty state. A card that promises a measurement nobody makes is worse than no card (owner request 2026-09-27).
+
+**What:** `AcmeGuardrailsTable.tsx` gains a `SHOW_CONTINUOUS_ASSURANCE` constant, set to `false`, that gates the card. The card's code and its queries are kept, and they no longer run while it is hidden. It returns by setting the constant to `true` once a scheduled run pushes its scores to the project.
+
+**Deployment status:** not deployed.
+
 ## 2026-10-02 — The guardrail enforcement switch in the console (CHG-2026-089 part b, phase 1)
 
 Console change, with a database migration. ADR-0005-B part b, console half. **Nothing changes in the gateway, and nothing can be enforced yet:** the gateway hook that reads the mode from each verdict is phase 2, and the deployment ceiling stays `record` until a supervised trial (owner decision D-B3).
@@ -5325,4 +5340,3 @@ Console change, with a database migration. ADR-0005-B part b, console half. **No
 - **Tests:** unit tests for the ceiling, trial expiry, the mode checks, saving a mode, keeping a trial through a policy change, the automatic switch-back (including two pulls racing), the mode history and the gateway fields; router tests for the authority, the read-only roles, the ceiling (B1), the confirmation, and what `getConfig` shows to whom.
 - **Approval:** Pending. The owner merges after the security-agent review has reported; the implementer does not approve its own change. Not a production approval.
 - **Deployment status:** not deployed.
-
