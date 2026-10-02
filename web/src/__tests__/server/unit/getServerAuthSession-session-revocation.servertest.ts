@@ -22,6 +22,10 @@ vi.mock("@langfuse/shared/src/db", async (importOriginal) => ({
       findUnique: mockFindUnique,
     },
     $queryRaw: mockQueryRaw,
+    // ACME (ADR-0011): the session callback loads project access ceilings.
+    acmeProjectAccess: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
   },
 }));
 
