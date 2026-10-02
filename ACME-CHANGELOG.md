@@ -5407,8 +5407,8 @@ Gateway hook and configuration comment; no console code and no migration. ADR-00
   - an unreadable switch-back time makes an answer unusable;
   - a new CI job runs the hook's tests;
   - the ADR records that the gateway must be restarted after a settings restore that lowers the version.
-- **Security review:** a fresh-session review (P2-268-1 to P2-268-6: one medium, the rest low), a re-check and a final check. No critical or high finding.
-  - Logged by the security agent as SF-2026-030, -033, -034 and -035.
+- **Security review:** a fresh-session review (P2-268-1 to P2-268-6: one medium, the rest low), a re-check (one more medium) and a final check. No critical or high finding.
+  - Logged by the security agent as SF-2026-030, -033, -034 and -035, with notes under SF-2026-022 and SF-2026-024.
   - Severities are proposals; the owner rates them.
 - **Approval:** the owner merged #268 on 2026-10-02 (`bbcf78817`), after those checks had reported. Human approval by merge; delegated auto-approval was not used. Not a production approval.
   - Each review ran in a fresh session that shared no context with the implementing session, which invoked it. That is the owner's compensating control for having no human reviewer (Readiness Ledger N-48). So no review was fully independent.
