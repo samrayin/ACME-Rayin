@@ -5481,3 +5481,14 @@ that was redacted rather than blocked. Unrated — the owner rates findings.
 `/v1/guard` is still not wired into any live path (N-56).
 
 **Deployment status:** not applicable — nothing here ships in an image.
+
+## 2026-10-03 — Rehearsal script checks each step from a file, not a here-string (CHG-2026-095)
+
+Tooling only (Tier 2): no product code, no schema, no migration. `acme-governance/scripts/rehearsal-db.sh`, `step()`.
+- **Why:** `step()` decided PASS or FAIL with `grep -q "${expect}" <<<"${out}"`. On 2026-10-02, in Git Bash for Windows, the `rehearse` run for migration `20261002190000` blocked there. Its first step runs `prisma migrate deploy` over the full chain (about 450 migrations), and `grep -q` sat for about 15 minutes after prisma had finished and every migration was applied. Killing the grep reported the step as FAIL and ended the script, although the output ended with "All migrations have been successfully applied." That rehearsal was finished with an ad hoc temp-file version of the check.
+- **What:** `step()` writes the captured output to `step-out.txt` in the script's state directory and greps the file; `down` removes it with the rest of that directory. Not a pipe into `grep -q` either: under `pipefail`, `grep -q` stopping at the first match can make the pipeline fail with SIGPIPE.
+- **Unchanged:** the output format, the exit codes and the 15-line tail printed on FAIL.
+- **Verified locally, no cluster:** old and new `step()` give identical output and exit codes on the pass, expected-non-zero and fail paths, against a fake `migrate deploy` output of about 71 KB.
+- **Not established:** why the here-string blocked. The hang did not reproduce locally, so the change removes the construct that blocked rather than a proven cause. Not yet run in a cluster rehearsal.
+
+Rollback: revert the commit.
