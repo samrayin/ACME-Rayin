@@ -5359,11 +5359,14 @@ Gateway hook and configuration comment; no console code and no migration. ADR-00
 - **A trial ends on time:** a running trial's switch-back time travels on each verdict, so a replica ends the trial at that time even if no verdict arrives (SF-2026-024).
 - **What each replica reports** (build decision C1): its pod name, the mode it was in, and the newest settings version it has seen, with every `/v1/guard` call.
 - **Health log:** each line now also carries the ceiling, the settings version and whether the request was refused. Enforce requested under a record ceiling is logged once per version.
-- **Tests:** 119 stdlib `unittest` tests pass (`python -m unittest discover -s integrations/litellm/tests`): the 79 existing ones, adapted to the ceiling, and 40 new ones for the ceiling, the labels, the tracker, the §3.3 table, B1, B10, B11, the judge-unavailable rule, the switch-back and the replica's report.
+- **Tests:** 129 guardrail-hook tests pass, 161 with the trace hook's (`python -m unittest discover -s integrations/litellm/tests`).
+  - The 79 existing tests are adapted to the ceiling.
+  - 50 new ones cover the ceiling, the labels, the tracker, the §3.3 table, B1, B10, B11, the judge-unavailable rule, the switch-back, `stale` settings and the replica's report.
+  - A new CI job runs them on every pull request that touches the gateway integration.
 - **Rollback:** no migration. Re-apply the previous `litellm-config` ConfigMap (both files) and restart the gateway.
 - **Release order (phase 3):** the console first (it must accept the `unavailable` event and send the switch-back time), then rayin-guardrails, then this ConfigMap and a gateway restart. Each step needs the owner's yes.
 - **After the security review** (a fresh session, 2026-10-02; P2-268-1 to P2-268-6, all low except P2-268-1, medium):
-  - a guardrails pod's `stale` settings can confirm a replica's mode but never set, raise or lower it;
+  - a guardrails pod's `stale` settings can raise a replica's mode to enforce, never lower it;
   - an unreadable switch-back time makes an answer unusable;
   - a new CI job runs the hook's tests;
   - the ADR records that the gateway must be restarted after a settings restore that lowers the version.

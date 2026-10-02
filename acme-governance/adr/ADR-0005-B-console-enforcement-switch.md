@@ -94,7 +94,10 @@ These complete §3.3. The owner decided the first; the others follow from §3.3 
 - **The labels on a no-verdict answer still count.** The settings do not depend on the judge, so a judge-unavailable answer moves the mode like a verdict, under the same version rules.
 - **Same version, different mode.** At one settings version, the only accepted change is enforce to record: an enforce trial past its switch-back time reads as record at the same version, until the automatic version is written. Record to enforce at one version comes only from a pod that pulled before the trial ended, so it is ignored. This settles the open case in SF-2026-024.
 - **Settings unknown or stale.** In a request decided in enforce, a verdict whose settings are unknown or older than the newest the replica has seen is refused (`settings_unusable`), as §3.3 already requires. A request decided in record still records what that verdict says.
-- **Settings unconfirmed for too long.** A guardrails pod whose pulls have failed for four pull intervals (at least 60 s) labels its answers `stale`. Those can confirm the mode a gateway replica already holds at that version, but never set it on a replica that has just started, move it to a newer version or lower it. So a pod cut off from CAIRO cannot put a freshly started replica into record.
+- **Settings unconfirmed for too long.** A guardrails pod whose last successful pull is older than two pull intervals (at least 60 s, at most 120 s) labels its answers `stale`.
+  - **Raise only:** a stale `enforce` at a newer version is adopted, because that moves the replica the safe way.
+  - **Never lower:** a stale `record` is never adopted at a newer version or on a replica that has just started. At the same version, stale labels only confirm the mode already held.
+  - So a pod cut off from CAIRO cannot put a replica into record.
 - **An unreadable switch-back time** on an enforce answer makes that answer unusable, so a trial never runs with no end it was given.
 - **A trial ends on time, everywhere** (SF-2026-024).
   - CAIRO's settings answer carries the switch-back time (`revert_at`) while a trial runs.
@@ -208,9 +211,14 @@ All four were decided by the owner on 2026-10-02 ("D-B1 to D-B3 as recommended, 
 - **This is fail-closed by design, but a supervised trial must plan for it.** Restoring the guardrails service, or setting the gateway ceiling to `record`, ends it.
 - **The judge's capacity bounds enforce.** Under enforce, every request the judge cannot answer is refused (§3.3.1), so capacity must be measured before a trial (see Readiness Ledger N-64).
 - **Versions only move forward on a gateway replica.** After any restore or rollback of CAIRO's guardrail settings that lowers the version number, restart the gateway, or a replica holding the higher number keeps it.
+- **A restart during a CAIRO outage, under an enforce ceiling, fails closed.** A gateway replica started while CAIRO has been unreachable for longer than the staleness window receives only `stale` answers. It adopts a stale enforce, but with only stale record answers it stays in enforce and refuses requests (`settings_unusable`) until CAIRO answers. Avoid gateway restarts during a CAIRO outage; setting the gateway ceiling to `record` ends it.
+- **A capped enforce version is written down on the next pull.** When the console's ceiling is record, the next guardrails pull writes an audited automatic record version over a stored enforce. If no pod pulls between the ceiling being lowered and raised again, which happens when pods are scaled to zero, the sync key is revoked or the write fails, the stored enforce can be served again once the ceiling is raised. Raising the gateway ceiling is still a separate, deliberate step. This is open for the owner to accept or close.
 
 ## 9. Revisions
 
+- **2026-10-02, part b phase 2, after the security review and its re-check:**
+  - §3.3.1 gains `stale` settings (raise only) and the unreadable switch-back time;
+  - §8 gains three notes: restart the gateway after a settings restore; a restart during a CAIRO outage under an enforce ceiling fails closed; a capped enforce version is written down only on the next pull.
 - **2026-10-02, part b phase 2:** §3.3.1 added, covering the judge-unavailable rule (owner decision, N-64), the same-version rule, unknown or stale settings under enforce, a trial ending on time everywhere (SF-2026-024), and what each gateway replica reports. §8's known limit is narrowed, and the judge's capacity is added as a bound on enforce.
 
 - **2026-10-02, at the start of part b:**

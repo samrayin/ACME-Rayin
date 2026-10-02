@@ -472,6 +472,25 @@ class TestStaleSettingsCannotMoveTheMode(unittest.TestCase):
         self.assertFalse(t.observe(m.Labels(9, "record", None, False)))
         self.assertEqual(t.desired(), "enforce")
 
+    def test_a_stale_enforce_at_a_newer_version_raises_the_mode(self):
+        """Re-check P2R-268-2: raising is the safe direction."""
+        t = m.ModeTracker()
+        t.observe(m.Labels(9, "record", None))
+        self.assertTrue(t.observe(m.Labels(10, "enforce", None, False)))
+        self.assertEqual((t.version, t.desired()), (10, "enforce"))
+
+    def test_a_just_started_replica_adopts_a_stale_enforce(self):
+        t = m.ModeTracker()
+        self.assertTrue(t.observe(m.Labels(10, "enforce", None, False)))
+        self.assertEqual(t.desired(), "enforce")
+
+    def test_a_stale_enforce_at_the_same_version_never_overrides_a_record(self):
+        """A pod that pulled before the trial ended."""
+        t = m.ModeTracker()
+        t.observe(m.Labels(9, "record", None))
+        self.assertFalse(t.observe(m.Labels(9, "enforce", None, False)))
+        self.assertEqual(t.desired(), "record")
+
     def test_stale_settings_can_confirm_the_mode_held(self):
         t = m.ModeTracker()
         t.observe(m.Labels(9, "enforce", None))

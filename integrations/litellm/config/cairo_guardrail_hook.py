@@ -217,8 +217,8 @@ class Labels(NamedTuple):
     revert_at: Optional[datetime]
     #: False when the guardrails pod says its settings are ``stale``: still
     #: CAIRO's version, but unconfirmed for too long (security review
-    #: P2-268-1). Stale labels can confirm the mode a replica already holds;
-    #: they can never set or lower it.
+    #: P2-268-1). Stale labels can confirm the mode a replica already holds,
+    #: or raise it to enforce; they can never lower it.
     fresh: bool = True
 
 
@@ -271,12 +271,14 @@ class ModeTracker:
       ended, so it is ignored (SF-2026-024's open case, now defined).
     * **A trial ends on time here too.** An enforce mode with a switch-back time
       reads as record from that time, even if no answer arrives at all.
-    * **Stale settings cannot move the mode** (security review P2-268-1). A
-      guardrails pod whose pulls have failed for too long labels its answers
-      ``stale``. Those can confirm the mode this replica already holds at the
-      same version, but never set it on a replica that has just started,
-      never move it to a newer version and never lower it, so a pod cut off
-      from CAIRO cannot put a fresh replica into record.
+    * **Stale settings can raise the mode, never lower it** (security review
+      P2-268-1, re-check P2R-268-2). A guardrails pod whose pulls have failed
+      for too long labels its answers ``stale``. A stale ``enforce`` at a
+      newer version is adopted, because that moves the replica the safe way.
+      A stale ``record`` is never adopted at a newer version or on a replica
+      that has just started, and at the same version stale labels only
+      confirm the mode already held. So a pod cut off from CAIRO cannot put
+      a replica into record.
     """
 
     def __init__(self) -> None:
@@ -291,7 +293,7 @@ class ModeTracker:
             return False
         version, mode, revert_at, fresh = labels
         if self.version is None or version > self.version:
-            if not fresh:
+            if not fresh and mode != "enforce":
                 return False
             self.version, self.mode, self.revert_at = version, mode, revert_at
             return True
