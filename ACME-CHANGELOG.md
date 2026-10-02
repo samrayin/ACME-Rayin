@@ -5340,8 +5340,11 @@ Console change, with a database migration. ADR-0005-B part b, console half. **No
 - **Event history:** the mode changes of the period shown are listed beside the decisions. They are read from the settings history; no event row is added.
 - **Rollback:** `down.sql`, `ROLLBACK.md` and an inventory note. Reversible only while no enforce or automatic version is stored: the table is append-only, so `down.sql` checks first and stops, inside one transaction so that nothing changes under any runner. Rehearsed on a throwaway database on 2026-10-02 (owner: "go rehearsal"): up, down and up again, 7 of 7 PASS, and `down.sql` refused once an enforce version existed.
 - **Tests:** unit tests for the ceiling, trial expiry, the mode checks, saving a mode, keeping a trial through a policy change, the automatic switch-back (including two pulls racing), the mode history and the gateway fields; router tests for the authority, the read-only roles, the ceiling (B1), the confirmation, and what `getConfig` shows to whom.
-- **Approval:** Pending. The owner merges after the security-agent review has reported; the implementer does not approve its own change. Not a production approval.
-- **Deployment status:** not deployed.
+- **Security review:** four findings, SF-2026-023 to SF-2026-026. The owner rated them on 2026-10-02: SF-2026-025 was fixed before the merge and is closed with it; SF-2026-023, -024 and -026 are Low, for the phase 2 review.
+- **Approval:** the owner merged #263 on 2026-10-02 (`74218f1e0`), after the security-agent review and its two re-checks had reported. Human approval by merge; delegated auto-approval was not used. Not a production approval.
+  - The review reported no Critical, High or Medium finding. The session that wrote the change launched the security agent, so it was not a fully independent review.
+  - The author and the merger are the same GitHub account, so GitHub holds no formal review (Readiness Ledger N-47).
+- **Deployment status:** not deployed. Console `acme-v4.38.0.30` (2026-10-02) was built before this merge and does not include it.
 
 ## 2026-10-02 — Console parts of the enforcement switch's phase 2 (CHG-2026-089 part b, phase 2: console)
 
@@ -5369,8 +5372,13 @@ Console change, with a database migration. ADR-0005-B §3.3.1. The owner asked f
   - the judge figure and the gateway replicas are labelled for what they are;
   - the recent-events summary counts no-verdict events;
   - `down.sql` locks the table before its check.
-- **Approval:** Pending. The owner merges after the fresh-session security review and its re-check have reported, under the review controls recorded in Readiness Ledger N-48. Not a production approval.
-- **Deployment status:** not deployed.
+- **Security review:** a fresh-session review (P2-269-1 to P2-269-7, all low or informational), a re-check, a final check, and a check of the changelog conflict resolution before the merge. No critical or high finding.
+  - Logged by the security agent as SF-2026-029, -033, -034 and -035, with notes under SF-2026-023 and SF-2026-026.
+  - Severities are proposals; the owner rates them.
+- **Approval:** the owner merged #269 on 2026-10-02 (`0a21d819d`), after those checks had reported. Human approval by merge; delegated auto-approval was not used. Not a production approval.
+  - Each review ran in a fresh session that shared no context with the implementing session, which invoked it. That is the owner's compensating control for having no human reviewer (Readiness Ledger N-48). So no review was fully independent.
+  - The author and the merger are the same GitHub account, so GitHub holds no formal review (Readiness Ledger N-47).
+- **Deployment status:** not deployed. Migration `20261002190000` has been rehearsed only locally (PostgreSQL 16); the cluster rehearsal (PostgreSQL 15) waits for the owner. In the phase 3 release order, this console goes first.
 
 ## 2026-10-02 — The gateway takes the guardrail mode from CAIRO, within a ceiling (CHG-2026-089 part b, phase 2: gateway)
 
@@ -5399,8 +5407,13 @@ Gateway hook and configuration comment; no console code and no migration. ADR-00
   - an unreadable switch-back time makes an answer unusable;
   - a new CI job runs the hook's tests;
   - the ADR records that the gateway must be restarted after a settings restore that lowers the version.
-- **Approval:** Pending. The owner merges after the fresh-session security review and its re-check have reported, under the review controls recorded in Readiness Ledger N-48. Not a production approval.
-- **Deployment status:** not deployed.
+- **Security review:** a fresh-session review (P2-268-1 to P2-268-6: one medium, the rest low), a re-check (one more medium) and a final check. No critical or high finding.
+  - Logged by the security agent as SF-2026-030, -033, -034 and -035, with notes under SF-2026-022 and SF-2026-024.
+  - Severities are proposals; the owner rates them.
+- **Approval:** the owner merged #268 on 2026-10-02 (`bbcf78817`), after those checks had reported. Human approval by merge; delegated auto-approval was not used. Not a production approval.
+  - Each review ran in a fresh session that shared no context with the implementing session, which invoked it. That is the owner's compensating control for having no human reviewer (Readiness Ledger N-48). So no review was fully independent.
+  - The author and the merger are the same GitHub account, so GitHub holds no formal review (Readiness Ledger N-47).
+- **Deployment status:** not deployed. The live gateway still runs the 2026-09-30 configuration. This ConfigMap must not be applied from `main` before the console and rayin-guardrails v0.5.0 are released; it is the last step of phase 3.
 
 ---
 
