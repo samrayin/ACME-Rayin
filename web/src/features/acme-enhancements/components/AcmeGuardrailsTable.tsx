@@ -56,6 +56,7 @@ import { showErrorToast, showSuccessToast } from "@/src/features/notifications";
 import { cn } from "@/src/utils/tailwind";
 import { useReadPath } from "@/src/features/events/hooks/useReadPath";
 import { type QueryType, type ViewVersion } from "@langfuse/shared/query";
+import { AcmeGuardrailsEnforcement } from "@/src/features/acme-enhancements/components/AcmeGuardrailsEnforcement";
 
 const ALL_PII_ENTITIES = [
   "EMAIL_ADDRESS",
@@ -908,6 +909,8 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
 
       <AcmeGuardrailsPolicies projectId={projectId} />
 
+      <AcmeGuardrailsEnforcement projectId={projectId} />
+
       {canReadProjectData && <AcmeGuardrailsAssurance projectId={projectId} />}
     </div>
   );
@@ -1042,6 +1045,13 @@ export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
       refetchInterval: cursor ? false : 10_000,
       placeholderData: (previous) => previous,
     },
+  );
+
+  // ADR-0005-B part b: mode changes in the same period, so a switch to or
+  // from enforce shows next to the decisions it affected.
+  const modeChanges = api.acmeGuardrails.modeChanges.useQuery(
+    { projectId, from: filter.from, to: filter.to },
+    { refetchInterval: cursor ? false : 30_000 },
   );
 
   const exportHistory = api.acmeGuardrails.exportEventHistory.useMutation({
@@ -1236,11 +1246,33 @@ export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
           ) : null
         }
         notice={
-          history?.liveSync === "unavailable" ? (
-            <p className="text-muted-foreground text-xs">
-              rayin-guardrails did not answer, so events whose push failed in
-              the last few minutes may be missing. Stored events are shown.
-            </p>
+          history?.liveSync === "unavailable" ||
+          (modeChanges.data && modeChanges.data.length > 0) ? (
+            <div className="flex flex-col gap-1">
+              {history?.liveSync === "unavailable" && (
+                <p className="text-muted-foreground text-xs">
+                  rayin-guardrails did not answer, so events whose push failed
+                  in the last few minutes may be missing. Stored events are
+                  shown.
+                </p>
+              )}
+              {modeChanges.data && modeChanges.data.length > 0 && (
+                <p className="text-muted-foreground text-xs">
+                  Guardrail mode changes in this period:{" "}
+                  {modeChanges.data
+                    .map(
+                      (c) =>
+                        `${formatDateTime(new Date(c.createdAt).toISOString())} to ${c.mode} (version ${c.version}, ${
+                          c.automatic
+                            ? "automatic switch-back"
+                            : `by ${c.createdByEmail ?? "a guardrail administrator"}`
+                        })`,
+                    )
+                    .join("; ")}
+                  .
+                </p>
+              )}
+            </div>
           ) : null
         }
         columns={GUARDRAIL_EVENT_COLUMNS}

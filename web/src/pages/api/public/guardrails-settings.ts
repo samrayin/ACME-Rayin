@@ -17,9 +17,18 @@
  * closed). The response carries the policy only, no secrets. Meant to be
  * called over in-cluster service DNS.
  *
- * The settings are read first and the status write is best effort, so a
- * failed status write never denies a pod its settings. 503 when no settings
- * are stored: the pod keeps what it has and reports "settings unknown".
+ * Part b (the enforcement switch): the mode served is the one in force, so
+ * an enforce trial whose switch-back time has passed is served as record at
+ * once. The pull also writes that automatic switch-back as a new, audited
+ * version, so it happens within one pull interval of its time even when
+ * nobody has the console open. The audit entry names this pull's API key,
+ * because that is what wrote it.
+ *
+ * The settings are read before the status write, which is best effort, so a
+ * failed status write never denies a pod its settings. The switch-back write
+ * is best effort too: if it fails, the trial is still served as record.
+ * 503 when no settings are stored: the pod keeps what it has and reports
+ * "settings unknown".
  */
 import { z } from "zod";
 import { createAuthedProjectAPIRoute } from "@/src/features/public-api/server/createAuthedProjectAPIRoute";
@@ -28,11 +37,15 @@ import { prisma } from "@langfuse/shared/src/db";
 import { ForbiddenError, ServiceUnavailableError } from "@langfuse/shared";
 import { logger } from "@langfuse/shared/src/server";
 import { env } from "@/src/env.mjs";
+import { auditLog } from "@/src/features/audit-logs/auditLog";
 import {
+  applyExpiredRevert,
   getCurrentSettings,
+  GUARDRAIL_MODES,
   MAX_SETTINGS_VERSION,
   POD_NAME_PATTERN,
   recordPodSync,
+  settingsForAudit,
   toSyncResponse,
 } from "@/src/features/acme-enhancements/server/acmeGuardrailSettings";
 
@@ -45,7 +58,7 @@ const GuardrailsSettingsSyncBody = z.object({
 
 const GuardrailsSettingsSyncResponse = z.object({
   version: z.number().int(),
-  mode: z.literal("record"),
+  mode: z.enum(GUARDRAIL_MODES),
   pii_entities: z.array(z.string()),
   jailbreak_enabled: z.boolean(),
   topical_enabled: z.boolean(),
@@ -63,6 +76,39 @@ export default withMiddlewares({
       const allowedProject = env.CAIRO_GUARDRAILS_SYNC_PROJECT_ID;
       if (!allowedProject || auth.scope.projectId !== allowedProject) {
         throw new ForbiddenError("This key may not sync guardrail settings.");
+      }
+      const now = new Date();
+
+      try {
+        const reverted = await applyExpiredRevert(
+          prisma,
+          { projectId: auth.scope.projectId, now },
+          async (tx, { before, current }) => {
+            await auditLog(
+              {
+                apiKeyId: auth.scope.apiKeyId,
+                orgId: auth.scope.orgId,
+                projectId: auth.scope.projectId,
+                resourceType: "acmeGuardrailSettings",
+                resourceId: `v${current.version}`,
+                action: "automatic_revert",
+                before: before ? settingsForAudit(before) : null,
+                after: settingsForAudit(current),
+              },
+              // The audit row commits with the switch-back version (Q1).
+              tx as unknown as typeof prisma,
+            );
+          },
+        );
+        if (reverted.changed) {
+          logger.info(
+            `guardrail settings: automatic switch-back to record written as version ${reverted.current.version}`,
+          );
+        }
+      } catch (e) {
+        logger.warn(
+          `guardrail settings sync: could not write the automatic switch-back: ${e instanceof Error ? e.message : String(e)}`,
+        );
       }
 
       const current = await getCurrentSettings(prisma);
@@ -84,7 +130,7 @@ export default withMiddlewares({
         );
       }
 
-      return toSyncResponse(current);
+      return toSyncResponse(current, now);
     },
   }),
 });

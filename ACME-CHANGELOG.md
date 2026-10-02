@@ -5297,3 +5297,32 @@ Test only, no product code. The pre-merge review of #259 named two cases without
 - an instance admin whose project role is Security Analyst, and who is listed, gets `canEdit` true from `getConfig`, and `updateConfig` lets the call through to the save. Instance admins skip the content-free allow-lists, so the card and the server agree.
 
 Rollback: revert the commit.
+
+## 2026-10-02 — The guardrail enforcement switch in the console (CHG-2026-089 part b, phase 1)
+
+Console change, with a database migration. ADR-0005-B part b, console half. **Nothing changes in the gateway, and nothing can be enforced yet:** the gateway hook that reads the mode from each verdict is phase 2, and the deployment ceiling stays `record` until a supervised trial (owner decision D-B3).
+- **Why:** the owner asked for a switch inside CAIRO between record and block, with the same controls as the policy (audited, durable, applied everywhere) plus a deployment ceiling and an automatic switch-back.
+- **Settings store:**
+  - a version's mode may now be `record` or `enforce`;
+  - an enforce version can carry a switch-back time (`revert_at`), and a version written by the switch-back is marked `automatic`;
+  - guardrail events gain three optional fields the gateway will report through rayin-guardrails: its pod, its effective mode, and the newest settings version it has seen.
+- **The switch** (`setMode`):
+  - **Who:** the same named administrators as the policy (D-B1), from a role that is not read-only. The Security Analyst and Auditor are refused by their allow-lists.
+  - **Enforce needs:**
+    - the deployment ceiling, `CAIRO_GUARDRAIL_MODE_MAX`, to be `enforce` (unset means record);
+    - the typed confirmation `ENFORCE`;
+    - a reason.
+  - **Switch-back:** by default after 30 minutes (D-B2); 5, 15, 60, 120 minutes or none can be chosen.
+  - **Switching back to record** is always allowed to the administrators.
+  - **Records:** each change is a new version with the policy unchanged, audited before and after in the same transaction.
+- **Automatic switch-back:** from its time, an enforce trial reads as record wherever it is read, including the pods' pull. The next pull writes the audited automatic version, in the name of the pull's API key.
+- **Enforcement card** on the Guardrails page:
+  - the mode in force, the ceiling, any pending switch-back and the last change;
+  - the guardrails pods' version;
+  - **administrators only:** the gateway replicas' last reported mode, and the evidence: the share of stored decisions over 7 days that enforce would have refused or redacted. Availability and added latency are not stored in CAIRO yet, and the card says so.
+- **Event history:** the mode changes of the period shown are listed beside the decisions. They are read from the settings history; no event row is added.
+- **Rollback:** `down.sql`, `ROLLBACK.md` and an inventory note. Reversible only while no enforce or automatic version is stored: the table is append-only, so `down.sql` checks first and stops. Rehearsed on a throwaway database on 2026-10-02 (owner: "go rehearsal"): up, down and up again, 7 of 7 PASS, and `down.sql` refused once an enforce version existed.
+- **Tests:** unit tests for the ceiling, trial expiry, the mode checks, saving a mode, keeping a trial through a policy change, the automatic switch-back (including two pulls racing), the mode history and the gateway fields; router tests for the authority, the read-only roles, the ceiling (B1), the confirmation, and what `getConfig` shows to whom.
+- **Approval:** Pending. The owner merges after the security-agent review has reported; the implementer does not approve its own change. Not a production approval.
+- **Deployment status:** not deployed.
+

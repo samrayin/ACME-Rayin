@@ -157,19 +157,39 @@ Until part a is live, changes to the guardrail policy in the console are to be a
 
 ## 7. Decisions for the owner
 
-| # | Decision | Recommendation |
+All four were decided by the owner on 2026-10-02 ("D-B1 to D-B3 as recommended, go part b"; D-B4 was built in part a).
+
+| # | Decision | Decided |
 |---|---|---|
-| D-B1 | Who may switch enforcement **off** | The deployment administrators, as for on. A wider named group if the owner wants a faster safety-off |
-| D-B2 | Automatic revert by default | On, 30 minutes, until ADR-0005's gates are met |
+| D-B1 | Who may switch enforcement **off** | The deployment administrators, as for on (the named list `CAIRO_GUARDRAIL_ADMINS`). The owner named them "Platform Owners / Platform admins", meaning those people, not the organisation roles |
+| D-B2 | Automatic revert by default | On, 30 minutes, until ADR-0005's gates are met. Other choices: 5, 15, 60 or 120 minutes, or none |
 | D-B3 | Ceiling in dev | `record` until the first supervised trial, then `enforce` for that trial window only |
 | D-B4 | Pull interval | 30 seconds |
 
+### 7.1 Part b build decisions (owner, 2026-10-02: "go phase 1")
+
+| # | Question | Decided |
+|---|---|---|
+| C1 | How the console learns each gateway replica's effective mode | The gateway hook sends its pod name, effective mode and newest settings version with each `/v1/guard` call; rayin-guardrails passes them through in the event it pushes; CAIRO stores them on the event (`gateway_pod`, `gateway_mode`, `gateway_settings_version`). A replica therefore reports only when a request passes through it, so the card shows "last seen" |
+| C2 | Where the "mode change" event of §3.4 lives | In the settings history itself, which already records who, when and why. The event history shows the mode changes of its period beside the decisions; no row is added to `acme_guardrail_events`, which is on the P0-10 watchlist |
+| C3 | How the automatic revert runs | An enforce version carries `revert_at`. From that time CAIRO reads it as record wherever it is read, and the next pod pull writes an audited automatic record version. No background job |
+| C4 | How the console knows the ceiling | Its own `CAIRO_GUARDRAIL_MODE_MAX`, mirroring the gateway's. Unset or anything but `enforce` means record. A mismatch errs towards record either way: the console refuses to store enforce, or the gateway refuses to apply it |
+| C5 | The evidence figures on the card | The would-block and would-redact share of stored decisions over 7 days. Guardrail availability and added latency are not stored in CAIRO yet, so the card says so instead of showing a figure |
+
 ## 8. Not verified
 
-- Whether the public ingress already denies `/api/public/guardrails-settings` and `/api/public/guardrails-events`. Denying both there is a follow-up.
-- How LiteLLM 1.100.1 returns redacted text from a pre-call hook for every request format, including Anthropic's Messages API (ADR-0020 §3.8). To be proven by test B4.
+- **Public ingress:** whether it already denies `/api/public/guardrails-settings` and `/api/public/guardrails-events`. Both answered 401 without a key from the internet on 2026-10-01, so they are reachable; denying both at the ingress is a follow-up.
+- **Redacted text:** how LiteLLM 1.100.1 returns redacted text from a pre-call hook for every request format, including Anthropic's Messages API (ADR-0020 §3.8). To be proven by test B4.
+
+**Known limit of §3.3, recorded with part b.**
+- **The gateway learns the mode only from verdicts.** If the guardrails service is unavailable while enforce is in force, no verdict arrives. The gateway then keeps refusing by its last mode (§3.3), past an automatic revert time, until a usable verdict reaches it or the replica restarts and the ceiling decides.
+- **This is fail-closed by design, but a supervised trial must plan for it.** Restoring the guardrails service, or setting the gateway ceiling to `record`, ends it.
 
 ## 9. Revisions
+
+- **2026-10-02, at the start of part b:**
+  - **Decisions:** D-B1 to D-B4 are recorded as decided (§7), and the part b build decisions C1 to C5 as §7.1.
+  - **Known limit added to §8:** the gateway learns the mode only from verdicts, so a guardrails outage during enforce keeps a replica refusing until a verdict or a restart.
 
 - **2026-10-01, after a security review of this design:**
   - **No downgrade.** A guardrails pod that has not received CAIRO's settings no longer reports `record`, and the gateway ignores unknown or older settings versions (§3.2, §3.3; tests B10 and B11).
