@@ -5340,5 +5340,6 @@ Console change, with a database migration. ADR-0005-B part b, console half. **No
 - **Event history:** the mode changes of the period shown are listed beside the decisions. They are read from the settings history; no event row is added.
 - **Rollback:** `down.sql`, `ROLLBACK.md` and an inventory note. Reversible only while no enforce or automatic version is stored: the table is append-only, so `down.sql` checks first and stops, inside one transaction so that nothing changes under any runner. Rehearsed on a throwaway database on 2026-10-02 (owner: "go rehearsal"): up, down and up again, 7 of 7 PASS, and `down.sql` refused once an enforce version existed.
 - **Tests:** unit tests for the ceiling, trial expiry, the mode checks, saving a mode, keeping a trial through a policy change, the automatic switch-back (including two pulls racing), the mode history and the gateway fields; router tests for the authority, the read-only roles, the ceiling (B1), the confirmation, and what `getConfig` shows to whom.
-- **Approval:** Pending. The owner merges after the security-agent review has reported; the implementer does not approve its own change. Not a production approval.
-- **Deployment status:** not deployed.
+- **Security review:** four low findings, SF-2026-023 to SF-2026-026. SF-2026-025 was fixed before the merge; the other three are for the phase 2 review.
+- **Approval:** the owner merged #263 on 2026-10-02 (`74218f1e0`), after the security-agent review and its two re-checks had reported. Human approval by merge; delegated auto-approval was not used. Not a production approval.
+- **Deployment status:** not deployed. Console `acme-v4.38.0.30` (2026-10-02) was built before this merge and does not include it.
