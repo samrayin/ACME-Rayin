@@ -23,6 +23,6 @@ Do not report as HIGH:
 - test-only code that never ships;
 - issues that exist unchanged outside the diff.
 
-Report those as LOW or omit them.
+Report those as LOW or omit them. This list never applies to rule 1: a secret, private environment identifier or personal email address introduced by the diff is HIGH in any file, docs and tests included.
 
 Output: your final reply must be strictly valid JSON, with no text before or after it and no trailing commas. When you have finished the review, set "analysis_summary.review_completed" to the boolean true; the merge check fails without it.
