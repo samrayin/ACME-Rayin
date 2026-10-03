@@ -129,10 +129,22 @@ jobs:
           : > "$dir/empty.json"
           echo '{"error":"scan failed"}' > "$dir/error.json"
           echo '{"findings":"not a list"}' > "$dir/unreadable.json"
-          echo '{"findings":[{"severity":"HIGH"},{"severity":"LOW"}]}' > "$dir/high.json"
-          echo '{"findings":[{"severity":"critical"}]}' > "$dir/critical.json"
-          echo '{"findings":[{"severity":"MEDIUM"},{"severity":"LOW"}]}' > "$dir/medium.json"
-          echo '{"findings":[]}' > "$dir/none.json"
+          done='"analysis_summary":{"review_completed":true}'
+          echo "{\"findings\":[{\"severity\":\"HIGH\"},{\"severity\":\"LOW\"}],$done}" > "$dir/high.json"
+          echo "{\"findings\":[{\"severity\":\"critical\"}],$done}" > "$dir/critical.json"
+          echo "{\"findings\":[{\"severity\":\"MEDIUM\"},{\"severity\":\"low\"}],$done}" > "$dir/medium.json"
+          echo "{\"findings\":[],$done}" > "$dir/none.json"
+          # Review CHG096-1: the action's own "no readable answer" result, and no summary at all.
+          echo '{"findings":[],"analysis_summary":{"review_completed":false}}' > "$dir/not-completed.json"
+          echo '{"findings":[]}' > "$dir/no-summary.json"
+          # Review CHG096-2: a missing, unknown or padded severity blocks.
+          echo "{\"findings\":[{\"description\":\"no severity\"}],$done}" > "$dir/no-severity.json"
+          echo "{\"findings\":[{\"severity\":\"SEVERE\"}],$done}" > "$dir/unknown-severity.json"
+          echo "{\"findings\":[{\"severity\":\"High \"}],$done}" > "$dir/padded-severity.json"
+          echo "{\"findings\":[{\"severity\":7}],$done}" > "$dir/numeric-severity.json"
+          # Review CHG096-6: two JSON documents in one file.
+          printf '%s\n%s\n' "{\"findings\":[],$done}" "{\"findings\":[],$done}" > "$dir/two-documents.json"
+          echo 'not json' > "$dir/not-json.json"
           failed=0
           expect() { # expect <exit code> <fixture>
             # Inside `if`, so the runner's `bash -e` does not stop at the gate's
@@ -146,6 +158,14 @@ jobs:
           expect 1 unreadable.json
           expect 1 high.json
           expect 1 critical.json
+          expect 1 not-completed.json
+          expect 1 no-summary.json
+          expect 1 no-severity.json
+          expect 1 unknown-severity.json
+          expect 1 padded-severity.json
+          expect 1 numeric-severity.json
+          expect 1 two-documents.json
+          expect 1 not-json.json
           expect 0 medium.json
           expect 0 none.json
           exit "$failed"

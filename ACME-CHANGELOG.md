@@ -5507,7 +5507,33 @@ CI only (Tier 2). No product code, no schema, nothing deployed. Owner request, 2
   - add the `CLAUDE_API_KEY` Actions secret (each PR diff is sent to the Anthropic API). Until then every non-draft PR fails `Security review`;
   - then protect `main`: require `Security review`, `Security review gate self-test` and the five ACME checks that run on every PR, with no bypass for administrators;
   - then record it in N-48 as the compensating control.
-- **Known limit:** for a pull request from this repository, GitHub runs the workflow and its files as the PR has them. So a PR that edits them can weaken its own check. The review rules name such edits as HIGH, but the owner should treat any change to these files as one to read personally.
+- **Known limit:** for a pull request from this repository, GitHub runs the workflow and its files as the PR has them. So a PR that edits them can weaken its own check. The review rules name such edits as HIGH, but the owner should treat any change to these files as one to read personally. (Understated; corrected in the follow-up entry below.)
 - **Rollback:** revert the commit. Branch protection, once set, must be relaxed first, or every PR stays blocked.
+- **Approval:** pending; the owner merges after the fresh-session security review. Not a production approval.
+- **Deployment status:** not applicable (CI).
+
+## 2026-10-03 — Security review gate fails closed when the review did not complete (CHG-2026-096, follow-up)
+
+CI only (Tier 2), same change. No product code, no schema, nothing deployed. The fresh-session security review of the entry above reported after the owner had merged it, and one of its findings blocks. The owner has not yet added the API key secret or branch protection, so nothing has relied on the gate yet.
+- **Why:**
+  - **Review CHG096-1 (blocking):** when the model's answer holds no readable JSON, the action writes an empty findings list with `review_completed` set to `false` and exits 0. The gate saw no findings and passed, so a review that never finished let the pull request through.
+  - **Review CHG096-2:** only HIGH and CRITICAL blocked, so a finding with a missing, misspelt or unknown severity passed.
+  - **Review CHG096-6:** a results file holding two JSON documents made the counts multi-line, and the comparison then fell through to a pass.
+- **`.github/security-review/check-results.sh`** now passes only when all of these hold:
+  - the file is exactly one JSON document;
+  - it has no `error`;
+  - it has a findings list;
+  - `analysis_summary.review_completed` is `true`;
+  - every finding is MEDIUM or LOW, ignoring case.
+
+  Anything else fails closed, missing and unknown severities included. Each count must be a whole number before it is compared.
+- **Self-test:** the passing fixtures now carry `review_completed: true`. Eight new fixtures must fail: review not completed, no summary, missing severity, unknown severity, padded severity, numeric severity, two documents, and invalid JSON.
+- **Correction to the entry above, "Known limit":** it understated the gap, in two ways:
+  - pull requests from forks also run the workflow as the PR has it. They get no API key, but a fork PR that edits the workflow can drop the review step;
+  - a required check matches on its name, so a job called `Security review` in any workflow the PR adds also satisfies it.
+
+  So the check cannot stop a pull request that changes the workflow; only reading that change can. The review rules still name such edits as HIGH. The mitigations are the owner's decision.
+- **Owner steps, in order:** merge this first; then add the `CLAUDE_API_KEY` secret; then protect `main`; then record it in N-48.
+- **Rollback:** revert the commit. That brings back a gate that passes an unfinished review, so revert only together with relaxing branch protection.
 - **Approval:** pending; the owner merges after the fresh-session security review. Not a production approval.
 - **Deployment status:** not applicable (CI).
