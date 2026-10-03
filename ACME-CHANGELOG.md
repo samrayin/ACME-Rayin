@@ -5413,7 +5413,7 @@ Gateway hook and configuration comment; no console code and no migration. ADR-00
 - **Approval:** the owner merged #268 on 2026-10-02 (`bbcf78817`), after those checks had reported. Human approval by merge; delegated auto-approval was not used. Not a production approval.
   - Each review ran in a fresh session that shared no context with the implementing session, which invoked it. That is the owner's compensating control for having no human reviewer (Readiness Ledger N-48). So no review was fully independent.
   - The author and the merger are the same GitHub account, so GitHub holds no formal review (Readiness Ledger N-47).
-- **Deployment status:** not deployed. The live gateway still runs the 2026-09-30 configuration. The console (`acme-v4.38.0.31`) and rayin-guardrails `v0.5.0` were both released on 2026-10-03, so this ConfigMap is now the last step of phase 3, on the owner's yes.
+- **Deployment status:** live in dev since 2026-10-03 09:31Z, owner-approved, after the console (`acme-v4.38.0.31`) and rayin-guardrails `v0.5.0`. The `litellm-config` ConfigMap was built from `main`'s three files and byte-compared before and after the apply; then a watched `rollout restart`. `in_image_check.py` PASS before and after (record, ceiling `record`, settings version 3). Not yet shown: a real request from a key that is not exempt. Nothing can be enforced: both ceilings stay `record`. Deployment record: acme-rayin-ops #66.
 
 ---
 
