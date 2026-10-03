@@ -5666,3 +5666,20 @@ not be recorded as closing P0-10.
 housekeeping — it is the P0-10 failure happening, and is worth an alert once one exists.
 
 **Deployment status:** not deployed.
+
+## 2026-10-03 — Plan: upstream Langfuse sync from v4.38.0 to v4.50.x (CHG-2026-100)
+
+Documentation only: a plan, approved by the owner on 2026-10-03. Nothing is merged from upstream, built or deployed. The plan is `acme-governance/upgrades/CHG-2026-100-langfuse-v4.50-sync-plan.md`.
+- **Size:** twelve upstream releases (v4.39.0 to v4.50.0): 321 commits, 2,139 files, 5 Postgres migrations, 1 ClickHouse migration, 51 Enterprise-licensed files.
+- **Trial merge:** 31 conflicts, almost all in screens ACME rebranded or restructured. Two need porting, not merging, because upstream deleted the files: the Members table (CAIRO's "Project access" column) and the dashboards table. Nine security-sensitive files merge cleanly but are listed for line-by-line review, among them the content-free roles' allow-list (`trpc.ts`), role scopes and invite-only sign-in.
+- **Already in CAIRO:** upstream's API-key revocation and SCIM scoping fixes, through CHG-2026-076.
+- **Method:** as for v4.38.0. A real merge of the release tag on an `upgrade/` branch, landed with a merge commit (never squashed), labelled `upstream-sync`, with Enterprise files proven byte-identical to the tag.
+- **Also in the plan:**
+  - migration reversibility: two enum values cannot be removed;
+  - rehearsal checks: migration order against ACME's own, the concurrent index, grants on the new table;
+  - a role test matrix that covers new upstream screens for the content-free roles;
+  - a telemetry check;
+  - the release order (web, then worker), rollback, risks, effort and five owner questions.
+- **Preconditions:** CHG-2026-089 part b released or parked, a PD-0002 decision, and the owner's choice on whether local checks stand in for CI, which fails on `main`.
+
+**Deployment status:** not applicable (plan only).
