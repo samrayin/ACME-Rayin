@@ -8,13 +8,15 @@ on:
       - synchronize
       - ready_for_review
 
-permissions:
-  contents: read
-  pull-requests: write
+# Nothing by default; each job asks for what it needs (CHG-2026-096).
+permissions: {}
 
 jobs:
   security-review:
     name: Security review
+    permissions:
+      contents: read
+      pull-requests: write # the review is posted as a PR comment
     # ACME (CHG-2026-096): a required merge check on main, so it must never pass
     # without a review having run.
     # - No opt-in variable: a job skipped by `if:` counts as passed for a
@@ -133,7 +135,9 @@ jobs:
           echo '{"findings":[]}' > "$dir/none.json"
           failed=0
           expect() { # expect <exit code> <fixture>
-            bash "$gate" "$dir/$2" > /dev/null 2>&1; got=$?
+            # Inside `if`, so the runner's `bash -e` does not stop at the gate's
+            # intended failures.
+            if bash "$gate" "$dir/$2" > /dev/null 2>&1; then got=0; else got=$?; fi
             if [ "$got" -ne "$1" ]; then echo "::error::$2: expected exit $1, got $got"; failed=1; else echo "$2: exit $got as expected"; fi
           }
           expect 1 missing.json
