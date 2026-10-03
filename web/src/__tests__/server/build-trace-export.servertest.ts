@@ -37,7 +37,9 @@ vi.mock("@langfuse/shared/src/server", async () => ({
     mockGetScoresAndCorrectionsForTraces(...args),
 }));
 
-vi.mock("@langfuse/shared/src/db", () => ({
+// Keep the real enums: securityRoleAllowList reads Role at import.
+vi.mock("@langfuse/shared/src/db", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   prisma: {
     traceSession: {
       findFirst: (...args: unknown[]) => mockTraceSessionFindFirst(...args),

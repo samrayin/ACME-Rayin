@@ -4,7 +4,7 @@ import {
   PULL_BACKFILL_MIN_AGE_MS,
   selectPullBackfillRows,
   type PulledGuardrailsEvent,
-} from "@/src/features/acme-enhancements/server/acmeGuardrailsPullBackfill";
+} from "@langfuse/shared/src/server";
 
 // The pull path must never persist a metadata-only row ahead of the push for
 // the same event -- whichever row lands first wins the unique index, so a

@@ -5340,8 +5340,11 @@ Console change, with a database migration. ADR-0005-B part b, console half. **No
 - **Event history:** the mode changes of the period shown are listed beside the decisions. They are read from the settings history; no event row is added.
 - **Rollback:** `down.sql`, `ROLLBACK.md` and an inventory note. Reversible only while no enforce or automatic version is stored: the table is append-only, so `down.sql` checks first and stops, inside one transaction so that nothing changes under any runner. Rehearsed on a throwaway database on 2026-10-02 (owner: "go rehearsal"): up, down and up again, 7 of 7 PASS, and `down.sql` refused once an enforce version existed.
 - **Tests:** unit tests for the ceiling, trial expiry, the mode checks, saving a mode, keeping a trial through a policy change, the automatic switch-back (including two pulls racing), the mode history and the gateway fields; router tests for the authority, the read-only roles, the ceiling (B1), the confirmation, and what `getConfig` shows to whom.
-- **Approval:** Pending. The owner merges after the security-agent review has reported; the implementer does not approve its own change. Not a production approval.
-- **Deployment status:** not deployed.
+- **Security review:** four findings, SF-2026-023 to SF-2026-026. The owner rated them on 2026-10-02: SF-2026-025 was fixed before the merge and is closed with it; SF-2026-023, -024 and -026 are Low, for the phase 2 review.
+- **Approval:** the owner merged #263 on 2026-10-02 (`74218f1e0`), after the security-agent review and its two re-checks had reported. Human approval by merge; delegated auto-approval was not used. Not a production approval.
+  - The review reported no Critical, High or Medium finding. The session that wrote the change launched the security agent, so it was not a fully independent review.
+  - The author and the merger are the same GitHub account, so GitHub holds no formal review (Readiness Ledger N-47).
+- **Deployment status:** live in dev as console `acme-v4.38.0.31` (commit `8aa5fa099`), released 2026-10-03 with the owner's approval, together with phase 2's console parts. `verify-deployed.sh` TRACED, health OK, migration `20261002120000` applied at 00:11:25Z and recorded, nothing stuck. The console's ceiling stays unset (record), so nothing can be enforced. Deployment record: acme-rayin-ops #64.
 
 ## 2026-10-02 — Console parts of the enforcement switch's phase 2 (CHG-2026-089 part b, phase 2: console)
 
@@ -5369,8 +5372,13 @@ Console change, with a database migration. ADR-0005-B §3.3.1. The owner asked f
   - the judge figure and the gateway replicas are labelled for what they are;
   - the recent-events summary counts no-verdict events;
   - `down.sql` locks the table before its check.
-- **Approval:** Pending. The owner merges after the fresh-session security review and its re-check have reported, under the review controls recorded in Readiness Ledger N-48. Not a production approval.
-- **Deployment status:** not deployed.
+- **Security review:** a fresh-session review (P2-269-1 to P2-269-7, all low or informational), a re-check, a final check, and a check of the changelog conflict resolution before the merge. No critical or high finding.
+  - Logged by the security agent as SF-2026-029, -033, -034 and -035, with notes under SF-2026-023 and SF-2026-026.
+  - Severities are proposals; the owner rates them.
+- **Approval:** the owner merged #269 on 2026-10-02 (`0a21d819d`), after those checks had reported. Human approval by merge; delegated auto-approval was not used. Not a production approval.
+  - Each review ran in a fresh session that shared no context with the implementing session, which invoked it. That is the owner's compensating control for having no human reviewer (Readiness Ledger N-48). So no review was fully independent.
+  - The author and the merger are the same GitHub account, so GitHub holds no formal review (Readiness Ledger N-47).
+- **Deployment status:** live in dev as console `acme-v4.38.0.31` (commit `8aa5fa099`), released 2026-10-03 with the owner's approval, together with phase 2's console parts. `verify-deployed.sh` TRACED, health OK, migration `20261002190000` applied at 00:11:25Z and recorded, nothing stuck. The console's ceiling stays unset (record), so nothing can be enforced. Deployment record: acme-rayin-ops #64. Migration `20261002190000` was rehearsed on the cluster's PostgreSQL 15 before the release (7 of 7). rayin-guardrails `v0.5.0` followed at 08:24Z the same day; next in phase 3: the gateway.
 
 ## 2026-10-02 — The gateway takes the guardrail mode from CAIRO, within a ceiling (CHG-2026-089 part b, phase 2: gateway)
 
@@ -5399,8 +5407,13 @@ Gateway hook and configuration comment; no console code and no migration. ADR-00
   - an unreadable switch-back time makes an answer unusable;
   - a new CI job runs the hook's tests;
   - the ADR records that the gateway must be restarted after a settings restore that lowers the version.
-- **Approval:** Pending. The owner merges after the fresh-session security review and its re-check have reported, under the review controls recorded in Readiness Ledger N-48. Not a production approval.
-- **Deployment status:** not deployed.
+- **Security review:** a fresh-session review (P2-268-1 to P2-268-6: one medium, the rest low), a re-check (one more medium) and a final check. No critical or high finding.
+  - Logged by the security agent as SF-2026-030, -033, -034 and -035, with notes under SF-2026-022 and SF-2026-024.
+  - Severities are proposals; the owner rates them.
+- **Approval:** the owner merged #268 on 2026-10-02 (`bbcf78817`), after those checks had reported. Human approval by merge; delegated auto-approval was not used. Not a production approval.
+  - Each review ran in a fresh session that shared no context with the implementing session, which invoked it. That is the owner's compensating control for having no human reviewer (Readiness Ledger N-48). So no review was fully independent.
+  - The author and the merger are the same GitHub account, so GitHub holds no formal review (Readiness Ledger N-47).
+- **Deployment status:** live in dev since 2026-10-03 09:31Z, owner-approved, after the console (`acme-v4.38.0.31`) and rayin-guardrails `v0.5.0`. The `litellm-config` ConfigMap was built from `main`'s three files and byte-compared before and after the apply; then a watched `rollout restart`. `in_image_check.py` PASS before and after (record, ceiling `record`, settings version 3). Not yet shown: a real request from a key that is not exempt. Nothing can be enforced: both ceilings stay `record`. Deployment record: acme-rayin-ops #66.
 
 ---
 
@@ -5469,6 +5482,207 @@ that was redacted rather than blocked. Unrated — the owner rates findings.
 
 **Deployment status:** not applicable — nothing here ships in an image.
 
+## 2026-10-03 — Web server test mocks supply what the code under test reads (CHG-2026-092)
+
+Test only. No product code changes, and nothing to release. Rollback: revert the commit.
+- **Why:** `tests-web` has failed on `main` on three test files besides the auth parity test (that one is CHG-2026-090). Each file mocks `@langfuse/shared/src/db`, and each mock predates ACME code that now reads more from that module.
+- **`build-trace-export` and `create-authed-project-api-route-auth-errors`:** both failed at import with "No `Role` export is defined on the mock". Since CHG-2026-059 b, `securityRoleAllowList.ts` builds its allow-list maps from `Role` when the module loads, and both files reach it (through `buildTraceExport.ts` and `trpc.ts`). The first mock returned only `prisma`; the second returned `prisma` and three gateway enums. Now `build-trace-export` keeps the real module's exports through `importOriginal`, as the ACME tests do, and `create-authed-project-api-route-auth-errors` adds `Role` to the enums it already takes from `@prisma/client`.
+- **`getServerAuthSession-session-revocation`:** the two "allows" cases failed with `Cannot read properties of undefined (reading 'findMany')`. Since CHG-2026-059 c, the session callback loads the user's project access limits (`prisma.acmeProjectAccess.findMany`) whenever the user is found, and the mock had no `acmeProjectAccess`. The "denies" cases passed only because no user is found there. The mock now returns no limits.
+- **Tests:** before the fix, a local run reproduced CI's failures in all three files; after it, the three files pass (33 tests).
+
+## 2026-10-03 — Security review becomes a required, fail-closed merge check (CHG-2026-096)
+
+CI only (Tier 2). No product code, no schema, nothing deployed. Owner request, 2026-10-03, after two records PRs were merged while their security check was still running (Readiness Ledger N-48).
+- **Why:** "a completed security review is a merge condition" was procedural only. The existing `Security review` workflow could not be that gate, for three reasons:
+  - it ran only when a repository variable opted in, and a job skipped by `if:` counts as passed for a required check;
+  - the action posts its findings as a comment and never fails because of them;
+  - when its own scan fails, it only warns.
+- **`.github/workflows/claude-code-security-review.yml`:**
+  - runs on every non-draft pull request, with no opt-in variable. Pull requests from forks run too: they get no API key, so the check fails instead of being skipped;
+  - **fails closed** (`.github/security-review/check-results.sh`) on any HIGH or CRITICAL finding, and on a missing, empty, errored or unreadable result. MEDIUM and LOW findings stay in the PR comment;
+  - reads CAIRO's own review rules from `.github/security-review/cairo-security-instructions.txt`, by absolute path, because the action ignores a path it cannot find without a word. A step fails the check if the file is missing;
+  - uses a current model (`claude-opus-5-5`; it was `claude-opus-4-1-20250805`);
+  - a second job, `Security review gate self-test`, runs the gate script against fixtures on every pull request, with no API key.
+- **Owner steps after merge:**
+  - add the `CLAUDE_API_KEY` Actions secret (each PR diff is sent to the Anthropic API). Until then every non-draft PR fails `Security review`;
+  - then protect `main`: require `Security review`, `Security review gate self-test` and the five ACME checks that run on every PR, with no bypass for administrators;
+  - then record it in N-48 as the compensating control.
+- **Known limit:** for a pull request from this repository, GitHub runs the workflow and its files as the PR has them. So a PR that edits them can weaken its own check. The review rules name such edits as HIGH, but the owner should treat any change to these files as one to read personally. (Understated; corrected in the follow-up entry below.)
+- **Rollback:** revert the commit. Branch protection, once set, must be relaxed first, or every PR stays blocked.
+- **Approval:** pending; the owner merges after the fresh-session security review. Not a production approval.
+- **Deployment status:** not applicable (CI).
+
+## 2026-10-03 — Security review gate fails closed when the review did not complete (CHG-2026-096, follow-up)
+
+CI only (Tier 2), same change. No product code, no schema, nothing deployed. The fresh-session security review of the entry above reported after the owner had merged it, and one of its findings blocks. The owner has not yet added the API key secret or branch protection, so nothing has relied on the gate yet.
+- **Why:**
+  - **Review CHG096-1 (blocking):** when the model's answer holds no readable JSON, the action writes an empty findings list with `review_completed` set to `false` and exits 0. The gate saw no findings and passed, so a review that never finished let the pull request through.
+  - **Review CHG096-2:** only HIGH and CRITICAL blocked, so a finding with a missing, misspelt or unknown severity passed.
+  - **Review CHG096-6:** a results file holding two JSON documents made the counts multi-line, and the comparison then fell through to a pass.
+- **`.github/security-review/check-results.sh`** now passes only when all of these hold:
+  - the file is exactly one JSON document;
+  - it has no `error`;
+  - it has a findings list;
+  - `analysis_summary.review_completed` is `true`;
+  - every finding is MEDIUM or LOW, ignoring case.
+
+  Anything else fails closed, missing and unknown severities included. Each count must be a whole number before it is compared.
+- **Self-test:** the passing fixtures now carry `review_completed: true`. Eight new fixtures must fail: review not completed, no summary, missing severity, unknown severity, padded severity, numeric severity, two documents, and invalid JSON.
+- **Correction to the entry above, "Known limit":** it understated the gap, in two ways:
+  - pull requests from forks also run the workflow as the PR has it. They get no API key, but a fork PR that edits the workflow can drop the review step;
+  - a required check matches on its name, so a job called `Security review` in any workflow the PR adds also satisfies it.
+
+  So the check cannot stop a pull request that changes the workflow; only reading that change can. The review rules still name such edits as HIGH. The mitigations are the owner's decision.
+- **Owner steps, in order:** merge this first; then add the `CLAUDE_API_KEY` secret; then protect `main`; then record it in N-48.
+- **Rollback:** revert the commit. That brings back a gate that passes an unfinished review, so revert only together with relaxing branch protection.
+- **Approval:** pending; the owner merges after the fresh-session security review. Not a production approval.
+- **Deployment status:** not applicable (CI).
+
+## 2026-10-03 — Security review gate sees every finding, and pull-request files cannot change what the review job runs (CHG-2026-096, second follow-up)
+
+CI only (Tier 2), same change. No product code, no schema, nothing deployed. This fixes findings R282-1, -2, -3, -6 and -7 from the fresh-session security review of the entry above, and two problems found while fixing them. The API key secret and branch protection are still not set.
+- **Findings the gate never saw (R282-1, blocking):** before writing its results, the action drops some findings. Pattern rules drop every finding in a Markdown file, and several kinds of finding by keyword. A second model pass then drops what it judges to be false positives, by default rules that contradict CAIRO's: they exclude committed secrets, audit-log integrity and most workflow issues. So a HIGH disclosure in the changelog could pass, and not appear in the review comment.
+  - The pattern rules are switched off, so every finding reaches the model filter and, if kept, the review comment.
+  - The model filter now uses CAIRO's own rules (`.github/security-review/cairo-filtering-instructions.txt`). A finding under one of CAIRO's seven review rules is always kept, in any file type.
+  - The gate also counts any finding excluded other than by that filter, and fails if the list of excluded findings is missing.
+  - CAIRO's review rules now say they take precedence over the action's built-in exclusions. A committed secret is a disclosure, not "a secret stored on disk".
+- **Pull-request files could change what the review job runs (R282-2, and one more found while fixing it):**
+  - Claude Code no longer loads settings, hooks or MCP servers from the pull request's checkout. The review command skips project settings, and the job removes that configuration before the review.
+  - The step that patches the action now runs Python in isolated mode, so a module added to the repository root cannot replace one it imports.
+- **A cache a pull request could write (R282-3):** the action restored a run-history cache whose keys a pull request's earlier runs can write. Reviewing every commit leaves that cache unused, so the patch step removes it.
+- **Patches are checked:** each patch must find exactly the text it expects in the pinned action, or the job fails.
+- **Self-test (R282-6):** each fixture now passes every rule except the one it tests. There are 24 fixtures. New ones cover a padded LOW, a null or non-object finding, a top-level array, a missing list of excluded findings, and findings excluded by a pattern rule, by directory, or in an unreadable form. A HIGH that the model filter judged a false positive passes.
+- **Output format (R282-7):** CAIRO's review rules ask for strictly valid JSON with `review_completed` set to `true`. Without it the gate fails closed, which could block a genuine review. Watch the first live runs.
+- **Known limit, restated (R282-4, -5 and -8):** the check is a safeguard, not proof.
+  - A pull request runs its own copy of the workflow and the gate, so any change under `.github/` needs the owner's own reading.
+  - Changing a pull request's base branch does not re-run the review.
+  - The review can miss part of a change: files the action treats as generated, a diff too long for one prompt, and pull requests with more than 100 files.
+  - The model reads the diff, so text planted in it can steer the review.
+- **Owner steps, in order:** merge this; then add the `CLAUDE_API_KEY` secret; then protect `main`; then record it in N-48.
+- **Rollback:** revert the commit. That brings back the gaps above, so revert only together with relaxing branch protection.
+- **Approval:** pending; the owner merges after the fresh-session security review. Not a production approval.
+- **Deployment status:** not applicable (CI).
+
+## 2026-10-03 — Security review job keeps file contents and model output out of public places, and runs a pinned CLI (CHG-2026-096, third follow-up)
+
+CI only (Tier 2), same change. No product code, no schema, nothing deployed. The fresh-session review of the entry above reported after it was merged. No finding blocked; two needed fixing before the API key secret is added. Both are fixed here, with the lower findings that were cheap to fix. The secret and branch protection are still not set.
+- **Files the model filter could read (R285-1):** the filter reads the file a finding names into its prompt, and it accepted any path. It now reads only files inside the repository, with symlinks resolved. Also:
+  - the review CLI no longer receives the GitHub token;
+  - the action no longer prints the results to the job log or uploads them as an artifact, both public on this repository.
+- **Upstream's exclusions for secrets (R285-2, and R282-7):** the action's own review prompt said, twice, not to report secrets "stored on disk". Both lines are now removed from the prompt. CAIRO's list of things not to report as HIGH now says it never applies to rule 1. The sample output in that prompt no longer ends with a trailing comma, which a model could copy into invalid JSON.
+- **Paths a pull request could pre-create (R285-3):** the job removes the files the action writes or reads at fixed workspace paths before the review runs. The action's reservation marker is also removed, as the run-history cache was: reviewing every commit leaves both unused.
+- **Forged filter exclusions (R285-4):** a finding counts as a false positive only in the filter's own wrapper shape. The gate fails if any finding was excluded by directory, because this workflow excludes none.
+- **Self-test (R285-5):** each fixture now also checks the gate's message, so it proves which check failed. There are 29 fixtures; the new ones cover `review_completed` as a string, an excluded-findings list that is not a list, directory exclusions, and a forged filter exclusion.
+- **Pinned CLI (R285-6):** the action installed the latest Claude Code CLI, so this job's isolation depended on whatever version ran. It now installs 2.1.284, the version these flags were tested with, on Node 22. Current CLI versions require Node 22 or later; the action used Node 18.
+- **Noise (R285-7):** CAIRO's filtering rules add back several upstream exclusions that do not conflict with CAIRO's rules, such as open redirects, resource leaks and shell scripts with no untrusted input.
+- **Wording (R285-8):** CAIRO's review and filtering rules are instructions to a model, not guarantees. The previous entry says findings under CAIRO's rules are "always kept" and that the rules "take precedence". Read both as what the model is told. Besides the diff, the pull request's title and description also reach the model and can steer it.
+- **Owner steps, in order:** merge this after its review; then add the `CLAUDE_API_KEY` secret; then protect `main`; then record it in N-48.
+- **Rollback:** revert the commit. That brings back the gaps above, so revert only together with relaxing branch protection.
+- **Approval:** pending; the owner merges after the fresh-session security review. Not a production approval.
+- **Deployment status:** not applicable (CI).
+
+## 2026-10-03 — Security review model may only read the repository, and drafts fail the check (CHG-2026-096, fourth follow-up)
+
+CI only (Tier 2), same change. No product code, no schema, nothing deployed. The fresh-session review of the entry above found no blocking finding, and one to fix before the API key secret is added. That one is fixed here, with three lower findings. The secret and branch protection are still not set.
+- **The review model's tools (R286-1):** the model's findings are posted as public review comments. Before, only the CLI's default permissions stopped the model from reading outside the repository, or from changing files in the checkout before the gate ran. Now the review CLI is given only the Read, Grep and Glob tools, and a setting that refuses reads outside its working directory. It can still read the whole repository, which is what the review needs.
+- **Correction to the entry above (R286-2):** its heading says model output is kept out of public places. That overstates it. The review comment on a pull request is public by design, and it carries the model's findings. What the previous change kept out of public places was the results file and file contents from outside the repository. This change also:
+  - drops the action's error log from the public job log;
+  - quotes the file paths and line numbers that the comment script logs, so text from the model cannot start a line of its own.
+- **Filtering rules (R286-3):** two exclusions now name their exceptions explicitly. A regular-expression problem is kept if it can make a guardrail check time out or fail. A configuration value is kept if, missing or invalid, it makes a guardrail fail open or exceed the deployment ceiling.
+- **Drafts (R286-4):** a draft was skipped, and a skipped job counts as passed for a required check, so a draft's commit could show a green `Security review` until the review ran. Drafts now fail the check in its first step. Marking the pull request ready runs the review.
+- **Owner steps, in order:** merge this after its review; then add the `CLAUDE_API_KEY` secret; then protect `main`; then record it in N-48.
+- **Rollback:** revert the commit. That brings back the gaps above, so revert only together with relaxing branch protection.
+- **Approval:** pending; the owner merges after the fresh-session security review. Not a production approval.
+- **Deployment status:** not applicable (CI).
+
+## 2026-10-03 — Security review error text stays on one line, and filtering exclusions never cover CAIRO's rules (CHG-2026-096, fifth follow-up)
+
+CI only (Tier 2), same change. No product code, no schema, nothing deployed. The fresh-session review of the entry above found no blocking finding, and two low ones. Both are fixed here.
+- **Error text (R287-1):** when the review fails, the action prints its error in a job-log warning. It used to print it raw, line breaks included, so a later line could start a workflow command. The patch step now makes the action print the error as one quoted line.
+- **Filtering rules (R287-2):** a sentence after the exclusion list says that none of the exclusions applies to a finding under CAIRO's review rules 1 to 7. The previous wording named the exceptions for only some of the rules.
+- **Owner steps, in order:**
+  1. Merge this after its review.
+  2. Add the `CLAUDE_API_KEY` secret.
+  3. Run two live test pull requests, one that must pass and one that must fail; close both unmerged.
+  4. Protect `main`.
+  5. Record it in N-48.
+- **Rollback:** revert the commit.
+- **Approval:** pending; the owner merges after the fresh-session security review. Not a production approval.
+- **Deployment status:** not applicable (CI).
+
+---
+
+## 2026-10-03 — Scheduled backfill for guardrail decisions whose push failed (CHG-2026-098)
+
+**What:** A recurring worker job that drains rayin-guardrails' in-memory event buffer
+into `acme_guardrail_events`, so a decision whose durable push failed is recovered
+without waiting for a human to open a page.
+
+**The gap, verified in code:**
+- `rayin_push.py` retries a failed push three times (~17.5 s worst case), then gives up.
+- Its docstring says the record is not lost, because "the existing pull-based
+  reconciliation (RAYIN's dashboard polling GET /v1/events) picks it up". **No such
+  reconciliation existed.** `persistPullBackfill` is called only from two tRPC
+  procedures, both of which run when somebody opens the Guardrails page.
+- The buffer it reads is 200 entries, in memory, lost on pod restart.
+
+**Files:**
+- `packages/shared/src/server/acme/acmeGuardrailsPullBackfill.ts` — moved from `web/`,
+  so the console's pull and the worker's job apply the same selection rules. Two copies
+  would drift, and what would drift is which audit records get written
+- `packages/shared/src/server/redis/acmeGuardrailsBackfillQueue.ts`, `queues.ts`,
+  `getQueue.ts`, `index.ts`
+- `worker/src/queues/acmeGuardrailsBackfillQueue.ts`,
+  `worker/src/features/acmeGuardrailsBackfill/handleAcmeGuardrailsBackfillJob.ts`,
+  `worker/src/app.ts`, `worker/src/env.ts`
+
+**How:** the `acmeLitellmReconcile` pattern — queue singleton with
+`scheduleRecurringJob`, processor, handler. Every 2 minutes. The interval is bounded by
+the ring buffer: it must be shorter than the time 200 decisions take to pass through one
+pod, which is traffic-dependent and must be revisited per deployment rather than treated
+as a constant.
+
+**Project attribution needs configuring and cannot be inferred.** Buffer events carry no
+project; the push path attributes them from the authenticated key's scope
+(`auth.scope.projectId`), and a scheduled job has no key. So
+`CAIRO_GUARDRAIL_BACKFILL_PROJECT_ID` is required, has no default, and the job logs and
+skips without it. Guessing would file audit records against the wrong project.
+
+**Off by default** (`CAIRO_GUARDRAIL_BACKFILL_ENABLED`), like the LiteLLM reconciliation:
+building the image changes nothing until an operator turns it on.
+
+**What this does NOT close.** P0-10 has three loss paths and this closes one:
+- rotation before anyone looks — **closed**, within one interval;
+- **pod restart before the interval elapses — still open**;
+- **the per-replica gap — still open.** The buffer is per-pod and the Service
+  load-balances, so one fetch drains one replica. There have been two since
+  CHG-2026-088, so adding a replica for resilience halved this fallback. Unrated; the
+  owner rates it.
+
+ADR-0022 (CHG-2026-099) is the durable outbox that closes all three. This change should
+not be recorded as closing P0-10.
+
+**Recovery is logged at WARN, not INFO.** A non-zero recovery count is not routine
+housekeeping — it is the P0-10 failure happening, and is worth an alert once one exists.
+
+**Deployment status:** not deployed.
+
+## 2026-10-03 — Plan: upstream Langfuse sync from v4.38.0 to v4.50.x (CHG-2026-100)
+
+Documentation only: a plan, approved by the owner on 2026-10-03. Nothing is merged from upstream, built or deployed. The plan is `acme-governance/upgrades/CHG-2026-100-langfuse-v4.50-sync-plan.md`.
+- **Size:** twelve upstream releases (v4.39.0 to v4.50.0): 321 commits, 2,139 files, 5 Postgres migrations, 1 ClickHouse migration, 51 Enterprise-licensed files.
+- **Trial merge:** 31 conflicts, almost all in screens ACME rebranded or restructured. Two need porting, not merging, because upstream deleted the files: the Members table (CAIRO's "Project access" column) and the dashboards table. Nine security-sensitive files merge cleanly but are listed for line-by-line review, among them the content-free roles' allow-list (`trpc.ts`), role scopes and invite-only sign-in.
+- **Already in CAIRO:** upstream's API-key revocation and SCIM scoping fixes, through CHG-2026-076.
+- **Method:** as for v4.38.0. A real merge of the release tag on an `upgrade/` branch, landed with a merge commit (never squashed), labelled `upstream-sync`, with Enterprise files proven byte-identical to the tag.
+- **Also in the plan:**
+  - migration reversibility: two enum values cannot be removed;
+  - rehearsal checks: migration order against ACME's own, the concurrent index, grants on the new table;
+  - a role test matrix that covers new upstream screens for the content-free roles;
+  - a telemetry check;
+  - the release order (web, then worker), rollback, risks, effort and five owner questions.
+- **Preconditions:** CHG-2026-089 part b released or parked, a PD-0002 decision, and the owner's choice on whether local checks stand in for CI, which fails on `main`.
+
+**Deployment status:** not applicable (plan only).
 ---
 
 ## 2026-10-03 — Red-team suite: review corrections and a verified result (CHG-2026-094, follow-up)

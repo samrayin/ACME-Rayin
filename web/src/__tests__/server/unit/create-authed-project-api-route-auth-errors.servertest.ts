@@ -53,12 +53,18 @@ vi.mock("@/src/features/public-api/server/apiAuth", () => ({
 }));
 
 vi.mock("@langfuse/shared/src/db", async () => {
-  const { GatewayConnectionStatus, GatewayIngestionMode, GatewayProvider } =
-    await vi.importActual<typeof PrismaClientModule>("@prisma/client");
+  const {
+    GatewayConnectionStatus,
+    GatewayIngestionMode,
+    GatewayProvider,
+    Role,
+  } = await vi.importActual<typeof PrismaClientModule>("@prisma/client");
   return {
     GatewayConnectionStatus,
     GatewayIngestionMode,
     GatewayProvider,
+    // securityRoleAllowList (imported via trpc.ts) reads Role at import.
+    Role,
     prisma: {
       organization: {
         findUnique: mockFindOrganization,
