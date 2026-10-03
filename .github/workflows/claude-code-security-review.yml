@@ -21,17 +21,24 @@ jobs:
     # without a review having run.
     # - No opt-in variable: a job skipped by `if:` counts as passed for a
     #   required check, so a switched-off variable would silently open the gate.
-    # - Drafts are skipped: a draft cannot be merged, and marking it ready
-    #   triggers this job.
+    # - Drafts fail in the first step instead of being skipped, for the same
+    #   reason: a skipped check on a draft's commit would read as passed
+    #   (review R286-4). Marking the draft ready runs the review.
     # - Pull requests from forks run too. They get no CLAUDE_API_KEY, so the
     #   review step fails and the check stays red rather than skipped.
     # It needs the CLAUDE_API_KEY secret (a paid key; each PR diff is sent to
-    # the Anthropic API). Without it every non-draft PR fails this check.
-    if: github.event.pull_request.draft == false
+    # the Anthropic API). Without it every pull request fails this check.
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
+      - name: Drafts are not reviewed
+        if: github.event.pull_request.draft
+        shell: bash
+        run: |
+          echo "::error::Draft pull requests are not reviewed. Mark this pull request ready for review to run the security review."
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -77,11 +84,15 @@ jobs:
           # filter, which applies CAIRO's filtering rules (review R282-1).
           patch("claudecode/github_action_audit.py", "use_hard_exclusions=True,", "use_hard_exclusions=False,", 2)
           # Claude Code must not load settings, hooks or MCP servers from the
-          # pull request's checkout (review R282-2).
+          # pull request's checkout (review R282-2). The review model gets only
+          # tools that read files, and cannot read outside the checkout, since
+          # its findings are posted publicly (review R286-1).
           patch(
               "claudecode/github_action_audit.py",
               "'--output-format', 'json',",
-              "'--output-format', 'json', '--setting-sources', 'user', '--strict-mcp-config',",
+              "'--output-format', 'json', '--setting-sources', 'user', '--strict-mcp-config',"
+              " '--tools', 'Read,Grep,Glob',"
+              """ '--settings', '{"permissions":{"blockReadsOutsideWorkingDirectories":true}}',""",
               1,
           )
           # The review CLI gets no GitHub token (review R285-1).
@@ -112,11 +123,38 @@ jobs:
           patch("claudecode/prompts.py", "- Secrets/credentials stored on disk (these are managed separately)\n", "", 1)
           patch("claudecode/prompts.py", '"review_completed": true,', '"review_completed": true', 1)
           # The results preview prints model output to the public job log
-          # (review R285-1).
+          # (review R285-1), and so can the error log (review R286-2).
           patch(
               "action.yml",
               '            head -n 300 claudecode/claudecode-results.json || echo "Unable to preview results"\n',
               '            echo "Results preview omitted (ACME, CHG-2026-096)."\n',
+              1,
+          )
+          patch(
+              "action.yml",
+              "cat claudecode/claudecode-error.log\n",
+              'echo "Error log omitted from the public job log (ACME, CHG-2026-096)."\n',
+              2,
+          )
+          # The comment script logs model-written paths and line numbers; quote
+          # them so they cannot start a line of their own, and with it a
+          # workflow command (review R286-2).
+          patch(
+              "scripts/comment-pr-findings.js",
+              "console.log(`File ${file} not in PR diff, skipping`);",
+              "console.log(`File ${JSON.stringify(file)} not in PR diff, skipping`);",
+              1,
+          )
+          patch(
+              "scripts/comment-pr-findings.js",
+              "console.log(`Could not comment on ${comment.path}:${comment.line} - line might not be in diff context`);",
+              "console.log(`Could not comment on ${JSON.stringify(comment.path)}:${JSON.stringify(comment.line)} - line might not be in diff context`);",
+              1,
+          )
+          patch(
+              "scripts/comment-pr-findings.js",
+              "console.log(`File ${comment.path} has additions but line ${comment.line} is not in the diff`);",
+              "console.log(`File ${JSON.stringify(comment.path)} has additions but line ${JSON.stringify(comment.line)} is not in the diff`);",
               1,
           )
           # Pin the CLI whose flags this job relies on; it needs Node 22 or

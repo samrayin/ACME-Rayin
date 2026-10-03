@@ -5580,3 +5580,17 @@ CI only (Tier 2), same change. No product code, no schema, nothing deployed. The
 - **Rollback:** revert the commit. That brings back the gaps above, so revert only together with relaxing branch protection.
 - **Approval:** pending; the owner merges after the fresh-session security review. Not a production approval.
 - **Deployment status:** not applicable (CI).
+
+## 2026-10-03 — Security review model may only read the repository, and drafts fail the check (CHG-2026-096, fourth follow-up)
+
+CI only (Tier 2), same change. No product code, no schema, nothing deployed. The fresh-session review of the entry above found no blocking finding, and one to fix before the API key secret is added. That one is fixed here, with three lower findings. The secret and branch protection are still not set.
+- **The review model's tools (R286-1):** the model's findings are posted as public review comments. Before, only the CLI's default permissions stopped the model from reading outside the repository, or from changing files in the checkout before the gate ran. Now the review CLI is given only the Read, Grep and Glob tools, and a setting that refuses reads outside its working directory. It can still read the whole repository, which is what the review needs.
+- **Correction to the entry above (R286-2):** its heading says model output is kept out of public places. That overstates it. The review comment on a pull request is public by design, and it carries the model's findings. What the previous change kept out of public places was the results file and file contents from outside the repository. This change also:
+  - drops the action's error log from the public job log;
+  - quotes the file paths and line numbers that the comment script logs, so text from the model cannot start a line of its own.
+- **Filtering rules (R286-3):** two exclusions now name their exceptions explicitly. A regular-expression problem is kept if it can make a guardrail check time out or fail. A configuration value is kept if, missing or invalid, it makes a guardrail fail open or exceed the deployment ceiling.
+- **Drafts (R286-4):** a draft was skipped, and a skipped job counts as passed for a required check, so a draft's commit could show a green `Security review` until the review ran. Drafts now fail the check in its first step. Marking the pull request ready runs the review.
+- **Owner steps, in order:** merge this after its review; then add the `CLAUDE_API_KEY` secret; then protect `main`; then record it in N-48.
+- **Rollback:** revert the commit. That brings back the gaps above, so revert only together with relaxing branch protection.
+- **Approval:** pending; the owner merges after the fresh-session security review. Not a production approval.
+- **Deployment status:** not applicable (CI).
