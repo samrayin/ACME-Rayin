@@ -5481,3 +5481,11 @@ that was redacted rather than blocked. Unrated — the owner rates findings.
 `/v1/guard` is still not wired into any live path (N-56).
 
 **Deployment status:** not applicable — nothing here ships in an image.
+
+## 2026-10-03 — Web server test mocks supply what the code under test reads (CHG-2026-092)
+
+Test only. No product code changes, and nothing to release. Rollback: revert the commit.
+- **Why:** `tests-web` has failed on `main` on three test files besides the auth parity test (that one is CHG-2026-090). Each file mocks `@langfuse/shared/src/db`, and each mock predates ACME code that now reads more from that module.
+- **`build-trace-export` and `create-authed-project-api-route-auth-errors`:** both failed at import with "No `Role` export is defined on the mock". Since CHG-2026-059 b, `securityRoleAllowList.ts` builds its allow-list maps from `Role` when the module loads, and both files reach it (through `buildTraceExport.ts` and `trpc.ts`). The first mock returned only `prisma`; the second returned `prisma` and three gateway enums. Now `build-trace-export` keeps the real module's exports through `importOriginal`, as the ACME tests do, and `create-authed-project-api-route-auth-errors` adds `Role` to the enums it already takes from `@prisma/client`.
+- **`getServerAuthSession-session-revocation`:** the two "allows" cases failed with `Cannot read properties of undefined (reading 'findMany')`. Since CHG-2026-059 c, the session callback loads the user's project access limits (`prisma.acmeProjectAccess.findMany`) whenever the user is found, and the mock had no `acmeProjectAccess`. The "denies" cases passed only because no user is found there. The mock now returns no limits.
+- **Tests:** before the fix, a local run reproduced CI's failures in all three files; after it, the three files pass (33 tests).
