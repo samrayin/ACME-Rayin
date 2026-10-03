@@ -5489,3 +5489,25 @@ Test only. No product code changes, and nothing to release. Rollback: revert the
 - **`build-trace-export` and `create-authed-project-api-route-auth-errors`:** both failed at import with "No `Role` export is defined on the mock". Since CHG-2026-059 b, `securityRoleAllowList.ts` builds its allow-list maps from `Role` when the module loads, and both files reach it (through `buildTraceExport.ts` and `trpc.ts`). The first mock returned only `prisma`; the second returned `prisma` and three gateway enums. Now `build-trace-export` keeps the real module's exports through `importOriginal`, as the ACME tests do, and `create-authed-project-api-route-auth-errors` adds `Role` to the enums it already takes from `@prisma/client`.
 - **`getServerAuthSession-session-revocation`:** the two "allows" cases failed with `Cannot read properties of undefined (reading 'findMany')`. Since CHG-2026-059 c, the session callback loads the user's project access limits (`prisma.acmeProjectAccess.findMany`) whenever the user is found, and the mock had no `acmeProjectAccess`. The "denies" cases passed only because no user is found there. The mock now returns no limits.
 - **Tests:** before the fix, a local run reproduced CI's failures in all three files; after it, the three files pass (33 tests).
+
+## 2026-10-03 — Security review becomes a required, fail-closed merge check (CHG-2026-096)
+
+CI only (Tier 2). No product code, no schema, nothing deployed. Owner request, 2026-10-03, after two records PRs were merged while their security check was still running (Readiness Ledger N-48).
+- **Why:** "a completed security review is a merge condition" was procedural only. The existing `Security review` workflow could not be that gate, for three reasons:
+  - it ran only when a repository variable opted in, and a job skipped by `if:` counts as passed for a required check;
+  - the action posts its findings as a comment and never fails because of them;
+  - when its own scan fails, it only warns.
+- **`.github/workflows/claude-code-security-review.yml`:**
+  - runs on every non-draft pull request, with no opt-in variable. Pull requests from forks run too: they get no API key, so the check fails instead of being skipped;
+  - **fails closed** (`.github/security-review/check-results.sh`) on any HIGH or CRITICAL finding, and on a missing, empty, errored or unreadable result. MEDIUM and LOW findings stay in the PR comment;
+  - reads CAIRO's own review rules from `.github/security-review/cairo-security-instructions.txt`, by absolute path, because the action ignores a path it cannot find without a word. A step fails the check if the file is missing;
+  - uses a current model (`claude-opus-5-5`; it was `claude-opus-4-1-20250805`);
+  - a second job, `Security review gate self-test`, runs the gate script against fixtures on every pull request, with no API key.
+- **Owner steps after merge:**
+  - add the `CLAUDE_API_KEY` Actions secret (each PR diff is sent to the Anthropic API). Until then every non-draft PR fails `Security review`;
+  - then protect `main`: require `Security review`, `Security review gate self-test` and the five ACME checks that run on every PR, with no bypass for administrators;
+  - then record it in N-48 as the compensating control.
+- **Known limit:** for a pull request from this repository, GitHub runs the workflow and its files as the PR has them. So a PR that edits them can weaken its own check. The review rules name such edits as HIGH, but the owner should treat any change to these files as one to read personally.
+- **Rollback:** revert the commit. Branch protection, once set, must be relaxed first, or every PR stays blocked.
+- **Approval:** pending; the owner merges after the fresh-session security review. Not a production approval.
+- **Deployment status:** not applicable (CI).
