@@ -348,6 +348,18 @@ const EnvSchema = z.object({
   CAIRO_LITELLM_REQUEST_LOG_INGEST_ENABLED: z
     .enum(["true", "false"])
     .default("false"),
+  // ACME addition (CHG-2026-098, Ledger P0-10): the scheduled drain of
+  // rayin-guardrails' event buffer, for decisions whose durable push failed.
+  // Default off, like the feature above, so building the image changes
+  // nothing until an operator turns it on. It needs all three values below;
+  // the project id has no safe default because buffer events carry no
+  // project of their own (see the handler).
+  CAIRO_GUARDRAIL_BACKFILL_ENABLED: z
+    .enum(["true", "false"])
+    .default("false"),
+  CAIRO_GUARDRAIL_BACKFILL_PROJECT_ID: z.string().optional(),
+  RAYIN_GUARDRAILS_URL: z.string().optional(),
+  RAYIN_GUARDRAILS_CONFIG_SECRET: z.string().optional(),
   LITELLM_BASE_URL: z.string().optional(),
   LITELLM_MASTER_KEY: z.string().optional(),
   RAYIN_LITELLM_WRITER_DATABASE_URL: z.string().optional(),

@@ -451,6 +451,7 @@ export enum QueueName {
   // LiteLLM's spend logs with CAIRO's request-log mirror, insert whatever
   // the push missed and record the gap count. See acmeLitellmReconcileQueue.ts.
   AcmeLitellmReconcileQueue = "acme-litellm-reconcile-queue",
+  AcmeGuardrailsBackfillQueue = "acme-guardrails-backfill-queue",
 }
 
 export enum QueueJobs {
@@ -493,6 +494,7 @@ export enum QueueJobs {
   V4LegacyApiUsageJob = "v4-legacy-api-usage-job",
   AcmePromptReviewJob = "acme-prompt-review-job",
   AcmeLitellmReconcileJob = "acme-litellm-reconcile-job",
+  AcmeGuardrailsBackfillJob = "acme-guardrails-backfill-job",
 }
 
 export const TraceBatchTraceSchema = z.object({

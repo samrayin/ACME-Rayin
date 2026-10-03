@@ -5609,3 +5609,60 @@ CI only (Tier 2), same change. No product code, no schema, nothing deployed. The
 - **Rollback:** revert the commit.
 - **Approval:** pending; the owner merges after the fresh-session security review. Not a production approval.
 - **Deployment status:** not applicable (CI).
+
+---
+
+## 2026-10-03 — Scheduled backfill for guardrail decisions whose push failed (CHG-2026-098)
+
+**What:** A recurring worker job that drains rayin-guardrails' in-memory event buffer
+into `acme_guardrail_events`, so a decision whose durable push failed is recovered
+without waiting for a human to open a page.
+
+**The gap, verified in code:**
+- `rayin_push.py` retries a failed push three times (~17.5 s worst case), then gives up.
+- Its docstring says the record is not lost, because "the existing pull-based
+  reconciliation (RAYIN's dashboard polling GET /v1/events) picks it up". **No such
+  reconciliation existed.** `persistPullBackfill` is called only from two tRPC
+  procedures, both of which run when somebody opens the Guardrails page.
+- The buffer it reads is 200 entries, in memory, lost on pod restart.
+
+**Files:**
+- `packages/shared/src/server/acme/acmeGuardrailsPullBackfill.ts` — moved from `web/`,
+  so the console's pull and the worker's job apply the same selection rules. Two copies
+  would drift, and what would drift is which audit records get written
+- `packages/shared/src/server/redis/acmeGuardrailsBackfillQueue.ts`, `queues.ts`,
+  `getQueue.ts`, `index.ts`
+- `worker/src/queues/acmeGuardrailsBackfillQueue.ts`,
+  `worker/src/features/acmeGuardrailsBackfill/handleAcmeGuardrailsBackfillJob.ts`,
+  `worker/src/app.ts`, `worker/src/env.ts`
+
+**How:** the `acmeLitellmReconcile` pattern — queue singleton with
+`scheduleRecurringJob`, processor, handler. Every 2 minutes. The interval is bounded by
+the ring buffer: it must be shorter than the time 200 decisions take to pass through one
+pod, which is traffic-dependent and must be revisited per deployment rather than treated
+as a constant.
+
+**Project attribution needs configuring and cannot be inferred.** Buffer events carry no
+project; the push path attributes them from the authenticated key's scope
+(`auth.scope.projectId`), and a scheduled job has no key. So
+`CAIRO_GUARDRAIL_BACKFILL_PROJECT_ID` is required, has no default, and the job logs and
+skips without it. Guessing would file audit records against the wrong project.
+
+**Off by default** (`CAIRO_GUARDRAIL_BACKFILL_ENABLED`), like the LiteLLM reconciliation:
+building the image changes nothing until an operator turns it on.
+
+**What this does NOT close.** P0-10 has three loss paths and this closes one:
+- rotation before anyone looks — **closed**, within one interval;
+- **pod restart before the interval elapses — still open**;
+- **the per-replica gap — still open.** The buffer is per-pod and the Service
+  load-balances, so one fetch drains one replica. There have been two since
+  CHG-2026-088, so adding a replica for resilience halved this fallback. Unrated; the
+  owner rates it.
+
+ADR-0022 (CHG-2026-099) is the durable outbox that closes all three. This change should
+not be recorded as closing P0-10.
+
+**Recovery is logged at WARN, not INFO.** A non-zero recovery count is not routine
+housekeeping — it is the P0-10 failure happening, and is worth an alert once one exists.
+
+**Deployment status:** not deployed.
