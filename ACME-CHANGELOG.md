@@ -5665,7 +5665,7 @@ not be recorded as closing P0-10.
 **Recovery is logged at WARN, not INFO.** A non-zero recovery count is not routine
 housekeeping — it is the P0-10 failure happening, and is worth an alert once one exists.
 
-**Deployment status:** not deployed.
+**Deployment status:** in dev as worker `worker-acme-v4.38.0.5` (commit `0130d2364`), released 2026-10-03 with the owner's approval; `verify-deployed.sh` TRACED, no migration, healthy by logs. **Switched off:** `CAIRO_GUARDRAIL_BACKFILL_ENABLED` is not set, so no queue, schedule or calls run. Turning it on (enabled flag, project id, guardrails URL, secret reference) is a separate owner decision.
 
 ## 2026-10-03 — Plan: upstream Langfuse sync from v4.38.0 to v4.50.x (CHG-2026-100)
 
