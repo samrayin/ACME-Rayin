@@ -71,6 +71,8 @@
 | Up again | `prisma migrate deploy` | PASS | 2026-10-02T23:17:07Z |
 | Status after up again | `prisma migrate status` up to date | PASS | 2026-10-02T23:17:39Z |
 
+**What this run covered** (review note N1): the up and down checks confirm only that the migration row is present or removed. The enum-value check and the two down-guard checks were run in the local rehearsal above, not on the cluster.
+
 **A harness fault, recorded so it is not lost.** The first attempt (22:46–23:04Z) did apply the whole chain: the database held all 450 migrations as finished, and prisma printed "All migrations have been successfully applied."
 - **What went wrong:** the script's own pass check, `grep -q … <<<"${out}"`, hung on Git Bash for Windows with that much output. Ending the hung `grep` made the step report FAIL, and the script removed the namespace as designed.
 - **The re-run above:** the one check line read the output from a temporary file instead of a here-string. That change was made in the local copy only, and was restored afterwards with `git checkout`. Nothing else in the script, the migration or `down.sql` changed.

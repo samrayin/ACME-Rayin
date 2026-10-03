@@ -5344,7 +5344,7 @@ Console change, with a database migration. ADR-0005-B part b, console half. **No
 - **Approval:** the owner merged #263 on 2026-10-02 (`74218f1e0`), after the security-agent review and its two re-checks had reported. Human approval by merge; delegated auto-approval was not used. Not a production approval.
   - The review reported no Critical, High or Medium finding. The session that wrote the change launched the security agent, so it was not a fully independent review.
   - The author and the merger are the same GitHub account, so GitHub holds no formal review (Readiness Ledger N-47).
-- **Deployment status:** not deployed. Console `acme-v4.38.0.30` (2026-10-02) was built before this merge and does not include it.
+- **Deployment status:** live in dev as console `acme-v4.38.0.31` (commit `8aa5fa099`), released 2026-10-03 with the owner's approval, together with phase 2's console parts. `verify-deployed.sh` TRACED, health OK, migration `20261002120000` applied at 00:11:25Z and recorded, nothing stuck. The console's ceiling stays unset (record), so nothing can be enforced. Deployment record: acme-rayin-ops #64.
 
 ## 2026-10-02 — Console parts of the enforcement switch's phase 2 (CHG-2026-089 part b, phase 2: console)
 
@@ -5378,7 +5378,7 @@ Console change, with a database migration. ADR-0005-B §3.3.1. The owner asked f
 - **Approval:** the owner merged #269 on 2026-10-02 (`0a21d819d`), after those checks had reported. Human approval by merge; delegated auto-approval was not used. Not a production approval.
   - Each review ran in a fresh session that shared no context with the implementing session, which invoked it. That is the owner's compensating control for having no human reviewer (Readiness Ledger N-48). So no review was fully independent.
   - The author and the merger are the same GitHub account, so GitHub holds no formal review (Readiness Ledger N-47).
-- **Deployment status:** not deployed. Migration `20261002190000` has been rehearsed only locally (PostgreSQL 16); the cluster rehearsal (PostgreSQL 15) waits for the owner. In the phase 3 release order, this console goes first.
+- **Deployment status:** live in dev as console `acme-v4.38.0.31` (commit `8aa5fa099`), released 2026-10-03 with the owner's approval, together with phase 2's console parts. `verify-deployed.sh` TRACED, health OK, migration `20261002190000` applied at 00:11:25Z and recorded, nothing stuck. The console's ceiling stays unset (record), so nothing can be enforced. Deployment record: acme-rayin-ops #64. Migration `20261002190000` was rehearsed on the cluster's PostgreSQL 15 before the release (7 of 7). Next in phase 3: rayin-guardrails v0.5.0, then the gateway.
 
 ## 2026-10-02 — The gateway takes the guardrail mode from CAIRO, within a ceiling (CHG-2026-089 part b, phase 2: gateway)
 
