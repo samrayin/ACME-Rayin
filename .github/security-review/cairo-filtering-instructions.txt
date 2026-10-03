@@ -32,4 +32,6 @@ EXCLUDE (keep_finding: false) a finding outside those rules when it is one of th
 - command injection in a shell script that receives no untrusted input;
 - an attack that needs control of an environment variable or command-line flag, unless a pull request or other untrusted input can set it (rule 7), or a missing or invalid value makes a guardrail fail open or exceed the deployment ceiling (rules 2 and 3).
 
+None of these exclusions applies to a finding that falls under CAIRO's review rules 1 to 7 above.
+
 For anything else, keep a finding that describes a concrete, exploitable issue with a clear attack path and specific code locations, and exclude one that is speculative or a style concern.

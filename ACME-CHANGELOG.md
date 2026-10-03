@@ -5594,3 +5594,18 @@ CI only (Tier 2), same change. No product code, no schema, nothing deployed. The
 - **Rollback:** revert the commit. That brings back the gaps above, so revert only together with relaxing branch protection.
 - **Approval:** pending; the owner merges after the fresh-session security review. Not a production approval.
 - **Deployment status:** not applicable (CI).
+
+## 2026-10-03 — Security review error text stays on one line, and filtering exclusions never cover CAIRO's rules (CHG-2026-096, fifth follow-up)
+
+CI only (Tier 2), same change. No product code, no schema, nothing deployed. The fresh-session review of the entry above found no blocking finding, and two low ones. Both are fixed here.
+- **Error text (R287-1):** when the review fails, the action prints its error in a job-log warning. It used to print it raw, line breaks included, so a later line could start a workflow command. The patch step now makes the action print the error as one quoted line.
+- **Filtering rules (R287-2):** a sentence after the exclusion list says that none of the exclusions applies to a finding under CAIRO's review rules 1 to 7. The previous wording named the exceptions for only some of the rules.
+- **Owner steps, in order:**
+  1. Merge this after its review.
+  2. Add the `CLAUDE_API_KEY` secret.
+  3. Run two live test pull requests, one that must pass and one that must fail; close both unmerged.
+  4. Protect `main`.
+  5. Record it in N-48.
+- **Rollback:** revert the commit.
+- **Approval:** pending; the owner merges after the fresh-session security review. Not a production approval.
+- **Deployment status:** not applicable (CI).
