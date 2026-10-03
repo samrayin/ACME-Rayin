@@ -5537,3 +5537,16 @@ CI only (Tier 2), same change. No product code, no schema, nothing deployed. The
 - **Rollback:** revert the commit. That brings back a gate that passes an unfinished review, so revert only together with relaxing branch protection.
 - **Approval:** pending; the owner merges after the fresh-session security review. Not a production approval.
 - **Deployment status:** not applicable (CI).
+
+## 2026-10-03 — Codespell passes again: German red-team probe words ignored (CHG-2026-097)
+
+CI only (Tier 2). No product code, no schema, nothing deployed. Rollback: revert the commit.
+- **Why:** `Codespell` has failed on every `main` run since #271 (CHG-2026-094) merged on 2026-10-02, so it has also been red on every open pull request. All four errors come from one German-language override probe in the promptfoo red-team suite: section D-encoded of `integrations/promptfoo/config/guardrails-redteam.yaml`, quoted in `RUNNING-REDTEAM-EVAL.md`. Codespell reads "Sie" as a misspelling of "size" and "alle" as one of "all".
+- **Fix:** `sie` and `alle` join `ignore_words_list` in `.github/workflows/codespell.yml`, with a comment saying why. The probe is test data for the guardrail's German coverage, so its text is unchanged. As with CHG-2026-036 and CHG-2026-042, the tool is corrected rather than the text.
+- **Trade-off:** the two words are now ignored everywhere, so "sie" as a typo of "size" is no longer caught. Skipping the two files instead would have stopped all spell-checking in them, including the runbook's English prose.
+- **Verified locally (codespell 2.4.3):**
+  - with the old list, the same four errors as CI;
+  - with the new list, a run over the whole repository with the workflow's `skip` reports nothing;
+  - the lines that open PR #274 adds to the same suite are clean under the new list.
+- **Approval:** pending; the owner merges. Not a production approval.
+- **Deployment status:** not applicable (CI).

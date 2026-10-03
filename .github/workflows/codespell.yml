@@ -32,10 +32,10 @@ jobs:
           # package code, whose identifiers are not prose.
           skip: "./.git,./patches"
           # Words codespell's dictionary maps to something else, all of which
-          # are real English as used here. Each is a false positive, not a typo,
-          # so the tool is corrected rather than the prose (CHG-2026-036 set
-          # this precedent with "retuned"; "correcting" the text would have made
-          # the sentence wrong).
+          # are correct as used here: real English, or German test data. Each
+          # is a false positive, not a typo, so the tool is corrected rather
+          # than the text (CHG-2026-036 set this precedent with "retuned";
+          # "correcting" the text would have made the sentence wrong).
           #
           #   retuned     re-tuned a setting          -> codespell says "returned"
           #   unparseable cannot be parsed            -> codespell says "unparsable"
@@ -46,8 +46,18 @@ jobs:
           #   pre-empt    to forestall                -> codespell says "preempt"
           #               British spelling, which is this repository's register
           #               throughout ("behaviour", "organisation", "recognisers").
+          #   sie         German "Sie" (you)          -> codespell says "size"
+          #   alle        German "alle" (all)         -> codespell says "all"
+          #               Both are in the German-language override probe of the
+          #               promptfoo red-team suite (section D-encoded of
+          #               integrations/promptfoo/config/guardrails-redteam.yaml,
+          #               quoted in RUNNING-REDTEAM-EVAL.md). The probe is test
+          #               data for the guardrail's German coverage, so its text
+          #               stays as written (CHG-2026-097). The cost: "sie" as a
+          #               typo of "size" is no longer caught anywhere. Skipping
+          #               those two files instead would stop all checking there.
           #
           # Case variants are covered: codespell matches case-insensitively, so
-          # the UNPARSEABLE enum value in ADR-0009 is covered by the lowercase
-          # entry here.
-          ignore_words_list: retuned,unparseable,pre-empt
+          # the UNPARSEABLE enum value in ADR-0009 and the capitalised "Sie" are
+          # covered by the lowercase entries here.
+          ignore_words_list: retuned,unparseable,pre-empt,sie,alle
