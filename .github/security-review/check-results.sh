@@ -2,8 +2,9 @@
 # CHG-2026-096: decide the "Security review" check from the action's results file.
 # Usage: check-results.sh <results.json>
 # Exit 1 (fail closed) unless the file is exactly one JSON document, has no
-# `error`, has a findings list and an excluded-findings list, says the review
-# completed, and every finding is MEDIUM or LOW. That includes findings the
+# `error`, has a findings list and an excluded-findings list, shows no finding
+# excluded by directory, says the review completed, and every finding is MEDIUM
+# or LOW. That includes findings the
 # action excluded before reporting, except those its model filter judged to be
 # false positives under CAIRO's filtering rules. HIGH, CRITICAL, missing and
 # unknown severities all block. MEDIUM and LOW findings stay in the PR comment
@@ -29,6 +30,11 @@ jq -e '.findings | type == "array"' "$results" > /dev/null 2>&1 \
 # The action always writes this list when a review finishes (review R282-1).
 jq -e '.filtering_summary.excluded_findings_details | type == "array"' "$results" > /dev/null 2>&1 \
   || fail "The security review result has no readable list of excluded findings"
+# This workflow excludes no directories. The action appends a directory-excluded
+# finding to that list as the model wrote it, so it could pose as a filter
+# exclusion below (review R285-4). None may exist.
+jq -e '.filtering_summary.filter_analysis.directory_excluded_count == 0' "$results" > /dev/null 2>&1 \
+  || fail "The security review result does not show zero findings excluded by directory, and this workflow excludes none"
 
 # The review must say it completed (review CHG096-1). When the model's answer
 # holds no readable JSON, the action writes an empty findings list with
@@ -41,15 +47,17 @@ jq -e '.analysis_summary.review_completed == true' "$results" > /dev/null 2>&1 \
 blocks='select(.severity | if type == "string" then ascii_upcase else "" end | . != "MEDIUM" and . != "LOW")'
 # Findings the action excluded before reporting (review R282-1). Those its model
 # filter judged to be false positives, under CAIRO's filtering rules, are not
-# counted; a finding excluded any other way is.
-excluded='.filtering_summary.excluded_findings_details[] | select((type == "object" and .filter_stage == "claude_api") | not) | (.finding // .)'
+# counted; a finding excluded any other way is. Only the filter's own wrapper
+# shape counts as a filter exclusion (review R285-4).
+by_filter='type == "object" and .filter_stage == "claude_api" and (.finding | type == "object")'
+excluded=".filtering_summary.excluded_findings_details[] | select(($by_filter) | not) | (.finding // .)"
 
 blocking=$(jq "[.findings[] | $blocks] | length" "$results" 2>/dev/null) \
   || fail "Could not read the findings' severities"
 hidden=$(jq "[$excluded | $blocks] | length" "$results" 2>/dev/null) \
   || fail "Could not read the excluded findings' severities"
 total=$(jq '.findings | length' "$results" 2>/dev/null) || fail "Could not count the findings"
-filtered=$(jq '[.filtering_summary.excluded_findings_details[] | select(type == "object" and .filter_stage == "claude_api")] | length' "$results" 2>/dev/null) \
+filtered=$(jq "[.filtering_summary.excluded_findings_details[] | select($by_filter)] | length" "$results" 2>/dev/null) \
   || fail "Could not count the excluded findings"
 for count in "$blocking" "$hidden" "$total" "$filtered"; do
   case "$count" in

@@ -84,13 +84,62 @@ jobs:
               "'--output-format', 'json', '--setting-sources', 'user', '--strict-mcp-config',",
               1,
           )
+          # The review CLI gets no GitHub token (review R285-1).
+          patch(
+              "claudecode/github_action_audit.py",
+              "                    cwd=repo_dir,\n",
+              "                    cwd=repo_dir,\n"
+              "                    env={k: v for k, v in os.environ.items() if k not in ('GITHUB_TOKEN', 'GH_TOKEN')},\n",
+              1,
+          )
+          # The model filter reads the file a finding names into its prompt.
+          # Only files inside the repository, symlinks resolved (review R285-1).
+          patch(
+              "claudecode/claude_api_client.py",
+              "            if not path.exists():\n",
+              "            root = Path(os.environ['REPO_PATH']).resolve(strict=True)\n"
+              "            path = path.resolve()\n"
+              "            if root not in path.parents:\n"
+              "                return False, '', 'File is outside the repository'\n"
+              "            if not path.exists():\n",
+              1,
+          )
+          # Upstream tells the review model not to report secrets "stored on
+          # disk", after CAIRO's rules; in this public repository a committed
+          # secret is a disclosure. Its sample output also ends an object with
+          # a trailing comma, which a model may copy (reviews R285-2, R282-7).
+          patch("claudecode/prompts.py", "   - Secrets or sensitive data stored on disk (these are handled by other processes)\n", "", 1)
+          patch("claudecode/prompts.py", "- Secrets/credentials stored on disk (these are managed separately)\n", "", 1)
+          patch("claudecode/prompts.py", '"review_completed": true,', '"review_completed": true', 1)
+          # The results preview prints model output to the public job log
+          # (review R285-1).
+          patch(
+              "action.yml",
+              '            head -n 300 claudecode/claudecode-results.json || echo "Unable to preview results"\n',
+              '            echo "Results preview omitted (ACME, CHG-2026-096)."\n',
+              1,
+          )
+          # Pin the CLI whose flags this job relies on; it needs Node 22 or
+          # later (review R285-6).
+          patch(
+              "action.yml",
+              "          npm install -g @anthropic-ai/claude-code\n",
+              "          npm install -g @anthropic-ai/claude-code@2.1.284\n",
+              1,
+          )
+          patch("action.yml", "        node-version: '18'\n", "        node-version: '22'\n", 1)
 
           # The run-history cache is restored from keys that a pull request's
-          # earlier runs can write, and run-every-commit leaves it unused.
-          # Remove it (review R282-3).
+          # earlier runs can write, and the reservation marker follows a path a
+          # pull request can pre-create. run-every-commit leaves both unused.
+          # Remove them (reviews R282-3, R285-3).
           action = root / "action.yml"
           lines = action.read_text().splitlines(keepends=True)
-          for name in ("Check ClaudeCode run history", "Save ClaudeCode reservation to cache"):
+          for name in (
+              "Check ClaudeCode run history",
+              "Reserve ClaudeCode slot to prevent race conditions",
+              "Save ClaudeCode reservation to cache",
+          ):
               starts = [i for i, line in enumerate(lines) if line.rstrip() == f"    - name: {name}"]
               if len(starts) != 1:
                   raise SystemExit(f"action.yml: expected one step named {name!r}, found {len(starts)}")
@@ -100,8 +149,8 @@ jobs:
                   raise SystemExit(f"action.yml: no step follows {name!r}")
               lines = lines[:start] + lines[end:]
           text = "".join(lines)
-          if "actions/cache" in text:
-              raise SystemExit("action.yml still restores or saves a cache")
+          if "actions/cache" in text or ".claudecode-marker/marker.json <<" in text:
+              raise SystemExit("action.yml still uses the run-history cache or marker")
           action.write_text(text)
           PY
 
@@ -119,11 +168,13 @@ jobs:
           done
 
       # ACME (CHG-2026-096): Claude Code must not run hooks, settings or MCP
-      # servers from the pull request (review R282-2). The patched review
-      # command also skips project settings; this removes them as well.
-      - name: Remove Claude Code project configuration from the checkout
+      # servers from the pull request (review R282-2); the patched review
+      # command also skips project settings. The action also reads or writes
+      # fixed paths in the workspace that a pull request could pre-create
+      # (review R285-3).
+      - name: Remove pull-request files that the review job would trust
         shell: bash
-        run: rm -rf .claude .mcp.json
+        run: rm -rf .claude .mcp.json .claudecode-marker findings.json claudecode-results.json claudecode-error.log
 
       - name: Run Claude Code security review
         uses: ./.github/actions/claude-code-security-review
@@ -132,6 +183,9 @@ jobs:
           claude-model: claude-opus-5-5
           comment-pr: true
           run-every-commit: true
+          # The results file holds model output and, on a public repository,
+          # an artifact is public (review R285-1).
+          upload-results: false
           # Absolute: the action reads these from its own directory, and skips
           # a path it cannot find without a word (checked in a step above).
           custom-security-scan-instructions: ${{ github.workspace }}/.github/security-review/cairo-security-instructions.txt
@@ -173,16 +227,17 @@ jobs:
           set -u
           gate=.github/security-review/check-results.sh
           dir=$(mktemp -d)
-          # fixture <name> <findings> [<excluded findings>]: a finished review's
-          # result, as the action writes it. Every fixture that tests one rule
-          # passes every other rule (review R282-6).
+          # fixture <name> <findings> [<excluded findings>] [<directory-excluded count>]:
+          # a finished review's result, as the action writes it. Every fixture
+          # that tests one rule passes every other rule (review R282-6).
           fixture() {
-            printf '{"findings":%s,"analysis_summary":{"review_completed":true},"filtering_summary":{"excluded_findings_details":%s}}\n' "$2" "${3:-[]}" > "$dir/$1.json"
+            printf '{"findings":%s,"analysis_summary":{"review_completed":true},"filtering_summary":{"filter_analysis":{"directory_excluded_count":%s},"excluded_findings_details":%s}}\n' "$2" "${4:-0}" "${3:-[]}" > "$dir/$1.json"
           }
+          summary='"filtering_summary":{"filter_analysis":{"directory_excluded_count":0},"excluded_findings_details":[]}'
           : > "$dir/empty.json"
           echo 'not json' > "$dir/not-json.json"
           echo '[]' > "$dir/top-level-array.json"
-          echo '{"error":"scan failed","findings":[],"analysis_summary":{"review_completed":true},"filtering_summary":{"excluded_findings_details":[]}}' > "$dir/error.json"
+          echo "{\"error\":\"scan failed\",\"findings\":[],\"analysis_summary\":{\"review_completed\":true},$summary}" > "$dir/error.json"
           fixture unreadable '"not a list"'
           fixture high '[{"severity":"HIGH"},{"severity":"LOW"}]'
           fixture critical '[{"severity":"critical"}]'
@@ -190,10 +245,11 @@ jobs:
           # Passes: a MEDIUM, a lower-case LOW, a HIGH the model filter judged a
           # false positive, and a LOW excluded by another rule.
           fixture medium '[{"severity":"MEDIUM"},{"severity":"low"}]' \
-            '[{"finding":{"severity":"HIGH"},"filter_stage":"claude_api"},{"finding":{"severity":"LOW"},"filter_stage":"hard_rules"}]'
-          # Review CHG096-1: the action's own "no readable answer" result, and no summary at all.
-          echo '{"findings":[],"analysis_summary":{"review_completed":false},"filtering_summary":{"excluded_findings_details":[]}}' > "$dir/not-completed.json"
-          echo '{"findings":[],"filtering_summary":{"excluded_findings_details":[]}}' > "$dir/no-summary.json"
+            '[{"finding":{"severity":"HIGH"},"confidence_score":2,"justification":"x","filter_stage":"claude_api"},{"finding":{"severity":"LOW"},"filter_stage":"hard_rules"}]'
+          # Review CHG096-1: the action's own "no readable answer" result, no summary, and a string "true".
+          echo "{\"findings\":[],\"analysis_summary\":{\"review_completed\":false},$summary}" > "$dir/not-completed.json"
+          echo "{\"findings\":[],$summary}" > "$dir/no-summary.json"
+          echo "{\"findings\":[],\"analysis_summary\":{\"review_completed\":\"true\"},$summary}" > "$dir/completed-as-string.json"
           # Review CHG096-2 and R282-6: only MEDIUM and LOW pass, exactly.
           fixture no-severity '[{"description":"no severity"}]'
           fixture unknown-severity '[{"severity":"SEVERE"}]'
@@ -206,40 +262,57 @@ jobs:
           cat "$dir/none.json" "$dir/none.json" > "$dir/two-documents.json"
           # Review R282-1: findings excluded before reporting, other than as
           # false positives by the model filter, still block.
-          echo '{"findings":[],"analysis_summary":{"review_completed":true}}' > "$dir/no-excluded-list.json"
+          echo '{"findings":[],"analysis_summary":{"review_completed":true},"filtering_summary":{"filter_analysis":{"directory_excluded_count":0}}}' > "$dir/no-excluded-list.json"
+          fixture excluded-list-object '[]' '{}'
           fixture excluded-pattern-rule '[]' \
             '[{"finding":{"file":"ACME-CHANGELOG.md","severity":"HIGH"},"exclusion_reason":"Finding in Markdown documentation file","filter_stage":"hard_rules"}]'
-          fixture excluded-directory '[]' '[{"file":"some/dir/a.py","severity":"HIGH"}]'
+          fixture excluded-raw '[]' '[{"file":"some/dir/a.py","severity":"HIGH"}]'
           fixture excluded-not-object '[]' '["x"]'
+          # Review R285-4: no directory exclusions, and a model-written entry
+          # that claims to be a filter exclusion without its shape still counts.
+          fixture directory-excluded '[]' '[]' 1
+          echo '{"findings":[],"analysis_summary":{"review_completed":true},"filtering_summary":{"excluded_findings_details":[]}}' > "$dir/no-directory-count.json"
+          fixture forged-filter-entry '[]' '[{"severity":"HIGH","filter_stage":"claude_api"}]'
           failed=0
-          expect() { # expect <exit code> <fixture>
+          expect() { # expect <exit code> <fixture> <text the gate must print>
             # Inside `if`, so the runner's `bash -e` does not stop at the gate's
-            # intended failures.
-            if bash "$gate" "$dir/$2" > /dev/null 2>&1; then got=0; else got=$?; fi
-            if [ "$got" -ne "$1" ]; then echo "::error::$2: expected exit $1, got $got"; failed=1; else echo "$2: exit $got as expected"; fi
+            # intended failures. The text proves which check decided (review R285-5).
+            if out=$(bash "$gate" "$dir/$2" 2>&1); then got=0; else got=$?; fi
+            if [ "$got" -ne "$1" ]; then
+              echo "::error::$2: expected exit $1, got $got"; failed=1
+            elif ! printf '%s\n' "$out" | grep -qF -- "$3"; then
+              echo "::error::$2: exit $got as expected, but the gate did not say: $3"; failed=1
+            else
+              echo "$2: exit $got, as expected: $3"
+            fi
           }
-          expect 1 missing.json
-          expect 1 empty.json
-          expect 1 not-json.json
-          expect 1 top-level-array.json
-          expect 1 error.json
-          expect 1 unreadable.json
-          expect 1 high.json
-          expect 1 critical.json
-          expect 1 not-completed.json
-          expect 1 no-summary.json
-          expect 1 no-severity.json
-          expect 1 unknown-severity.json
-          expect 1 padded-severity.json
-          expect 1 padded-low.json
-          expect 1 numeric-severity.json
-          expect 1 null-finding.json
-          expect 1 string-finding.json
-          expect 1 two-documents.json
-          expect 1 no-excluded-list.json
-          expect 1 excluded-pattern-rule.json
-          expect 1 excluded-directory.json
-          expect 1 excluded-not-object.json
-          expect 0 medium.json
-          expect 0 none.json
+          expect 1 missing.json "No security review result was produced"
+          expect 1 empty.json "No security review result was produced"
+          expect 1 not-json.json "is not valid JSON"
+          expect 1 two-documents.json "JSON documents, not one"
+          expect 1 error.json "reported an error"
+          expect 1 top-level-array.json "no readable findings list"
+          expect 1 unreadable.json "no readable findings list"
+          expect 1 no-excluded-list.json "no readable list of excluded findings"
+          expect 1 excluded-list-object.json "no readable list of excluded findings"
+          expect 1 directory-excluded.json "zero findings excluded by directory"
+          expect 1 no-directory-count.json "zero findings excluded by directory"
+          expect 1 not-completed.json "did not report that it completed"
+          expect 1 no-summary.json "did not report that it completed"
+          expect 1 completed-as-string.json "did not report that it completed"
+          expect 1 high.json "reported finding(s) are HIGH"
+          expect 1 critical.json "reported finding(s) are HIGH"
+          expect 1 no-severity.json "reported finding(s) are HIGH"
+          expect 1 unknown-severity.json "reported finding(s) are HIGH"
+          expect 1 padded-severity.json "reported finding(s) are HIGH"
+          expect 1 padded-low.json "reported finding(s) are HIGH"
+          expect 1 numeric-severity.json "reported finding(s) are HIGH"
+          expect 1 null-finding.json "reported finding(s) are HIGH"
+          expect 1 string-finding.json "Could not read the findings' severities"
+          expect 1 excluded-pattern-rule.json "excluded before reporting are HIGH"
+          expect 1 excluded-raw.json "excluded before reporting are HIGH"
+          expect 1 forged-filter-entry.json "excluded before reporting are HIGH"
+          expect 1 excluded-not-object.json "Could not read the excluded findings' severities"
+          expect 0 medium.json "Review completed; no blocking finding"
+          expect 0 none.json "Review completed; no blocking finding"
           exit "$failed"

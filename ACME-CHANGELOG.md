@@ -5562,3 +5562,21 @@ CI only (Tier 2), same change. No product code, no schema, nothing deployed. Thi
 - **Rollback:** revert the commit. That brings back the gaps above, so revert only together with relaxing branch protection.
 - **Approval:** pending; the owner merges after the fresh-session security review. Not a production approval.
 - **Deployment status:** not applicable (CI).
+
+## 2026-10-03 — Security review job keeps file contents and model output out of public places, and runs a pinned CLI (CHG-2026-096, third follow-up)
+
+CI only (Tier 2), same change. No product code, no schema, nothing deployed. The fresh-session review of the entry above reported after it was merged. No finding blocked; two needed fixing before the API key secret is added. Both are fixed here, with the lower findings that were cheap to fix. The secret and branch protection are still not set.
+- **Files the model filter could read (R285-1):** the filter reads the file a finding names into its prompt, and it accepted any path. It now reads only files inside the repository, with symlinks resolved. Also:
+  - the review CLI no longer receives the GitHub token;
+  - the action no longer prints the results to the job log or uploads them as an artifact, both public on this repository.
+- **Upstream's exclusions for secrets (R285-2, and R282-7):** the action's own review prompt said, twice, not to report secrets "stored on disk". Both lines are now removed from the prompt. CAIRO's list of things not to report as HIGH now says it never applies to rule 1. The sample output in that prompt no longer ends with a trailing comma, which a model could copy into invalid JSON.
+- **Paths a pull request could pre-create (R285-3):** the job removes the files the action writes or reads at fixed workspace paths before the review runs. The action's reservation marker is also removed, as the run-history cache was: reviewing every commit leaves both unused.
+- **Forged filter exclusions (R285-4):** a finding counts as a false positive only in the filter's own wrapper shape. The gate fails if any finding was excluded by directory, because this workflow excludes none.
+- **Self-test (R285-5):** each fixture now also checks the gate's message, so it proves which check failed. There are 29 fixtures; the new ones cover `review_completed` as a string, an excluded-findings list that is not a list, directory exclusions, and a forged filter exclusion.
+- **Pinned CLI (R285-6):** the action installed the latest Claude Code CLI, so this job's isolation depended on whatever version ran. It now installs 2.1.284, the version these flags were tested with, on Node 22. Current CLI versions require Node 22 or later; the action used Node 18.
+- **Noise (R285-7):** CAIRO's filtering rules add back several upstream exclusions that do not conflict with CAIRO's rules, such as open redirects, resource leaks and shell scripts with no untrusted input.
+- **Wording (R285-8):** CAIRO's review and filtering rules are instructions to a model, not guarantees. The previous entry says findings under CAIRO's rules are "always kept" and that the rules "take precedence". Read both as what the model is told. Besides the diff, the pull request's title and description also reach the model and can steer it.
+- **Owner steps, in order:** merge this after its review; then add the `CLAUDE_API_KEY` secret; then protect `main`; then record it in N-48.
+- **Rollback:** revert the commit. That brings back the gaps above, so revert only together with relaxing branch protection.
+- **Approval:** pending; the owner merges after the fresh-session security review. Not a production approval.
+- **Deployment status:** not applicable (CI).
