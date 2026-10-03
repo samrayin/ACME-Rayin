@@ -4,10 +4,10 @@
 |---|---|
 | **Change ID** | CHG-2026-100 · Tier 1 (authentication, roles, migrations) |
 | **Owner** | Anees Ur Rahman |
-| **Status** | Plan, for the owner's review. Nothing merged, built or deployed |
+| **Status** | Plan approved by the owner on 2026-10-03. Nothing merged from upstream, built or deployed yet |
 | **Date** | 2026-10-03 |
 | **Author** | Claude session (Opus 5.5) for Anees Ur Rahman |
-| **Approval** | Pending. The owner approves the plan, then each live step. No self-approval (N-47/N-48) |
+| **Approval** | Plan: approved by the owner, 2026-10-03 ("Yes plan approved"). Each live step (the upgrade PR merge, the web release, the worker release) still needs its own owner go-ahead. No self-approval (N-47/N-48) |
 | **Basis** | ACME-Rayin `main` at `a407816d5`; upstream tag `v4.50.0` (`ef1075337`); local trial merges on 2026-10-03 against `main` and again against `a407816d5`, both discarded. Same 31 conflicts both times |
 
 ## 1. Summary
@@ -40,7 +40,7 @@ A trial merge of `v4.50.0` into `main` gives **31 conflicts**, almost all in scr
 ## 3. Preconditions (all before the merge starts)
 
 1. **CHG-2026-100 on `main`** (claim #291 merged).
-2. **CHG-2026-089 part b**: phase 3 (console, guardrails, gateway) released, or parked by the owner. The sync touches the same Guardrails and router files; running both at once doubles the review load.
+2. **CHG-2026-089 part b**: phase 3 (console, guardrails, gateway) released, or parked by the owner. **Met on 2026-10-03:** console `acme-v4.38.0.31`, rayin-guardrails `v0.5.0` and the gateway hook are live in dev (#277, #278, #279). The sync touches the same Guardrails and router files; running both at once doubles the review load.
 3. **PD-0002 (four-week freeze)**: the owner decides whether the sync falls inside or outside it.
 4. **CI**: CI/CD has failed on the last 25 `main` runs (lint, knip, web, worker and client tests, e2e). The sync cannot rely on CI. Either the owner accepts local checks (§8) as the gate, or the CI fixes land first. Owner decision.
 5. **Target pinned**: `v4.50.0`, or the latest `v4.50.x` patch on the day, chosen and recorded before the merge. Never `upstream/main`.

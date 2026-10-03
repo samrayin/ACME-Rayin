@@ -5669,7 +5669,7 @@ housekeeping — it is the P0-10 failure happening, and is worth an alert once o
 
 ## 2026-10-03 — Plan: upstream Langfuse sync from v4.38.0 to v4.50.x (CHG-2026-100)
 
-Documentation only: a plan for the owner's review. Nothing is merged from upstream, built or deployed. The plan is `acme-governance/upgrades/CHG-2026-100-langfuse-v4.50-sync-plan.md`.
+Documentation only: a plan, approved by the owner on 2026-10-03. Nothing is merged from upstream, built or deployed. The plan is `acme-governance/upgrades/CHG-2026-100-langfuse-v4.50-sync-plan.md`.
 - **Size:** twelve upstream releases (v4.39.0 to v4.50.0): 321 commits, 2,139 files, 5 Postgres migrations, 1 ClickHouse migration, 51 Enterprise-licensed files.
 - **Trial merge:** 31 conflicts, almost all in screens ACME rebranded or restructured. Two need porting, not merging, because upstream deleted the files: the Members table (CAIRO's "Project access" column) and the dashboards table. Nine security-sensitive files merge cleanly but are listed for line-by-line review, among them the content-free roles' allow-list (`trpc.ts`), role scopes and invite-only sign-in.
 - **Already in CAIRO:** upstream's API-key revocation and SCIM scoping fixes, through CHG-2026-076.
