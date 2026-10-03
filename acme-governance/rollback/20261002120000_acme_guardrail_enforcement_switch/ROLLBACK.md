@@ -6,7 +6,7 @@
 | **ADR** | [ADR-0005-B](../../adr/ADR-0005-B-console-enforcement-switch.md) |
 | **Forward migration** | `packages/shared/prisma/migrations/20261002120000_acme_guardrail_enforcement_switch/migration.sql` |
 | **Rollback script** | `./down.sql` |
-| **Test status** | **Tested 2026-10-02** on a throwaway database (owner: "go rehearsal"): up, down and up again, 7 of 7 steps PASS, plus 9 extra checks PASS, including `down.sql` refusing once an enforce version exists. After review finding SF-2026-025, `down.sql` was made one transaction and re-tested locally (5 of 5 cases PASS, below). Not yet run in dev. |
+| **Test status** | **Tested 2026-10-02** on a throwaway database (owner: "go rehearsal"): up, down and up again, 7 of 7 steps PASS, plus 9 extra checks PASS, including `down.sql` refusing once an enforce version exists. After review finding SF-2026-025, `down.sql` was made one transaction and re-tested locally (5 of 5 cases PASS, below). Applied in dev with console `acme-v4.38.0.31` on 2026-10-03 (00:11:25Z); not run in any customer environment. |
 | **Reversible** | **Only while no enforce or automatic version is stored.** The settings table is append-only, so such a version cannot be deleted, and the "record only" constraint cannot come back while it exists. `down.sql` checks this first and stops without changing anything. After that point, roll back the code and forward-fix the schema. |
 | **Data lost on rollback** | **Steps 1 and 2:** none. **Step 3 (`down.sql`):** the gateway pod, mode and settings version recorded on guardrail events since the release; the `revert_at` and `automatic` columns, which are empty while `down.sql` is allowed to run. |
 
