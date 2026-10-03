@@ -1,6 +1,11 @@
 /**
- * ACME: which rayin-guardrails buffer events the dashboard's pull path may
- * persist into acme_guardrail_events.
+ * ACME: which rayin-guardrails buffer events the pull path may persist into
+ * acme_guardrail_events.
+ *
+ * Moved from web/ to shared/ under CHG-2026-098 so the worker's scheduled
+ * backfill and the console's on-page pull apply exactly the same rules. Two
+ * copies of this selection logic would drift, and the thing that would drift
+ * is which audit records get written.
  *
  * The pull path (acmeGuardrailsRouter.recentEvents) predates the durable
  * push and is now only a fallback for events whose push failed. It carries
@@ -20,7 +25,7 @@
  *    ~17.5 s worst case), so by then pull is only ever filling a real gap.
  */
 import { z } from "zod";
-import { type Prisma } from "@langfuse/shared/src/db";
+import { type Prisma } from "../../db";
 
 export const PULL_BACKFILL_MIN_AGE_MS = 60_000;
 

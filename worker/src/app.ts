@@ -23,6 +23,7 @@ import { cloudSpendAlertQueueProcessor } from "./queues/cloudSpendAlertQueue";
 import { cloudFreeTierUsageThresholdQueueProcessor } from "./queues/cloudFreeTierUsageThresholdQueue";
 import { acmePromptReviewQueueProcessor } from "./queues/acmePromptReviewQueue";
 import { acmeLitellmReconcileQueueProcessor } from "./queues/acmeLitellmReconcileQueue";
+import { acmeGuardrailsBackfillQueueProcessor } from "./queues/acmeGuardrailsBackfillQueue";
 import { monitorQueueProcessor } from "./queues/monitorQueue";
 import { inAppAgentRunQueueProcessor } from "./queues/inAppAgentRunQueue";
 import { WorkerManager } from "./queues/workerManager";
@@ -45,6 +46,7 @@ import {
   CloudUsageMeteringQueue,
   AcmePromptReviewQueue,
   AcmeLitellmReconcileQueue,
+  AcmeGuardrailsBackfillQueue,
   V4LegacyApiUsageQueue,
   EventPropagationQueue,
   EvalExecutionQueue,
@@ -462,6 +464,18 @@ if (env.CAIRO_LITELLM_REQUEST_LOG_INGEST_ENABLED === "true") {
   WorkerManager.register(
     QueueName.AcmeLitellmReconcileQueue,
     acmeLitellmReconcileQueueProcessor,
+    { concurrency: 1 },
+  );
+}
+
+// ACME addition (CHG-2026-098, Ledger P0-10). Off by default: no queue, no
+// schedule, no calls to rayin-guardrails until an operator turns it on.
+if (env.CAIRO_GUARDRAIL_BACKFILL_ENABLED === "true") {
+  AcmeGuardrailsBackfillQueue.getInstance();
+
+  WorkerManager.register(
+    QueueName.AcmeGuardrailsBackfillQueue,
+    acmeGuardrailsBackfillQueueProcessor,
     { concurrency: 1 },
   );
 }
