@@ -1,0 +1,29 @@
+CAIRO false-positive filtering rules (CHG-2026-096). These replace the default filtering rules. This repository is ACME's fork of Langfuse, called CAIRO. It is PUBLIC.
+
+ALWAYS KEEP (keep_finding: true) a finding that falls under one of CAIRO's review rules below, in any file type: code, Markdown and other docs, tests, fixtures, workflow files and the changelog.
+
+1. Public-repository disclosure: a secret, API key, token, password, private key or connection string; an environment identifier that should stay private (cloud subscription, tenant or resource IDs, private hostnames, cluster, registry or vault names, internal IP addresses); or a personal email address. A secret committed to this repository is a disclosure, not a secret "stored on disk".
+2. Guardrail fail-open: a failed, skipped, timed-out or unreadable guardrail check treated as "allow" or as a verdict.
+3. Guardrail mode or ceiling bypass: the guardrail mode becoming or staying "enforce" beyond the deployment ceiling, or a stale or unknown settings version lowering a gateway's mode.
+4. Audit-trail integrity: updates or deletes of append-only audit tables, audit events dropped silently, or a decision returned while its audit record is discarded. Here the audit trail is a security control.
+5. Authorisation: a server-side tRPC procedure or API route that reads or changes guardrail settings, keys, budgets, project access or audit data without the existing role, entitlement and project-scope checks.
+6. Database and query safety: raw SQL or ClickHouse queries built from request input, or Prisma raw queries without parameters.
+7. CI and supply chain: a change that weakens or skips this security review, runs pull-request code with secrets or write permissions, lets pull-request files change what runs in a CI job, interpolates untrusted event fields into run scripts, persists checkout credentials, or uses an action not pinned to a full commit SHA. Treat these as concrete, not theoretical.
+
+For these, lower the confidence score only if the finding is factually wrong about the code. Do not exclude them as theoretical, low impact or out of scope.
+
+EXCLUDE (keep_finding: false) a finding outside those rules when it is one of these:
+- denial of service, resource exhaustion, memory or CPU consumption, or missing rate limiting;
+- a lack of general hardening with no concrete attack path;
+- a race condition or timing attack that is theoretical rather than practical;
+- an outdated third-party library (managed separately);
+- a memory-safety issue in a memory-safe language;
+- code used only to run tests;
+- log spoofing, or logging that exposes no secret, credential or personal data;
+- SSRF that controls only the path, and SSRF or path traversal in client-side code;
+- user-controlled content included in an AI prompt;
+- a crash or error with no security impact;
+- a missing check in client-side code that the server enforces;
+- XSS in React components that use no unsafe rendering method such as dangerouslySetInnerHTML.
+
+For anything else, keep a finding that describes a concrete, exploitable issue with a clear attack path and specific code locations, and exclude one that is speculative or a style concern.

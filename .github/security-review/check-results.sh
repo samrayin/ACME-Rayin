@@ -2,10 +2,13 @@
 # CHG-2026-096: decide the "Security review" check from the action's results file.
 # Usage: check-results.sh <results.json>
 # Exit 1 (fail closed) unless the file is exactly one JSON document, has no
-# `error`, has a findings list, says the review completed, and every finding is
-# MEDIUM or LOW. HIGH, CRITICAL, missing and unknown severities all block.
-# MEDIUM and LOW findings stay in the PR comment for the security agent's review
-# and the owner. Used by the review job and by its self-test.
+# `error`, has a findings list and an excluded-findings list, says the review
+# completed, and every finding is MEDIUM or LOW. That includes findings the
+# action excluded before reporting, except those its model filter judged to be
+# false positives under CAIRO's filtering rules. HIGH, CRITICAL, missing and
+# unknown severities all block. MEDIUM and LOW findings stay in the PR comment
+# for the security agent's review and the owner. Used by the review job and by
+# its self-test.
 set -u
 results="${1:?usage: check-results.sh <results.json>}"
 
@@ -23,6 +26,9 @@ if jq -e '.error' "$results" > /dev/null 2>&1; then
 fi
 jq -e '.findings | type == "array"' "$results" > /dev/null 2>&1 \
   || fail "The security review result has no readable findings list"
+# The action always writes this list when a review finishes (review R282-1).
+jq -e '.filtering_summary.excluded_findings_details | type == "array"' "$results" > /dev/null 2>&1 \
+  || fail "The security review result has no readable list of excluded findings"
 
 # The review must say it completed (review CHG096-1). When the model's answer
 # holds no readable JSON, the action writes an empty findings list with
@@ -30,19 +36,37 @@ jq -e '.findings | type == "array"' "$results" > /dev/null 2>&1 \
 jq -e '.analysis_summary.review_completed == true' "$results" > /dev/null 2>&1 \
   || fail "The security review did not report that it completed"
 
-# Only MEDIUM and LOW pass (review CHG096-2): a missing, misspelt or unknown
-# severity blocks, as HIGH and CRITICAL do.
-blocking=$(jq '[.findings[] | (.severity | if type == "string" then ascii_upcase else "" end) | select(. != "MEDIUM" and . != "LOW")] | length' "$results" 2>/dev/null) \
+# A finding blocks unless its severity is MEDIUM or LOW (review CHG096-2): a
+# missing, misspelt or unknown severity blocks, as HIGH and CRITICAL do.
+blocks='select(.severity | if type == "string" then ascii_upcase else "" end | . != "MEDIUM" and . != "LOW")'
+# Findings the action excluded before reporting (review R282-1). Those its model
+# filter judged to be false positives, under CAIRO's filtering rules, are not
+# counted; a finding excluded any other way is.
+excluded='.filtering_summary.excluded_findings_details[] | select((type == "object" and .filter_stage == "claude_api") | not) | (.finding // .)'
+
+blocking=$(jq "[.findings[] | $blocks] | length" "$results" 2>/dev/null) \
   || fail "Could not read the findings' severities"
+hidden=$(jq "[$excluded | $blocks] | length" "$results" 2>/dev/null) \
+  || fail "Could not read the excluded findings' severities"
 total=$(jq '.findings | length' "$results" 2>/dev/null) || fail "Could not count the findings"
-for count in "$blocking" "$total"; do
+filtered=$(jq '[.filtering_summary.excluded_findings_details[] | select(type == "object" and .filter_stage == "claude_api")] | length' "$results" 2>/dev/null) \
+  || fail "Could not count the excluded findings"
+for count in "$blocking" "$hidden" "$total" "$filtered"; do
   case "$count" in
     '' | *[!0-9]*) fail "The finding counts are not whole numbers" ;;
   esac
 done
 
-if [ "$blocking" -gt 0 ]; then
-  echo "::error::$blocking of $total finding(s) are HIGH, CRITICAL, or have a missing or unknown severity; see the review comment on this pull request."
+if [ "$blocking" -gt 0 ] || [ "$hidden" -gt 0 ]; then
+  if [ "$blocking" -gt 0 ]; then
+    echo "::error::$blocking of $total reported finding(s) are HIGH, CRITICAL, or have a missing or unknown severity; see the review comment on this pull request."
+  fi
+  if [ "$hidden" -gt 0 ]; then
+    echo "::error::$hidden finding(s) that the review action excluded before reporting are HIGH, CRITICAL, or have a missing or unknown severity. They are not in the review comment:"
+    # One JSON line each, indented, so no text from the review can start a
+    # workflow command or a new line of its own.
+    jq -r "[$excluded | $blocks][] | \"  - \" + ({file, line, severity, category} | tojson)" "$results" 2>/dev/null || true
+  fi
   exit 1
 fi
-echo "Review completed; no blocking finding ($total MEDIUM or LOW finding(s); see the review comment, if any)."
+echo "Review completed; no blocking finding ($total MEDIUM or LOW finding(s) reported; $filtered excluded as false positives under CAIRO's filtering rules)."

@@ -5537,3 +5537,28 @@ CI only (Tier 2), same change. No product code, no schema, nothing deployed. The
 - **Rollback:** revert the commit. That brings back a gate that passes an unfinished review, so revert only together with relaxing branch protection.
 - **Approval:** pending; the owner merges after the fresh-session security review. Not a production approval.
 - **Deployment status:** not applicable (CI).
+
+## 2026-10-03 — Security review gate sees every finding, and pull-request files cannot change what the review job runs (CHG-2026-096, second follow-up)
+
+CI only (Tier 2), same change. No product code, no schema, nothing deployed. This fixes findings R282-1, -2, -3, -6 and -7 from the fresh-session security review of the entry above, and two problems found while fixing them. The API key secret and branch protection are still not set.
+- **Findings the gate never saw (R282-1, blocking):** before writing its results, the action drops some findings. Pattern rules drop every finding in a Markdown file, and several kinds of finding by keyword. A second model pass then drops what it judges to be false positives, by default rules that contradict CAIRO's: they exclude committed secrets, audit-log integrity and most workflow issues. So a HIGH disclosure in the changelog could pass, and not appear in the review comment.
+  - The pattern rules are switched off, so every finding reaches the model filter and, if kept, the review comment.
+  - The model filter now uses CAIRO's own rules (`.github/security-review/cairo-filtering-instructions.txt`). A finding under one of CAIRO's seven review rules is always kept, in any file type.
+  - The gate also counts any finding excluded other than by that filter, and fails if the list of excluded findings is missing.
+  - CAIRO's review rules now say they take precedence over the action's built-in exclusions. A committed secret is a disclosure, not "a secret stored on disk".
+- **Pull-request files could change what the review job runs (R282-2, and one more found while fixing it):**
+  - Claude Code no longer loads settings, hooks or MCP servers from the pull request's checkout. The review command skips project settings, and the job removes that configuration before the review.
+  - The step that patches the action now runs Python in isolated mode, so a module added to the repository root cannot replace one it imports.
+- **A cache a pull request could write (R282-3):** the action restored a run-history cache whose keys a pull request's earlier runs can write. Reviewing every commit leaves that cache unused, so the patch step removes it.
+- **Patches are checked:** each patch must find exactly the text it expects in the pinned action, or the job fails.
+- **Self-test (R282-6):** each fixture now passes every rule except the one it tests. There are 24 fixtures. New ones cover a padded LOW, a null or non-object finding, a top-level array, a missing list of excluded findings, and findings excluded by a pattern rule, by directory, or in an unreadable form. A HIGH that the model filter judged a false positive passes.
+- **Output format (R282-7):** CAIRO's review rules ask for strictly valid JSON with `review_completed` set to `true`. Without it the gate fails closed, which could block a genuine review. Watch the first live runs.
+- **Known limit, restated (R282-4, -5 and -8):** the check is a safeguard, not proof.
+  - A pull request runs its own copy of the workflow and the gate, so any change under `.github/` needs the owner's own reading.
+  - Changing a pull request's base branch does not re-run the review.
+  - The review can miss part of a change: files the action treats as generated, a diff too long for one prompt, and pull requests with more than 100 files.
+  - The model reads the diff, so text planted in it can steer the review.
+- **Owner steps, in order:** merge this; then add the `CLAUDE_API_KEY` secret; then protect `main`; then record it in N-48.
+- **Rollback:** revert the commit. That brings back the gaps above, so revert only together with relaxing branch protection.
+- **Approval:** pending; the owner merges after the fresh-session security review. Not a production approval.
+- **Deployment status:** not applicable (CI).

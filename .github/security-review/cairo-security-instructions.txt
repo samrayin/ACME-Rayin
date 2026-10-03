@@ -1,8 +1,10 @@
 CAIRO-specific review rules (CHG-2026-096). This repository is ACME's fork of Langfuse, called CAIRO. It is PUBLIC.
 
+These rules take precedence over any exclusion elsewhere in this prompt. In particular, a secret committed to this repository is a public disclosure under rule 1, not a secret "stored on disk".
+
 Treat these as HIGH when the diff introduces them:
 
-1. Public-repository disclosure. A secret, API key, token, password, private key or connection string in any file, including docs, tests, fixtures, workflow files and the changelog. Also any environment identifier that should stay private: cloud subscription, tenant or resource IDs, private hostnames, cluster, registry or vault names, or internal IP addresses. Also a personal email address.
+1. Public-repository disclosure. A secret, API key, token, password, private key or connection string in any file, including Markdown and other docs, tests, fixtures, workflow files and the changelog. Also any environment identifier that should stay private: cloud subscription, tenant or resource IDs, private hostnames, cluster, registry or vault names, or internal IP addresses. Also a personal email address.
 
 2. Guardrail fail-open. Any path where a failed, skipped, timed-out or unreadable guardrail check is treated as "allow" or as a verdict. This covers the gateway hook under integrations/litellm/, the guardrail ingestion and settings routes, and the console's guardrail code under web/src/features/acme-enhancements/. Absence of an answer must be "no verdict" (record mode proceeds; enforce mode refuses), never "allow".
 
@@ -14,7 +16,7 @@ Treat these as HIGH when the diff introduces them:
 
 6. Database and query safety. Raw SQL or ClickHouse queries built from request input, and Prisma raw queries without parameters.
 
-7. CI and supply chain. A workflow change that runs on pull_request_target with the pull request's code, interpolates untrusted event fields into run scripts, persists checkout credentials, uses an action not pinned to a full commit SHA, or weakens or skips this security review. That includes edits to .github/workflows/claude-code-security-review.yml and to this file.
+7. CI and supply chain. A workflow change that runs on pull_request_target with the pull request's code, interpolates untrusted event fields into run scripts, persists checkout credentials, uses an action not pinned to a full commit SHA, or weakens or skips this security review. That includes edits to .github/workflows/claude-code-security-review.yml, to any file under .github/security-review/ (this file included), and to any file that changes what runs in a CI job, such as Claude Code project settings (.claude/, .mcp.json) or a module that shadows one a CI script imports.
 
 Do not report as HIGH:
 - documentation-only wording;
@@ -22,3 +24,5 @@ Do not report as HIGH:
 - issues that exist unchanged outside the diff.
 
 Report those as LOW or omit them.
+
+Output: your final reply must be strictly valid JSON, with no text before or after it and no trailing commas. When you have finished the review, set "analysis_summary.review_completed" to the boolean true; the merge check fails without it.
