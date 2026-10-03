@@ -15,13 +15,17 @@ permissions:
 jobs:
   security-review:
     name: Security review
-    # ACME: opt-in. This job needs a CLAUDE_API_KEY secret (a paid API key, and
-    # it sends each PR diff to the Anthropic API). Without one it failed on
-    # every PR, which hid real failures. It is skipped, not red, until the
-    # owner sets the secret AND the repository variable
-    # CLAUDE_SECURITY_REVIEW_ENABLED=true (Settings > Secrets and variables >
-    # Actions > Variables).
-    if: vars.CLAUDE_SECURITY_REVIEW_ENABLED == 'true' && github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    # ACME (CHG-2026-096): a required merge check on main, so it must never pass
+    # without a review having run.
+    # - No opt-in variable: a job skipped by `if:` counts as passed for a
+    #   required check, so a switched-off variable would silently open the gate.
+    # - Drafts are skipped: a draft cannot be merged, and marking it ready
+    #   triggers this job.
+    # - Pull requests from forks run too. They get no CLAUDE_API_KEY, so the
+    #   review step fails and the check stays red rather than skipped.
+    # It needs the CLAUDE_API_KEY secret (a paid key; each PR diff is sent to
+    # the Anthropic API). Without it every non-draft PR fails this check.
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -67,10 +71,77 @@ jobs:
           action_path.write_text(source.replace(old, new))
           PY
 
+      - name: Require CAIRO's review instructions
+        shell: bash
+        env:
+          INSTRUCTIONS: ${{ github.workspace }}/.github/security-review/cairo-security-instructions.txt
+        run: |
+          if [ ! -s "$INSTRUCTIONS" ]; then
+            echo "::error::CAIRO's security review instructions are missing or empty; failing closed."
+            exit 1
+          fi
+
       - name: Run Claude Code security review
         uses: ./.github/actions/claude-code-security-review
         with:
           claude-api-key: ${{ secrets.CLAUDE_API_KEY }}
-          claude-model: claude-opus-4-1-20250805
+          claude-model: claude-opus-5-5
           comment-pr: true
           run-every-commit: true
+          # Absolute: the action reads this from its own directory, and skips a
+          # path it cannot find without a word (checked in the step above).
+          custom-security-scan-instructions: ${{ github.workspace }}/.github/security-review/cairo-security-instructions.txt
+
+      # ACME (CHG-2026-096): the action reports findings as a PR comment and
+      # only warns when its own scan fails, so on its own this check would pass
+      # whatever it found. Fail closed: on any HIGH or CRITICAL finding, and on
+      # a missing, empty, errored or unreadable result. MEDIUM and LOW findings
+      # stay in the PR comment for the security agent's review and the owner.
+      - name: Fail on high or critical findings, or on no usable result
+        shell: bash
+        env:
+          RESULTS: ${{ github.workspace }}/claudecode-results.json
+        run: bash .github/security-review/check-results.sh "$RESULTS"
+
+  # CHG-2026-096: proves the gate's decision logic on every pull request, with
+  # fixtures and no API key, so a broken check cannot pass unnoticed. Not a
+  # substitute for the review itself.
+  gate-self-test:
+    name: Security review gate self-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run the gate against fixtures
+        shell: bash
+        run: |
+          set -u
+          gate=.github/security-review/check-results.sh
+          dir=$(mktemp -d)
+          : > "$dir/empty.json"
+          echo '{"error":"scan failed"}' > "$dir/error.json"
+          echo '{"findings":"not a list"}' > "$dir/unreadable.json"
+          echo '{"findings":[{"severity":"HIGH"},{"severity":"LOW"}]}' > "$dir/high.json"
+          echo '{"findings":[{"severity":"critical"}]}' > "$dir/critical.json"
+          echo '{"findings":[{"severity":"MEDIUM"},{"severity":"LOW"}]}' > "$dir/medium.json"
+          echo '{"findings":[]}' > "$dir/none.json"
+          failed=0
+          expect() { # expect <exit code> <fixture>
+            bash "$gate" "$dir/$2" > /dev/null 2>&1; got=$?
+            if [ "$got" -ne "$1" ]; then echo "::error::$2: expected exit $1, got $got"; failed=1; else echo "$2: exit $got as expected"; fi
+          }
+          expect 1 missing.json
+          expect 1 empty.json
+          expect 1 error.json
+          expect 1 unreadable.json
+          expect 1 high.json
+          expect 1 critical.json
+          expect 0 medium.json
+          expect 0 none.json
+          exit "$failed"
