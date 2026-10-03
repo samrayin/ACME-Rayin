@@ -136,6 +136,14 @@ jobs:
               'echo "Error log omitted from the public job log (ACME, CHG-2026-096)."\n',
               2,
           )
+          # The scan error is printed in a warning; keep it on one quoted line,
+          # so text in it cannot start a workflow command (review R287-1).
+          patch(
+              "action.yml",
+              "ERROR_MSG=$(jq -r '.error' claudecode/claudecode-results.json)",
+              "ERROR_MSG=$(jq -c '.error' claudecode/claudecode-results.json)",
+              1,
+          )
           # The comment script logs model-written paths and line numbers; quote
           # them so they cannot start a line of their own, and with it a
           # workflow command (review R286-2).
