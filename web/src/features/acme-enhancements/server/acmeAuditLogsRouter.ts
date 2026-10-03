@@ -20,10 +20,15 @@
  * read-only.
  */
 import { z } from "zod";
-import { createTRPCRouter, protectedProjectProcedure } from "@/src/server/api/trpc";
+import {
+  createTRPCRouter,
+  protectedProjectProcedure,
+} from "@/src/server/api/trpc";
 import { throwIfNoProjectAccess } from "@/src/features/rbac/utils/checkProjectAccess";
 import { paginationZod } from "@langfuse/shared";
 import { AuditLogRecordType, type AuditLog } from "@langfuse/shared/src/db";
+import { isContentFreeRole } from "@/src/features/rbac/server/securityRoleAllowList";
+import { maskAuditLogStates } from "@/src/features/acme-enhancements/server/auditLogMasking";
 
 type AcmeAuditLogActor =
   | { type: "API_KEY"; body: { id: string | null; publicKey: string | null } }
@@ -42,7 +47,12 @@ function mapActors(
   auditLogs: AuditLog[],
   userMap: Map<
     string,
-    { id: string; name: string | null; email: string | null; image: string | null }
+    {
+      id: string;
+      name: string | null;
+      email: string | null;
+      image: string | null;
+    }
   >,
   apiKeyMap: Map<string, { id: string; publicKey: string }>,
 ) {
@@ -99,15 +109,21 @@ export const acmeAuditLogsRouter = createTRPCRouter({
         ctx.prisma.auditLog.count({ where: { projectId: input.projectId } }),
       ]);
 
-      const userIds = [...new Set(auditLogs.flatMap((l) => (l.userId ? [l.userId] : [])))];
-      const apiKeyIds = [...new Set(auditLogs.flatMap((l) => (l.apiKeyId ? [l.apiKeyId] : [])))];
+      const userIds = [
+        ...new Set(auditLogs.flatMap((l) => (l.userId ? [l.userId] : []))),
+      ];
+      const apiKeyIds = [
+        ...new Set(auditLogs.flatMap((l) => (l.apiKeyId ? [l.apiKeyId] : []))),
+      ];
 
       const [users, apiKeys] = await Promise.all([
         ctx.prisma.user.findMany({
           where: {
             id: { in: userIds },
             organizationMemberships: {
-              some: { organization: { projects: { some: { id: input.projectId } } } },
+              some: {
+                organization: { projects: { some: { id: input.projectId } } },
+              },
             },
           },
           select: { id: true, name: true, email: true, image: true },
@@ -121,9 +137,18 @@ export const acmeAuditLogsRouter = createTRPCRouter({
       const userMap = new Map(users.map((u) => [u.id, u]));
       const apiKeyMap = new Map(apiKeys.map((k) => [k.id, k]));
 
+      // ACME (CHG-2026-101, ADR-0011): the content-free roles read each
+      // entry's before/after with metadata fields only. Masked here, on the
+      // server, so the content never reaches their browser.
+      const masked = isContentFreeRole(ctx.session.projectRole);
+      const rows = masked
+        ? auditLogs.map((log) => ({ ...log, ...maskAuditLogStates(log) }))
+        : auditLogs;
+
       return {
-        data: mapActors(auditLogs, userMap, apiKeyMap),
+        data: mapActors(rows, userMap, apiKeyMap),
         totalCount,
+        masked,
       };
     }),
 });

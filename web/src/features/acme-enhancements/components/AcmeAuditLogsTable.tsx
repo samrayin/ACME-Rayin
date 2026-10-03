@@ -116,7 +116,12 @@ export function AcmeAuditLogsTable({ projectId }: { projectId: string }) {
   return (
     <AcmeLogTable
       tableName="acmeAuditLogs"
-      description="Changes made in this project: who made them, to what, and when. Newest first."
+      description={
+        // CHG-2026-101: the server masks content fields for the content-free roles.
+        auditLogs.data?.masked
+          ? "Changes made in this project: who made them, to what, and when. Newest first. Your role sees metadata fields only; other fields show [masked], or [masked: changed] where the value changed."
+          : "Changes made in this project: who made them, to what, and when. Newest first."
+      }
       summary={
         totalCount !== undefined ? (
           <span className="text-muted-foreground text-sm">

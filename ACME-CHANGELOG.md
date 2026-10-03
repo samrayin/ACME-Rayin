@@ -5683,3 +5683,19 @@ Documentation only: a plan, approved by the owner on 2026-10-03. Nothing is merg
 - **Preconditions:** CHG-2026-089 part b released or parked, a PD-0002 decision, and the owner's choice on whether local checks stand in for CI, which fails on `main`.
 
 **Deployment status:** not applicable (plan only).
+
+## 2026-10-03 — Audit log view shows metadata only to the content-free roles (CHG-2026-101)
+
+Console only (Tier 1). No schema change; under ADR-0011. Owner decision, 2026-10-03: place this at Gate A, before the first real client prompts.
+- **Why:** an audit-log entry stores the audited resource's state before and after the change. For a prompt that state is the prompt text; for a score, its value and comment; for a dataset run item, its input. The content-free roles may not read that content anywhere else.
+- **`acmeAuditLogs.all`** now checks the caller's project role on the server. For the content-free roles (Security Analyst and Auditor; Business Analyst cannot open the audit log at all), each entry's before and after keep only metadata fields from an allow-list: IDs, name, version, labels, tags, type, role, status and timestamps. Any other field reads `[masked]`, or `[masked: changed]` where its value differs between before and after. A reader can still see *that* content changed, but not what it was.
+- **An allow-list, not a deny-list:** a field or resource type added by a future upstream merge is masked until someone allows it. An object or a list of objects is masked even under an allowed name.
+- **One exception, guardrail settings:** these entries are stored through the curated `settingsForAudit` snapshot, which the same roles already read through `acmeGuardrails.getConfig` and `modeChanges`, so they stay unmasked.
+- **Unchanged for the full roles:** Owner, Admin and instance admins see entries unmasked, as before. The audit rows themselves are not changed.
+- **Console:** the Audit log tab tells the content-free roles that they see metadata fields only.
+- **Tests:**
+  - `auditLogMasking.servertest.ts` (unit) pins the masking rules.
+  - `acme-audit-logs-masking.servertest.ts` calls the router as Owner and Admin (full states), Security Analyst and Auditor (masked), and Business Analyst (refused).
+- **Rollback:** revert the commit and release. No data changes.
+- **Approval:** pending; the owner merges after the fresh-session security review. The release to dev is a separate Tier 1 step with the owner's go-ahead. Not a production approval.
+- **Deployment status:** not deployed.
