@@ -5378,7 +5378,7 @@ Console change, with a database migration. ADR-0005-B §3.3.1. The owner asked f
 - **Approval:** the owner merged #269 on 2026-10-02 (`0a21d819d`), after those checks had reported. Human approval by merge; delegated auto-approval was not used. Not a production approval.
   - Each review ran in a fresh session that shared no context with the implementing session, which invoked it. That is the owner's compensating control for having no human reviewer (Readiness Ledger N-48). So no review was fully independent.
   - The author and the merger are the same GitHub account, so GitHub holds no formal review (Readiness Ledger N-47).
-- **Deployment status:** live in dev as console `acme-v4.38.0.31` (commit `8aa5fa099`), released 2026-10-03 with the owner's approval, together with phase 2's console parts. `verify-deployed.sh` TRACED, health OK, migration `20261002190000` applied at 00:11:25Z and recorded, nothing stuck. The console's ceiling stays unset (record), so nothing can be enforced. Deployment record: acme-rayin-ops #64. Migration `20261002190000` was rehearsed on the cluster's PostgreSQL 15 before the release (7 of 7). Next in phase 3: rayin-guardrails v0.5.0, then the gateway.
+- **Deployment status:** live in dev as console `acme-v4.38.0.31` (commit `8aa5fa099`), released 2026-10-03 with the owner's approval, together with phase 2's console parts. `verify-deployed.sh` TRACED, health OK, migration `20261002190000` applied at 00:11:25Z and recorded, nothing stuck. The console's ceiling stays unset (record), so nothing can be enforced. Deployment record: acme-rayin-ops #64. Migration `20261002190000` was rehearsed on the cluster's PostgreSQL 15 before the release (7 of 7). rayin-guardrails `v0.5.0` followed at 08:24Z the same day; next in phase 3: the gateway.
 
 ## 2026-10-02 — The gateway takes the guardrail mode from CAIRO, within a ceiling (CHG-2026-089 part b, phase 2: gateway)
 
@@ -5413,7 +5413,7 @@ Gateway hook and configuration comment; no console code and no migration. ADR-00
 - **Approval:** the owner merged #268 on 2026-10-02 (`bbcf78817`), after those checks had reported. Human approval by merge; delegated auto-approval was not used. Not a production approval.
   - Each review ran in a fresh session that shared no context with the implementing session, which invoked it. That is the owner's compensating control for having no human reviewer (Readiness Ledger N-48). So no review was fully independent.
   - The author and the merger are the same GitHub account, so GitHub holds no formal review (Readiness Ledger N-47).
-- **Deployment status:** not deployed. The live gateway still runs the 2026-09-30 configuration. This ConfigMap must not be applied from `main` before the console and rayin-guardrails v0.5.0 are released; it is the last step of phase 3.
+- **Deployment status:** not deployed. The live gateway still runs the 2026-09-30 configuration. The console (`acme-v4.38.0.31`) and rayin-guardrails `v0.5.0` were both released on 2026-10-03, so this ConfigMap is now the last step of phase 3, on the owner's yes.
 
 ---
 
