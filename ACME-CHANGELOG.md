@@ -5609,3 +5609,40 @@ CI only (Tier 2), same change. No product code, no schema, nothing deployed. The
 - **Rollback:** revert the commit.
 - **Approval:** pending; the owner merges after the fresh-session security review. Not a production approval.
 - **Deployment status:** not applicable (CI).
+
+---
+
+## 2026-10-03 — ADR-0022: a durable outbox for guardrail decisions (CHG-2026-099)
+
+**What:** A design, not a build. Nothing in it is implemented: no dependency, no
+migration, no credential, no release.
+
+**Files:** `acme-governance/adr/ADR-0022-guardrail-decision-outbox.md`
+
+**Why:** Ledger P0-10. A guardrail decision can be lost three ways once its durable
+push exhausts its retries — the 200-entry ring buffer rotates, the pod restarts, or the
+event sits on the replica the Service did not route to. CHG-2026-098's scheduled
+backfill closes the first. The other two need durable local state, which
+rayin-guardrails does not have: it has no database, no Redis and no object store, so an
+outbox is a new dependency and therefore an architecture decision.
+
+**The design constraint that drives it:** an outbox must not share a failure domain
+with the thing it protects against. The failure being defended is "the network to CAIRO
+is unavailable", so an outbox that answers a network failure with another network call
+has only moved the problem.
+
+**Four options weighed:** shared Redis; a local durable file or SQLite per pod;
+`emptyDir`; a managed cloud queue. The ADR recommends **Redis as proportionate now and
+a local store as architecturally correct**, rejects `emptyDir` as not an outbox, and
+defers the managed queue until the parked egress item is unparked — a guardrails pod
+gaining a path out to a cloud service is a decision about network posture, not a
+storage choice, and should not arrive as a side effect of fixing an audit gap.
+
+**Status: Proposed.** Five open questions for the owner, including whether the
+per-replica gap is rated separately, since it exists today independently of this ADR and
+was introduced by CHG-2026-088.
+
+**Explicitly not progress on P0-5 or P0-11.** An outbox makes records arrive; it says
+nothing about whether they can later be altered or removed.
+
+**Deployment status:** not applicable — design only.
