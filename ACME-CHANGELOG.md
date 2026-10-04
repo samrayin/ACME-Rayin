@@ -5808,3 +5808,18 @@ Gateway configuration only (Tier 1). Owner decision, 2026-10-04: keep the same j
 - **Rollback:** re-apply the previous `litellm-config` ConfigMap and restart the gateway.
 - **Approval:** pending; the owner merges after the fresh-session review. The gateway ConfigMap update and restart are a separate owner-gated step, released together with CHG-2026-102. Not a production approval.
 - **Deployment status:** not deployed.
+
+## 2026-10-04 — `cairo-chat`: a paid chat model for applications and the demo (CHG-2026-104)
+
+Gateway configuration only (Tier 1). Owner direction, 2026-10-04: use the OpenRouter account that already has credit.
+- **Why:** the first end-to-end test of answer checking (CHG-2026-102) got its prompt checked live (a non-exempt key, `allow`, 523 ms, record mode), but no answer came back. None of the configured chat models responded:
+  - `gemini-judge`: Google returns 404, because Gemini 2.5 Flash-Lite is "no longer available to new users";
+  - `nvidia-nemotron`: the free model is excluded by the account's no-logging and no-training settings (CHG-2026-103), with "0 endpoints … matching your data policy";
+  - `claude-sonnet`: the Anthropic key has no credit.
+- **What:** a new entry, `cairo-chat` = `openrouter/openai/gpt-oss-120b`, using the OpenRouter key the gateway already holds. Comments now mark `gemini-judge` and `nvidia-nemotron` as no longer answering. Both entries are kept: the judge key's model list and the console's protected names refer to them.
+- **Measured before the change:** one call took 0.59 s and cost about $0.00006, served by a provider that meets the account's data policy. OpenRouter chooses that provider; it is not pinned here. gpt-oss-20b was also tried and was slower (5.1 s) through a less known provider.
+- **Shared balance:** the chat model and the judge draw on one OpenRouter balance. If it runs out, the judge returns "judge unavailable" for every check. Keys that can reach `cairo-chat` should carry rate limits. Low-balance alerting is open (review of #307).
+- **Follow-up (not in this change):** add `cairo-chat` to the console's protected model names, so that a console-created deployment of the same name cannot join its model group.
+- **Rollback:** re-apply the previous `litellm-config` ConfigMap and restart the gateway.
+- **Approval:** pending; the owner merges after the fresh-session review. The ConfigMap update and restart are a separate owner-gated step. Not a production approval.
+- **Deployment status:** not deployed.
