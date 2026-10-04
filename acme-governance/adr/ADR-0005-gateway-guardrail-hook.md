@@ -288,3 +288,36 @@ NeMo 0.11.0 ships a `content_safety` rail (`library/content_safety/`) whose `con
 - The p50/p95 latency of a `/v1/guard` call under real traffic. That is step 1's measurement and the reason record mode exists.
 - Whether `run_in_parallel` on `post_call` changes response-ordering semantics for streaming responses. To be established during the build, before the budget is set.
 - F5's blast radius: how often the refusal string and the `.co` wording have drifted historically.
+
+## 9. Output direction (CHG-2026-102) — added 2026-10-04
+
+**Decision.** The hook is registered `post_call` as well as `pre_call`, so every model answer is checked with `direction: output` (the topical rail, after the personal-data scan) and recorded exactly like a prompt. Owner decision of 2026-10-04: answer checking is in the live path for the dev demo. Everything in the record/enforce table of §3b and ADR-0005-B applies unchanged; this section records only what differs for an answer, and why.
+
+**Facts, read from the LiteLLM 1.100.1 source the gateway runs** (wheel `litellm==1.100.1`; paths relative to `litellm/`):
+- **(a) Registration.** `mode` may be a list (`types/guardrails.py`, `LitellmParams.mode`; `integrations/custom_guardrail.py`, `_event_hook_is_event_type`). One entry with `["pre_call", "post_call"]` gives one hook instance, so one `ModeTracker` serves both directions. Two entries would give two instances with separate views of the mode.
+- **(b) Non-streamed answers.** `proxy/utils.py` `post_call_success_hook` → the unified guardrail → the endpoint's translation handler calls `apply_guardrail(inputs={"texts": [...]}, input_type="response")`, one text per choice or content part, awaited before the answer is returned.
+- **(c) Streamed answers.** `proxy/guardrails/guardrail_hooks/unified_guardrail/unified_guardrail.py`, `async_post_call_streaming_iterator_hook`, reads `streaming_end_of_stream_only` and `streaming_buffer_until_moderated` by `getattr` on the guardrail instance. The default checks every fifth chunk *and* the end, while the chunks already flow. Buffering withholds every chunk until one end-of-stream check; a block releases only LiteLLM's block chunks. On release the **original** chunks are replayed: a text rewrite (a redaction) is not applied to a streamed answer.
+- **(d) What the user receives.** A plain exception from a post-call hook becomes HTTP 500 (non-streamed) or an error frame (streamed). `ModifyResponseException`, raised through `CustomGuardrail.raise_passthrough_exception`, becomes HTTP 200 with the given message as the answer and `finish_reason: content_filter`, keeping the upstream call's real usage; on a buffered stream it becomes clean block chunks.
+- **(e) Replacement.** Returning `{"texts": [...]}` replaces a non-streamed answer's text. Not a streamed one (c).
+- **(f) `run_in_parallel`** runs opted-in guardrails concurrently with *each other*, still before the answer is returned, and discards anything they return. **This corrects §3c**, which assumed the output check could overlap response delivery: in 1.100.1 it cannot, and with one guardrail `run_in_parallel` saves nothing and would drop an enforced redaction. It is not set. `default_on: true` is also what makes LiteLLM honour the judge key's opt-out on the answer side, and `should_skip` still runs first in the hook.
+- **(g) `input_type="response"`** arrives with the same shape as the prompt side; a tool-call-only answer has no text and becomes `guard_unreadable`. An answer with no text and no tool calls never reaches the hook.
+
+**What differs for an answer.**
+
+| Answer, decided in | allow | block | redact | no verdict / unreadable |
+|---|---|---|---|---|
+| record, any | unchanged | unchanged, `would_block` | unchanged, `would_redact` | unchanged, recorded |
+| enforce, not streamed | unchanged | withheld: "This answer was withheld by the guardrail." | redacted text returned | withheld: "This answer could not be checked, so it was withheld." |
+| enforce, streamed | released after the check | withheld (block chunks) | **withheld**: "This answer contained personal data and was withheld." (`redact_on_stream`) | withheld, "could not be checked" |
+
+- **Withheld, not errored.** In enforce the hook raises through `raise_passthrough_exception` (fact d), so a chatbot receives an ordinary answer saying it was withheld, never an error or a traceback. Where that method is absent the hook raises `CairoAnswerWithheld`, which still refuses. The prompt side is unchanged by this change: a refused prompt still raises `CairoGuardrailBlocked`.
+- **Streaming follows the mode.** The hook exposes the two flags as properties computed from the current mode (`streaming_flags`): record checks once at the end while the answer streams; enforce withholds every chunk until the whole answer is checked. **Cost in enforce:** the user sees nothing until the full answer has been generated and checked: no progressive display. A mode change applies from the next answer.
+- **A redaction across several answer texts** (several choices) cannot be mapped back and is withheld (`redact_unmappable`), as on the prompt side.
+- **Timeout.** `CAIRO_GUARDRAIL_OUTPUT_TIMEOUT_S`, default **4 s**, separate from the prompt side's 2 s. An answer is usually several times longer than its prompt, and the output path runs the personal-data scan and the topical rail over all of it. No output latency has been measured yet; this is twice the input bound, not a fit to data, and the dummy-answer measurement before enforce should replace it.
+- **Judge load doubles.** Each answered request now costs two judge calls. At the judge key's rate limit, the number of fully checked requests a minute halves.
+
+**For the owner to confirm (the defaults this change implements).**
+1. Streamed answers in enforce are withheld until checked (no progressive display), and an enforced redaction of a streamed answer withholds it.
+2. A tool-call-only answer is `guard_unreadable`: recorded in record mode, **withheld in enforce**. That would stop agent tool use under enforce; it follows the fail-closed rule and is open for the owner to revisit.
+
+**Not verified by this change.** The live behaviour of (b)–(d) inside the gateway. `integrations/litellm/tests/in_image_check.py` now checks an answer as well as a prompt, and that the passthrough method exists, in the real image; the dev test after the gateway restart proves the rest. The false-positive rate of the topical rail on real banking answers is unmeasured.

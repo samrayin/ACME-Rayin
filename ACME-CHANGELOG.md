@@ -5776,3 +5776,22 @@ Console only (Tier 1). No schema change; under ADR-0011. Owner decision, 2026-10
 - **Rollback:** revert the commit and release. No data changes.
 - **Approval:** merged by the owner as #298 on 2026-10-04. The fresh-session security review was of #296; #298 carries #296's reviewed commit unchanged (byte-identical), and the review result is summarised in #298's description. Released to dev under the owner's standing dev-release approval of 2026-10-04 (merged, fresh-session-reviewed PRs; image-only releases to dev until 2026-10-10), recorded in the acme-rayin-ops deployment record for this release. Not a production approval.
 - **Deployment status:** in dev as console `acme-v4.38.0.32` (commit `3134edbb2`), released 2026-10-04; `verify-deployed.sh` TRACED, health 200, no migration. **Not done yet:** the live check by role (an Auditor sees masked entries, an Owner sees full ones). It needs a browser sign-in, so it is the owner's.
+
+## 2026-10-04 — Answer checking at the gateway (CHG-2026-102)
+
+Gateway configuration, hook and tests (Tier 1); under ADR-0005 (new §9). Owner decision, 2026-10-04: model answers are checked in the live path for the dev demo.
+- **Why:** until now the gateway hook ran only before the model call, so prompts were checked and answers were not. The topical rail in rayin-guardrails has worked on answers since v0.5.0, but nothing in the request path called it.
+- **What:** the same guardrail entry is registered `post_call` as well as `pre_call` (`mode: ["pre_call", "post_call"]`). Each answer is sent to rayin-guardrails with `direction: output` and recorded like a prompt, under the same record/enforce table.
+- **Record mode:** every answer is returned unchanged, whatever the verdict, and the decision is recorded. A streamed answer flows live and is checked once, at the end.
+- **Enforce mode:** a blocked answer, or one that could not be checked, is withheld. The user receives an ordinary answer saying so (HTTP 200, `finish_reason: content_filter`, through LiteLLM's passthrough exception), never an error. A redaction is applied to a non-streamed answer. A streamed answer is held back until the whole answer is checked, and one that needs a redaction is withheld instead, because LiteLLM cannot rewrite a streamed answer.
+- **Defaults for the owner to confirm:** (1) in enforce, streamed answers lose progressive display, and a streamed answer that needs redaction is withheld; (2) an answer made only of tool calls has no text to check, so it is withheld in enforce, which would stop agent tool use.
+- **Timeout:** `CAIRO_GUARDRAIL_OUTPUT_TIMEOUT_S`, default 4 s for answers; prompts keep 2 s. Not yet measured on answers.
+- **Judge load:** each answered request now costs two judge calls, so the requests a minute that can be fully checked halve.
+- **Docs:** ADR-0005 §9 records what LiteLLM 1.100.1 does (read from its source) and corrects §3c: `run_in_parallel` does not overlap the check with sending the answer, so it is not used. The promptfoo suite's notes no longer say the hook is pre-call only.
+- **Tests:**
+  - `test_cairo_guardrail_output.py` (33 new): the output payload, the decision table for answers in both modes, streamed and not, the passthrough and its fallback, the Step 0 exclusion on answers, the streaming flags, the health record and the timeouts. One test uses the real `ModifyResponseException` when LiteLLM is installed and is skipped on a bare Python.
+  - The whole hook suite: 194 tests pass, with LiteLLM installed and on a bare Python (1 skipped).
+  - `in_image_check.py` now checks an answer as well as a prompt in the real gateway image, and that the passthrough method exists.
+- **Rollback:** re-apply the previous `litellm-config` ConfigMap and restart the gateway. No data changes.
+- **Approval:** pending; the owner merges after the fresh-session security review. The gateway ConfigMap update and restart are a separate owner-gated step. Not a production approval.
+- **Deployment status:** not deployed.
