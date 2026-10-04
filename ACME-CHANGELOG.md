@@ -5840,3 +5840,45 @@ Gateway configuration only (Tier 1).
 - **Rollback:** re-apply the previous `litellm-config` ConfigMap and restart the gateway.
 - **Approval:** pending. The owner merges after the fresh-session review; the ConfigMap update and restart are a separate owner-gated step. Not a production approval.
 - **Deployment status:** not deployed.
+
+---
+
+## 2026-10-04 — A refused prompt reads as a refusal, not a server error (CHG-2026-111)
+
+**What:** In enforce mode a blocked prompt produced **HTTP 500**. It now produces **HTTP 400**
+with the refusal message.
+
+**Files:** `integrations/litellm/config/cairo_guardrail_hook.py`,
+`integrations/litellm/tests/test_cairo_guardrail_hook.py`
+
+**Why it happened.** LiteLLM's shared request path takes the HTTP status straight off the
+exception - `getattr(exc, "status_code", 500)` in
+`litellm/proxy/common_request_processing.py`, verified in the installed 1.100.1.
+`CairoGuardrailBlocked` was a plain `Exception` with no such attribute, so every enforced
+refusal fell to the 500 default. A caller saw a server error for the guardrail working
+exactly as designed, and a chatbot would show "something went wrong" rather than a refusal.
+
+**The fix** gives the exception a `status_code`, defaulting to 400. Deliberately **not** by
+importing a LiteLLM exception: the class exists separately so the module keeps importing on a
+bare Python (the unit tests run without LiteLLM) and so a refusal is attributable to this hook
+in a gateway log rather than to the proxy's machinery. Carrying one attribute keeps both
+properties. 400 matches what LiteLLM's own guardrails use - its Lakera hook raises
+`HTTPException(status_code=400)` for a jailbreak, and `BlockedPiiEntityError` defaults to 400.
+
+All three prompt-side raise sites inherit it (judged block, judge unavailable, an unmappable
+redaction), as does `CairoAnswerWithheld`, the fallback used when LiteLLM has no
+`ModifyResponseException`. The preferred answer-side path is unchanged: still HTTP 200 with
+the withheld message and `finish_reason: content_filter`.
+
+**Tests:** six, pinning that the attribute LiteLLM reads is present, that the default is a
+client error rather than a server error, that it can be set per refusal, that the message still
+reaches the caller, that an end-to-end enforced block carries it, and that the withheld-answer
+fallback does too. The attribute name is a contract owned by LiteLLM and read nowhere else in
+this repository, so renaming it would silently restore the 500 - that is what the first test
+exists to catch.
+
+**Not deployed.** Applying this needs a gateway ConfigMap apply and a restart (Tier 1, owner's
+approval), run from the primary window so two sessions never apply over each other.
+
+**Visible only at enforce.** The gateway is in record mode and the ceiling is unset, so nothing
+is refused today. This is a prerequisite for enforce, not a fix to live behaviour.
