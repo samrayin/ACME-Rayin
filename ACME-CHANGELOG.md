@@ -5823,3 +5823,20 @@ Gateway configuration only (Tier 1). Owner direction, 2026-10-04: use the OpenRo
 - **Rollback:** re-apply the previous `litellm-config` ConfigMap and restart the gateway.
 - **Approval:** pending; the owner merges after the fresh-session review. The ConfigMap update and restart are a separate owner-gated step. Not a production approval.
 - **Deployment status:** not deployed.
+
+## 2026-10-04 — `cairo-chat` on OpenRouter's fastest providers, reasoning capped (CHG-2026-104, follow-up)
+
+Gateway configuration only (Tier 1).
+- **Why:** `cairo-chat` went live in dev at 14:48Z, and its first real answer took about 38 s. Measured from the gateway pod:
+  - **With the plain model name**, OpenRouter routed to small, unfamiliar providers. A banking answer took 15–98 s and ran past 2,000 tokens. That is too slow for a demo, and it sends prompts to providers nobody chose.
+  - **With the `:nitro` variant**, OpenRouter orders providers by throughput (Groq served it). With reasoning effort low as well, the same question took **1.3–2.2 s** directly and **1.8–2.0 s** through LiteLLM's `Router` with this exact entry, and every answer finished naturally.
+  - **A token cap made it worse:** caps of 600 and 1,500 tokens cut the answers off.
+- **What:**
+  - `model` becomes `openrouter/openai/gpt-oss-120b:nitro`.
+  - `extra_body: {reasoning: {effort: low}}` is added. `reasoning_effort` cannot be used, because LiteLLM 1.100.1 does not list the `:nitro` variant as a reasoning model and refuses the parameter.
+  - No `max_tokens`.
+- **Unchanged:** the key, the balance (shared with the judge, by owner decision), and the guardrail on prompts and answers. The provider is still filtered by the account's data policy (owner-asserted). `:nitro` orders providers by speed; it does not pin one.
+- **Tests:** configuration only. The YAML loads, and the entry was exercised through LiteLLM 1.100.1's `Router` in the gateway pod. The live proof is a timed request through the gateway after the restart.
+- **Rollback:** re-apply the previous `litellm-config` ConfigMap and restart the gateway.
+- **Approval:** pending. The owner merges after the fresh-session review; the ConfigMap update and restart are a separate owner-gated step. Not a production approval.
+- **Deployment status:** not deployed.
