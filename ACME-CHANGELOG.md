@@ -5796,3 +5796,15 @@ Gateway configuration, hook and tests (Tier 1); under ADR-0005 (new §9). Owner 
 - **Rollback:** re-apply the previous `litellm-config` ConfigMap and restart the gateway. No data changes.
 - **Approval:** pending; the owner merges after the fresh-session security review. The gateway ConfigMap update and restart are a separate owner-gated step. Not a production approval.
 - **Deployment status:** not deployed.
+
+## 2026-10-04 — Guardrail judge on paid capacity (CHG-2026-103)
+
+Gateway configuration only (Tier 1). Owner decision, 2026-10-04: keep the same judge model and pay for capacity, through OpenRouter.
+- **Why:** before releasing CHG-2026-102, its in-image check failed. Both guardrail checks timed out: the prompt check at 2 s and the answer check at 4 s. Measured that day, Groq queued each free-tier judge call for 1.8–6.5 s by its own `queue_time`; the model itself took about 0.05 s and the account was far from its quota. Through this gateway a judge call took 6–23 s. In enforce mode every request would have been refused; in record mode none got a verdict. Groq's paid tier could not be bought that day ("temporarily unavailable due to high demand").
+- **What:** the `groq-safeguard` model entry keeps the same model, `gpt-oss-safeguard-20b`, but routes through OpenRouter (`openrouter/openai/gpt-oss-safeguard-20b`) with the key the gateway already holds for it. The name `groq-safeguard` is unchanged on purpose, so the judge key's model list, rayin-guardrails' configured model and the tests are untouched.
+- **Measured before the change:** five calls through OpenRouter took a median of 0.37 s, the slowest 0.64 s. OpenRouter's only provider for this model is Groq, on OpenRouter's paid account. Through LiteLLM's text completion, as rayin-guardrails calls it, both routes returned a bare verdict (`Yes`/`yes`); the rail's parser lower-cases it.
+- **Third party:** OpenRouter is now in the dev data path for judge calls. Dummy data only. Spending is capped by the account balance, with no auto top-up, and prompt logging and training are off in the account. A customer deployment brings its own provider.
+- **Tests:** configuration only. The YAML loads, and the entry and the guardrails block are as intended. The live proof is the CHG-2026-102 in-image check, run straight after the restart.
+- **Rollback:** re-apply the previous `litellm-config` ConfigMap and restart the gateway.
+- **Approval:** pending; the owner merges after the fresh-session review. The gateway ConfigMap update and restart are a separate owner-gated step, released together with CHG-2026-102. Not a production approval.
+- **Deployment status:** not deployed.
