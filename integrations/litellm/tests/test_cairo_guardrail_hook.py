@@ -828,5 +828,72 @@ class TestHealthOutputReachesStdout(unittest.TestCase):
         self.assertFalse(m.log.disabled)
 
 
+class TestRefusalIsCleanNotAServerError(unittest.TestCase):
+    """CHG-2026-111 — a refused prompt must read as a refusal, not a crash.
+
+    LiteLLM's shared request path takes the HTTP status straight off the
+    exception: ``getattr(exc, "status_code", 500)`` in
+    ``litellm/proxy/common_request_processing.py`` (verified in the installed
+    1.100.1). Before this change ``CairoGuardrailBlocked`` was a plain
+    ``Exception``, so every enforced refusal surfaced as **HTTP 500** and a
+    caller saw a server error for the guardrail working exactly as designed.
+
+    The attribute name is the whole contract, and it belongs to LiteLLM, not to
+    us. If it is ever renamed here the refusal silently becomes a 500 again --
+    silently, because nothing else in this repository reads it. That is what
+    these tests pin.
+    """
+
+    def test_the_attribute_litellm_reads_is_present(self):
+        import cairo_guardrail_hook as m
+
+        exc = m.CairoGuardrailBlocked("refused")
+        self.assertTrue(
+            hasattr(exc, "status_code"),
+            "LiteLLM reads getattr(exc, 'status_code', 500); without this "
+            "attribute every refusal is served as HTTP 500",
+        )
+
+    def test_default_status_is_a_client_error_not_a_server_error(self):
+        import cairo_guardrail_hook as m
+
+        exc = m.CairoGuardrailBlocked("refused")
+        self.assertEqual(exc.status_code, 400)
+        self.assertLess(exc.status_code, 500, "a refusal is never a server error")
+
+    def test_the_status_can_be_set_per_refusal(self):
+        import cairo_guardrail_hook as m
+
+        self.assertEqual(m.CairoGuardrailBlocked("refused", 403).status_code, 403)
+
+    def test_the_message_still_reaches_the_caller(self):
+        import cairo_guardrail_hook as m
+
+        self.assertIn("refused", str(m.CairoGuardrailBlocked("refused")))
+
+    def test_an_enforced_block_carries_the_status(self):
+        """The end-to-end path, not just the class."""
+        import asyncio
+
+        import cairo_guardrail_hook as m
+
+        g, _ = TestApplyGuardrailEndToEnd._hook(
+            TestApplyGuardrailEndToEnd(), {"action": "block"}, mode="enforce"
+        )
+        with self.assertRaises(m.CairoGuardrailBlocked) as caught:
+            asyncio.run(g.apply_guardrail(inputs="bad", request_data=req(key_meta={})))
+        self.assertEqual(caught.exception.status_code, 400)
+
+    def test_the_withheld_answer_fallback_also_carries_it(self):
+        """CairoAnswerWithheld inherits the contract.
+
+        It is only the fallback for a LiteLLM without ModifyResponseException,
+        but when it is reached it should refuse cleanly too, not 500.
+        """
+        import cairo_guardrail_hook as m
+
+        self.assertEqual(m.CairoAnswerWithheld("withheld").status_code, 400)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

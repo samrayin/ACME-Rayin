@@ -665,7 +665,28 @@ class CairoGuardrailBlocked(Exception):
     Defined here rather than reusing a litellm exception so the module keeps
     importing on a bare Python, and so the refusal is attributable to this hook
     in a gateway log rather than to the proxy's own machinery.
+
+    ``status_code`` is what makes the refusal clean (CHG-2026-111). LiteLLM's
+    shared request path reads the HTTP status off the exception with
+    ``getattr(exc, "status_code", 500)`` (verified in 1.100.1,
+    ``litellm/proxy/common_request_processing.py``), so an exception without it
+    becomes a 500 and a caller sees a server error rather than a refusal. A
+    chatbot then shows "something went wrong" for what is actually the
+    guardrail working as designed.
+
+    Carrying the attribute ourselves, rather than importing a litellm
+    exception, keeps both properties above: no litellm import, and the refusal
+    still attributable to this hook. 400 matches what LiteLLM's own guardrails
+    use for a refusal (its Lakera hook raises ``HTTPException(status_code=400)``
+    for a jailbreak, and ``BlockedPiiEntityError`` defaults to 400).
     """
+
+    #: Default for a refusal the guardrail actually decided.
+    DEFAULT_STATUS_CODE = 400
+
+    def __init__(self, message: str, status_code: int = DEFAULT_STATUS_CODE) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class CairoAnswerWithheld(CairoGuardrailBlocked):
