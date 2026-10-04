@@ -169,6 +169,20 @@ MAX_SETTINGS_VERSION = 2147483647
 NO_VERDICT = "none"
 JUDGE_UNAVAILABLE = "judge_unavailable"
 
+#: Output direction (CHG-2026-102). What the user sees in place of an answer
+#: withheld in enforce mode. Plain words, and nothing from the answer or the
+#: policy: the decision and its reason are in the guardrail event, not here.
+ANSWER_WITHHELD_BLOCKED = "This answer was withheld by the guardrail."
+ANSWER_WITHHELD_UNCHECKED = (
+    "This answer could not be checked, so it was withheld. Please try again later."
+)
+ANSWER_WITHHELD_PERSONAL_DATA = "This answer contained personal data and was withheld."
+
+#: The outcome code for an enforced redaction that cannot be applied because
+#: the answer was streamed (LiteLLM 1.100.1 replays the original chunks on
+#: release and drops text rewrites; ADR-0005 "Output direction", fact 2c).
+REDACT_ON_STREAM = "redact_on_stream"
+
 
 def read_ceiling(environ: Optional[Mapping[str, str]] = None) -> str:
     """The deployment ceiling: ``enforce`` only when set to exactly that.
@@ -493,6 +507,90 @@ def decide(verdict: Any, enforcing: bool) -> GuardOutcome:
     return GuardOutcome(not enforcing, None, "guard_unavailable")
 
 
+class StreamingFlags(NamedTuple):
+    """How LiteLLM should run this hook on a streamed answer (CHG-2026-102)."""
+
+    buffer_until_moderated: bool
+    end_of_stream_only: bool
+
+
+def streaming_flags(mode: str) -> StreamingFlags:
+    """The streaming behaviour for a mode, as a pure function.
+
+    ========  =========================================================
+    record    chunks flow to the user live; ONE check of the whole answer
+              at the end, recorded. Avoids LiteLLM's default of a check
+              every fifth chunk, which would multiply judge calls.
+    enforce   every chunk is withheld until the whole answer is checked;
+              a withheld answer is never released. The user sees nothing
+              until the check is done: the price of checking first.
+    ========  =========================================================
+
+    Anything that is not ``enforce`` is treated as record, like
+    ``decision_mode``.
+    """
+    if mode == "enforce":
+        return StreamingFlags(buffer_until_moderated=True, end_of_stream_only=True)
+    return StreamingFlags(buffer_until_moderated=False, end_of_stream_only=True)
+
+
+def is_streamed(request_data: Any) -> bool:
+    """True when the caller asked for a streamed answer.
+
+    Any truthy ``stream`` counts, because that is what makes LiteLLM stream.
+    Erring towards True is the safe side: it can only turn an enforced
+    redaction into a withheld answer, never let unredacted text out.
+    """
+    try:
+        return isinstance(request_data, dict) and bool(request_data.get("stream"))
+    except Exception:
+        return True
+
+
+def output_outcome(outcome: GuardOutcome, streamed: bool) -> GuardOutcome:
+    """Adjust a decided outcome for an ANSWER (CHG-2026-102).
+
+    One case differs from a prompt. An enforced redaction of a streamed answer
+    cannot be applied: LiteLLM 1.100.1 releases the original chunks and drops
+    the rewrite. Returning it as if redacted would let the personal data out,
+    so the answer is withheld instead (``redact_on_stream``). Every other
+    outcome is unchanged. Record mode never carries a replacement text, so it
+    is never affected.
+    """
+    if streamed and outcome.proceed and outcome.text is not None:
+        return GuardOutcome(False, None, REDACT_ON_STREAM)
+    return outcome
+
+
+def withheld_message(event: str) -> str:
+    """What the user sees in place of a withheld answer, by outcome code.
+
+    A ``blocked`` answer was judged and refused. ``redact_on_stream`` had
+    personal data that could not be removed. Everything else (the judge
+    unavailable, the guardrails service down, an unreadable verdict or
+    answer, settings that cannot be trusted) means the answer was NOT
+    checked, and is said so plainly: a check that could not run is never
+    reported as a pass or as a policy decision.
+    """
+    if event == "blocked":
+        return ANSWER_WITHHELD_BLOCKED
+    if event in (REDACT_ON_STREAM, "redact_unmappable"):
+        return ANSWER_WITHHELD_PERSONAL_DATA
+    return ANSWER_WITHHELD_UNCHECKED
+
+
+def redaction_mappable(inputs: Any) -> bool:
+    """True when a single redacted text can be put back into ``inputs``.
+
+    Mirrors ``CairoGuardrail._replace_text``: LiteLLM's ``texts`` shape with
+    exactly one text, or anything that is not that shape.
+    """
+    if isinstance(inputs, dict) and "texts" in inputs:
+        texts = inputs.get("texts")
+        return isinstance(texts, (list, tuple)) and len(texts) == 1
+    return True
+
+
 #: Marker every health line carries, so an operator can select exactly these
 #: lines out of the gateway's stdout without matching on prose that may change.
 HEALTH_LOG_EVENT = "cairo_guardrail_health"
@@ -567,6 +665,22 @@ class CairoGuardrailBlocked(Exception):
     Defined here rather than reusing a litellm exception so the module keeps
     importing on a bare Python, and so the refusal is attributable to this hook
     in a gateway log rather than to the proxy's own machinery.
+    """
+
+
+class CairoAnswerWithheld(CairoGuardrailBlocked):
+    """An answer withheld in enforce mode (CHG-2026-102).
+
+    Inside the gateway the hook raises LiteLLM's ``ModifyResponseException``
+    instead (through ``raise_passthrough_exception``): a non-streamed answer
+    becomes HTTP 200 with the withheld message and ``finish_reason:
+    content_filter``. A streamed answer on the chat-completions and responses
+    routes still ends in an error frame carrying the same fixed message
+    (LiteLLM 1.100.1 builds clean block chunks only for the Anthropic messages
+    route; ADR-0005 §9). This class is the fallback when that method is not
+    there: a bare Python in the unit tests, or a LiteLLM without it. It still
+    refuses, so an answer is never released because the preferred path was
+    missing.
     """
 
 
@@ -678,6 +792,18 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
     event, so the console can show each replica's last seen mode (build
     decision C1).
 
+    **Answers** (CHG-2026-102). Registered ``post_call`` as well as
+    ``pre_call``, the hook checks each model answer with ``direction:
+    output`` and the same table. In record mode the answer is always
+    returned unchanged. In enforce mode a refused answer is replaced, through
+    ``_withhold_answer``, by a short message saying it was withheld (judged)
+    or could not be checked (no verdict): HTTP 200 for a non-streamed answer,
+    an error frame with the same message for a streamed one on the
+    chat-completions routes (ADR-0005 §9). Nothing from the answer is sent
+    either way. A streamed answer is held back until it has been checked, and an
+    enforced redaction it needs is withheld instead, because a streamed answer
+    cannot be rewritten (``output_outcome``, ``streaming_flags``).
+
     Enforce takes effect only with the ceiling at ``enforce`` and the console
     at enforce. Neither may be set until the owner's preconditions hold:
     ADR-0005 §5 Step 4, Readiness Ledger N-64, N-59's re-confirmation and
@@ -730,6 +856,17 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
         # where the signal lives. 1s is ~2x p50 and would systematically drop
         # it; 2s is ~4x, still a hard cap.
         self.timeout_s = float(os.environ.get("CAIRO_GUARDRAIL_TIMEOUT_S", "2"))
+        # The same bound for ANSWERS (CHG-2026-102), set separately: 4 seconds.
+        # An answer is usually several times longer than the prompt it answers,
+        # and the output path runs the personal-data scan and the topical rail
+        # over all of it. No output-side latency has been measured yet, so this
+        # is twice the input bound, not a fit to data; the dummy-answer
+        # measurement before enforce (sprint item b3) is what should replace
+        # it. In record mode a timeout only loses the record; in enforce it
+        # withholds the answer, which is the fail-closed side.
+        self.output_timeout_s = float(
+            os.environ.get("CAIRO_GUARDRAIL_OUTPUT_TIMEOUT_S", "4")
+        )
         # Read once at construction. Absent means every call 401s, so it is
         # treated as unavailable rather than attempted -- see _post_guard.
         self.guard_secret = os.environ.get(GUARD_SECRET_ENV, "").strip()
@@ -743,6 +880,31 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
         must not claim that name.
         """
         return decision_mode(self.ceiling, self.tracker.desired())
+
+    # LiteLLM 1.100.1 reads these two by ``getattr`` on the guardrail instance
+    # when a streamed answer starts (unified_guardrail.py,
+    # ``async_post_call_streaming_iterator_hook``). Properties, so they follow
+    # the mode CAIRO sets instead of being fixed at pod start. See
+    # ``streaming_flags`` for the table. A mode change mid-stream applies from
+    # the next answer: a record-mode stream already flowing is not buffered.
+    @property
+    def streaming_buffer_until_moderated(self) -> bool:
+        return streaming_flags(self.current_mode()).buffer_until_moderated
+
+    @streaming_buffer_until_moderated.setter
+    def streaming_buffer_until_moderated(self, value: Any) -> None:
+        # LiteLLM can copy guardrail params onto the instance
+        # (update_in_memory_litellm_params). The mode owns this, so a copied
+        # value is ignored rather than allowed to switch buffering off.
+        log.warning("cairo_guardrail: streaming_buffer_until_moderated is set by the mode; ignored")
+
+    @property
+    def streaming_end_of_stream_only(self) -> bool:
+        return streaming_flags(self.current_mode()).end_of_stream_only
+
+    @streaming_end_of_stream_only.setter
+    def streaming_end_of_stream_only(self, value: Any) -> None:
+        log.warning("cairo_guardrail: streaming_end_of_stream_only is set by the mode; ignored")
 
     def _gateway_state(self, mode: str) -> Dict[str, Any]:
         """What this replica reports with each call (build decision C1)."""
@@ -796,8 +958,15 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
 
         ``input_type`` maps onto ``/v1/guard``'s ``direction``:
         ``request`` -> ``input``, ``response`` -> ``output``.
+
+        For an answer (``output``, CHG-2026-102) the table is the same; what
+        differs is how a refusal reaches the user (``_withhold_answer``) and
+        that an enforced redaction of a streamed answer is withheld instead
+        (``output_outcome``).
         """
         data = request_data or {}
+        direction = _DIRECTION_BY_INPUT_TYPE.get(input_type)
+        streamed = direction == "output" and is_streamed(data)
 
         # ADR-0005 Step 0. First thing, before any work: if this key is excluded,
         # return untouched. This is what stops the rail's own judge call from
@@ -810,26 +979,37 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
         # hook never ran". `called: false` keeps these out of the latency and
         # availability figures, which are about calls that were made.
         if should_skip(data, self.guardrail_name):
+            excluded: Dict[str, Any] = {"agent_id": _authenticated_agent_id(data)}
+            if direction:
+                excluded["direction"] = direction
             return self._resolve(
                 GuardOutcome(True, None, "excluded"),
                 inputs,
                 mode=self.current_mode(),
                 duration_ms=None,
                 called=False,
-                payload={"agent_id": _authenticated_agent_id(data)},
+                payload=excluded,
+                direction=direction,
+                streamed=streamed,
+                request_data=data,
             )
 
         mode_before = self.current_mode()
         payload = build_guard_payload(inputs, data, input_type)
         if payload is None:
             # Nothing honest to ask. Record: proceed. Enforce: fail closed.
+            # For an answer this includes a tool-call-only answer, which has
+            # no text to check (ADR-0005 "Output direction", fact 2g).
             return self._resolve(
                 GuardOutcome(mode_before != "enforce", None, "guard_unreadable"),
                 inputs,
                 mode=mode_before,
                 duration_ms=None,
                 called=False,
-                payload=None,
+                payload={"direction": direction} if direction else None,
+                direction=direction,
+                streamed=streamed,
+                request_data=data,
             )
         payload.update(self._gateway_state(mode_before))
 
@@ -854,6 +1034,9 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
             duration_ms=duration_ms,
             called=True,
             payload=payload,
+            direction=direction,
+            streamed=streamed,
+            request_data=data,
         )
 
     def _resolve(
@@ -864,8 +1047,18 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
         duration_ms: Optional[float] = None,
         called: bool = False,
         payload: Optional[Dict[str, Any]] = None,
+        direction: Optional[str] = None,
+        streamed: bool = False,
+        request_data: Optional[Dict[str, Any]] = None,
     ) -> Any:
         """Apply a decided outcome: record it, then proceed, replace, or refuse."""
+        if direction == "output":
+            outcome = output_outcome(outcome, streamed)
+            if outcome.text is not None and not redaction_mappable(inputs):
+                # Several answer texts, one redaction: it cannot be mapped
+                # back, so the answer is withheld, never released as is.
+                # Decided before the record is written, so the record says so.
+                outcome = GuardOutcome(False, None, "redact_unmappable")
         record = build_health_log(
             outcome=outcome.event,
             mode=mode or self.current_mode(),
@@ -880,6 +1073,8 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
         # One line, valid JSON, no interpolation -- so a log collector can parse
         # it without a regex and the fields survive a message-wording change.
         log.info(json.dumps(record, separators=(",", ":"), sort_keys=True))
+        if not outcome.proceed and direction == "output":
+            self._withhold_answer(withheld_message(outcome.event), request_data)
         if not outcome.proceed:
             if outcome.event == JUDGE_UNAVAILABLE:
                 # Operator-visible and distinct (owner decision 2026-10-02).
@@ -895,6 +1090,27 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
         if outcome.text is not None:
             return self._replace_text(inputs, outcome.text)
         return inputs
+
+    def _withhold_answer(self, message: str, request_data: Optional[Dict[str, Any]]) -> None:
+        """Refuse an answer in enforce mode. Never returns (CHG-2026-102).
+
+        Prefers LiteLLM's passthrough exception. For a non-streamed answer the
+        user gets HTTP 200 with ``message`` as the answer and ``finish_reason:
+        content_filter``, and the upstream call's real token usage is kept.
+        For a streamed answer, which is buffered in enforce so nothing of it
+        has been sent, LiteLLM 1.100.1 ends the stream with an error frame
+        carrying ``message`` on the chat-completions and responses routes, and
+        with clean block chunks only on the Anthropic messages route. Without that
+        method (a bare Python, or an older LiteLLM) it still refuses, with
+        ``CairoAnswerWithheld``.
+        """
+        raiser = getattr(self, "raise_passthrough_exception", None)
+        if callable(raiser):
+            raiser(
+                violation_message=message,
+                request_data=request_data if isinstance(request_data, dict) else {},
+            )
+        raise CairoAnswerWithheld(message)
 
     def _replace_text(self, inputs: Any, text: str) -> Any:
         """Put a redaction back in the shape the caller handed us.
@@ -933,8 +1149,11 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
                 GUARD_SECRET_ENV,
             )
             return None
+        timeout_s = (
+            self.output_timeout_s if payload.get("direction") == "output" else self.timeout_s
+        )
         try:
-            async with httpx.AsyncClient(timeout=self.timeout_s) as client:
+            async with httpx.AsyncClient(timeout=timeout_s) as client:
                 response = await client.post(
                     self.guard_url,
                     json=payload,

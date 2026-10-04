@@ -25,9 +25,9 @@ It does **not** cover:
   `direction: output`. The first version of this suite had an off-topic section sent
   as `direction: input`; those four probes tested a policy the input rail does not
   contain, and two correct `allow` results were published as fail-opens. Removed on
-  2026-10-03. Measuring scope needs `direction: output` and its own scoring — and the
-  gateway hook is registered `pre_call` only, so an output-rail result has no live
-  request path behind it.
+  2026-10-03. Measuring scope needs `direction: output` and its own scoring. Since
+  CHG-2026-102 the gateway hook is registered `post_call` too, so an output-rail
+  result has a live request path once that change is released to the gateway.
 - **Harmful content of any kind.** The generator's `harmful:*` plugins are gone and
   nothing replaced them.
 

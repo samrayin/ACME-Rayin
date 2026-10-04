@@ -196,11 +196,24 @@ general_settings:
 # the next switch-on, run integrations/litellm/tests/in_image_check.py inside the
 # gateway pod; it must PASS. Keep the restart watched and the previous ConfigMap
 # to hand: a failed import stops the new pod becoming ready.
+#
+# ANSWERS TOO (CHG-2026-102, ADR-0005 "Output direction"): the same guardrail
+# runs post_call, so each model answer is checked with direction: output and
+# recorded like a prompt. ONE entry with a mode list, not two entries: LiteLLM
+# 1.100.1 accepts a list (types/guardrails.py), and one entry means one hook
+# instance, so one mode tracker serves both directions. default_on stays true,
+# which is also what makes LiteLLM honour the judge key's opt-out on the answer
+# side. run_in_parallel is deliberately NOT set: in 1.100.1 it does not overlap
+# the check with sending the answer, and it would discard an enforced
+# redaction. Streaming is set by the hook from the mode (one check at the end in
+# record; withheld until checked in enforce), not here. Each answered request
+# now costs two judge calls instead of one, so the judge key's rate limit halves
+# the requests a minute that can be checked.
 guardrails:
   - guardrail_name: "cairo-guardrail"
     litellm_params:
       guardrail: cairo_guardrail_hook.CairoGuardrail
-      mode: "pre_call"
+      mode: ["pre_call", "post_call"]
       default_on: true
 
 # Gateway tracing into CAIRO: METADATA ONLY (CHG-2026-026, ADR-0006).
