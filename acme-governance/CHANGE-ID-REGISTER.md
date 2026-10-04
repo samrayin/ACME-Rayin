@@ -119,6 +119,7 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | CHG-2026-099 | 1 | ADR-0022: a durable outbox in rayin-guardrails so a decision survives a failed push without depending on anything downstream polling for it. Design only, no build | Anees Ur Rahman | `docs/chg-2026-099-adr-0022-guardrail-outbox` | Claimed |
 | CHG-2026-100 | 1 | Upstream Langfuse sync from v4.38.0 to v4.50.x: a written plan first, then the merge, migrations and console and worker release, each live step owner-gated | Anees Ur Rahman | `docs/chg-2026-100-upstream-sync-plan` | Claimed |
 | CHG-2026-101 | 1 | Audit log view: for the content-free roles (Security Analyst, Business Analyst, Auditor), `acmeAuditLogs.all` returns each entry's before/after state with metadata fields only, from an allow-list, and marks every other field as masked (changed or unchanged). Console only, no schema; under ADR-0011 | Anees Ur Rahman | `feat/content-free-audit-log-masking` | Claimed |
+| CHG-2026-102 | 1 | Answer checking at the gateway (owner decision 2026-10-04): register the CAIRO guardrail hook `post_call` as well as `pre_call`, so each model answer is sent to `rayin-guardrails` in the output direction and the decision is recorded like a prompt decision; define what enforce does to a flagged answer and how streamed answers are handled; measure wrongly flagged answers on dummy banking answers before enforce. Gateway configuration, hook and tests; under ADR-0005 | Anees Ur Rahman | `feat/chg-2026-102-gateway-answer-checking` | Claimed |
 
 ## ADR numbers
 
