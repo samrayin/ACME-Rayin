@@ -51,10 +51,26 @@ model_list:
   # entry, never the judge's (`groq-safeguard`): the judge and the chat model
   # share one account balance, so chat traffic must stay small and keys that
   # can reach it should carry rate limits.
+  #
+  # Follow-up, 2026-10-04: route to OpenRouter's fastest providers and cap the
+  # reasoning. With the plain model name, OpenRouter picked small, unfamiliar
+  # providers and a banking answer took 15-98 s (2,000+ tokens); the first live
+  # test took about 38 s. With the `:nitro` variant (OpenRouter sorts providers
+  # by throughput; Groq served it) and reasoning effort low, the same question
+  # took 1.3-2.2 s and finished naturally (no token cap: a 600 or 1,500 cap cut
+  # the answers off). Measured through LiteLLM 1.100.1's own completion(), from
+  # the gateway pod. `reasoning_effort` cannot be used here: 1.100.1 does not
+  # list the :nitro variant as a reasoning model and refuses the parameter, so
+  # the setting goes to OpenRouter as `extra_body.reasoning`. The provider is
+  # still filtered by the account's data policy (owner-asserted); `:nitro`
+  # orders by speed, it does not pin one provider.
   - model_name: cairo-chat
     litellm_params:
-      model: openrouter/openai/gpt-oss-120b
+      model: openrouter/openai/gpt-oss-120b:nitro
       api_key: os.environ/OPENROUTER_API_KEY
+      extra_body:
+        reasoning:
+          effort: low
 
   # Groq and Gemini — added 2026-09-20 (CHG-2026-015) as ADDITIONAL judge-model
   # options, not replacements. nvidia-nemotron stays the default. Which model
