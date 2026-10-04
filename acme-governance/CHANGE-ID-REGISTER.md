@@ -119,6 +119,7 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | CHG-2026-099 | 1 | ADR-0022: a durable outbox in rayin-guardrails so a decision survives a failed push without depending on anything downstream polling for it. Design only, no build | Anees Ur Rahman | `docs/chg-2026-099-adr-0022-guardrail-outbox` | Claimed |
 | CHG-2026-100 | 1 | Upstream Langfuse sync from v4.38.0 to v4.50.x: a written plan first, then the merge, migrations and console and worker release, each live step owner-gated | Anees Ur Rahman | `docs/chg-2026-100-upstream-sync-plan` | Claimed |
 | CHG-2026-101 | 1 | Audit log view: for the content-free roles (Security Analyst, Business Analyst, Auditor), `acmeAuditLogs.all` returns each entry's before/after state with metadata fields only, from an allow-list, and marks every other field as masked (changed or unchanged). Console only, no schema; under ADR-0011 | Anees Ur Rahman | `feat/content-free-audit-log-masking` | Claimed |
+| CHG-2026-102 | 1 | Guardrail settings: the deployment-administrator check (`isDeploymentAdmin`) also requires that self sign-up is closed on the deployment, and `getConfig` reports it so the Policies card can say why editing is off. Console only, no schema; under ADR-0005-B | Anees Ur Rahman | `fix/guardrail-admin-requires-closed-signup` | Claimed |
 
 ## ADR numbers
 
