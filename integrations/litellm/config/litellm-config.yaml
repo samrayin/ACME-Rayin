@@ -79,12 +79,26 @@ model_list:
   # which is what NeMo's is_content_safe parser actually requires. See
   # ADR-0005 §F5: that parser takes only the FIRST TWO WORDS of the reply,
   # matches safe/unsafe/yes/no, and falls through to UNSAFE on anything else —
-  # so a model that opens with preamble blocks every request. Staged and
-  # untested: no call has been made through this entry.
+  # so a model that opens with preamble blocks every request. This is the
+  # judge rayin-guardrails calls (its configured model name) and one of the
+  # two models the judge key may call.
+  #
+  # CHG-2026-103 (2026-10-04): the SAME model, reached through OpenRouter on a
+  # paid account instead of Groq's free tier. That day Groq queued each
+  # free-tier call for 1.8-6.5 s (its own queue_time; the model itself took
+  # 0.05 s), so judge calls through this gateway took 6-23 s and every guardrail
+  # check timed out. Through OpenRouter: median 0.37 s, slowest 0.64 s over
+  # five calls; OpenRouter's only provider for this model is Groq, on
+  # OpenRouter's paid account; the reply was a bare verdict, as before. The
+  # name stays `groq-safeguard` on purpose: renaming it would also change the
+  # judge key's model list and rayin-guardrails' configured model. OpenRouter
+  # is a third party in the data path: dummy data only in dev; a customer
+  # brings its own provider. Spending is capped by the account balance (no
+  # auto top-up); prompt logging and training are off in the account.
   - model_name: groq-safeguard
     litellm_params:
-      model: groq/openai/gpt-oss-safeguard-20b
-      api_key: os.environ/GROQ_API_KEY
+      model: openrouter/openai/gpt-oss-safeguard-20b
+      api_key: os.environ/OPENROUTER_API_KEY
 
   - model_name: gemini-judge
     litellm_params:
