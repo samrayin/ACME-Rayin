@@ -29,9 +29,31 @@ model_list:
   # 2026-09-12: the model slug this account had access to no longer exists
   # on Groq's current lineup, and nvidia-nemotron alone was sufficient to
   # unblock testing, so it wasn't worth chasing a second working provider.)
+  #
+  # NO LONGER ANSWERS (2026-10-04): once the OpenRouter account was set to no
+  # prompt logging and no training (CHG-2026-103), OpenRouter offers no
+  # endpoint for this free model ("0 endpoints ... matching your data
+  # policy"). Kept so the judge key's model list stays valid; use cairo-chat.
   - model_name: nvidia-nemotron
     litellm_params:
       model: openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  # CHG-2026-104 (2026-10-04): the chat model for applications and the dev
+  # demo. gpt-oss-120b through OpenRouter, on the paid account that also
+  # carries the judge (CHG-2026-103). That day no other configured chat model
+  # answered: gemini-judge's model was retired by Google for new users, the
+  # free nvidia-nemotron is excluded by the account's data policy, and the
+  # Anthropic key has no credit. Measured: 0.59 s, about $0.00006 an answer.
+  # OpenRouter picks the provider among those that meet the account's
+  # no-logging and no-training settings; it is not pinned here. Dummy data
+  # only in dev; a customer brings its own provider. Applications use this
+  # entry, never the judge's (`groq-safeguard`): the judge and the chat model
+  # share one account balance, so chat traffic must stay small and keys that
+  # can reach it should carry rate limits.
+  - model_name: cairo-chat
+    litellm_params:
+      model: openrouter/openai/gpt-oss-120b
       api_key: os.environ/OPENROUTER_API_KEY
 
   # Groq and Gemini — added 2026-09-20 (CHG-2026-015) as ADDITIONAL judge-model
@@ -100,6 +122,9 @@ model_list:
       model: openrouter/openai/gpt-oss-safeguard-20b
       api_key: os.environ/OPENROUTER_API_KEY
 
+  # NO LONGER ANSWERS (2026-10-04): Google returns 404 "no longer available
+  # to new users" for gemini-2.5-flash-lite. Left unchanged here; replacing it
+  # is a separate decision (free-tier data use, ADR-0005 F3).
   - model_name: gemini-judge
     litellm_params:
       model: gemini/gemini-2.5-flash-lite
