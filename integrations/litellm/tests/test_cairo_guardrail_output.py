@@ -330,7 +330,9 @@ class TestStreamingProperties(unittest.TestCase):
         self.assertTrue(g.streaming_end_of_stream_only)
 
 
-class TestHealthRecordOnAnswers(unittest.TestCase):
+class _CaptureHealth:
+    """Runs one answer through the hook and returns its single health record."""
+
     def _capture(self, verdict, mode, data, inputs=None):
         g, _ = Hook.make(verdict, mode=mode)
         lines = []
@@ -352,6 +354,8 @@ class TestHealthRecordOnAnswers(unittest.TestCase):
         self.assertEqual(len(records), 1)
         return records[0]
 
+
+class TestHealthRecordOnAnswers(_CaptureHealth, unittest.TestCase):
     def test_record_mode_answer_is_recorded_with_direction_output(self):
         rec = self._capture({"action": "block"}, "record", req())
         self.assertEqual(rec["direction"], "output")
@@ -372,6 +376,18 @@ class TestHealthRecordOnAnswers(unittest.TestCase):
 
 
 class TestTimeouts(unittest.TestCase):
+    _VARS = ("CAIRO_GUARDRAIL_TIMEOUT_S", "CAIRO_GUARDRAIL_OUTPUT_TIMEOUT_S")
+
+    def setUp(self):
+        # Independent of whatever the environment running the suite sets.
+        self._saved = {v: os.environ.pop(v, None) for v in self._VARS}
+
+    def tearDown(self):
+        for v, value in self._saved.items():
+            os.environ.pop(v, None)
+            if value is not None:
+                os.environ[v] = value
+
     def test_answers_have_their_own_longer_default(self):
         g = m.CairoGuardrail()
         self.assertEqual(g.timeout_s, 2.0)
@@ -379,10 +395,78 @@ class TestTimeouts(unittest.TestCase):
 
     def test_answer_timeout_is_overridable(self):
         os.environ["CAIRO_GUARDRAIL_OUTPUT_TIMEOUT_S"] = "3.5"
+        self.assertEqual(m.CairoGuardrail().output_timeout_s, 3.5)
+
+    def test_the_call_uses_the_timeout_for_its_direction(self):
+        """The real _post_guard, with httpx replaced: which timeout reaches the client."""
+        seen = []
+
+        class RecordingClient:
+            def __init__(self, *a, timeout=None, **k):
+                seen.append(timeout)
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, *a, **k):
+                raise asyncio.TimeoutError("not reached for real")
+
+        g = m.CairoGuardrail()
+        g.guard_secret = "test-secret"
+        original_httpx, original_flag = m.httpx, m._HTTPX_AVAILABLE
         try:
-            self.assertEqual(m.CairoGuardrail().output_timeout_s, 3.5)
+            m.httpx = type("FakeHttpx", (), {"AsyncClient": RecordingClient})
+            m._HTTPX_AVAILABLE = True
+            asyncio.run(g._post_guard({"agent_id": "a", "direction": "output", "text": "t"}))
+            asyncio.run(g._post_guard({"agent_id": "a", "direction": "input", "text": "t"}))
         finally:
-            del os.environ["CAIRO_GUARDRAIL_OUTPUT_TIMEOUT_S"]
+            m.httpx, m._HTTPX_AVAILABLE = original_httpx, original_flag
+        self.assertEqual(seen, [4.0, 2.0])
+
+
+class TestModeEdgesOnAnswers(unittest.TestCase):
+    def test_stale_settings_in_enforce_withhold_the_answer_as_not_checked(self):
+        """A verdict decided under an older settings version cannot release an answer."""
+        g, _ = Hook.make({"action": "allow"}, mode="enforce")
+        g.tracker.observe(m.settings_labels(labelled({"action": "allow"}, mode="enforce", version=2)))
+        with self.assertRaises(PassthroughRaised) as cm:
+            run(g, answer(), req())  # the verdict carries version 1
+        self.assertEqual(cm.exception.violation_message, ANSWER_WITHHELD_UNCHECKED)
+
+    def test_ceiling_enforce_with_the_console_at_record_leaves_answers_unchanged(self):
+        g, calls = Hook.make({"action": "block"}, mode="record")
+        g.ceiling = "enforce"
+        a = answer()
+        self.assertIs(run(g, a, req()), a)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(g.current_mode(), "record")
+
+
+class TestMoreHealthRecordsOnAnswers(_CaptureHealth, unittest.TestCase):
+    def test_unmappable_redaction_is_recorded_as_refused(self):
+        rec = self._capture(
+            {"action": "redact", "redacted_text": "x <PERSON>"},
+            "enforce",
+            req(),
+            inputs={"texts": ["one", "two"]},
+        )
+        self.assertEqual(rec["outcome"], "redact_unmappable")
+        self.assertTrue(rec["refused"])
+        self.assertEqual(rec["direction"], "output")
+
+    def test_excluded_answer_is_recorded_with_its_direction_and_no_call(self):
+        rec = self._capture({"action": "block"}, "enforce", req(opted_out=True))
+        self.assertEqual(rec["outcome"], "excluded")
+        self.assertFalse(rec["called"])
+        self.assertEqual(rec["direction"], "output")
+
+    def test_the_record_never_carries_the_answer_text(self):
+        secret_text = "Fatima's account number is in this answer"
+        rec = self._capture({"action": "block"}, "record", req(), inputs=answer(secret_text))
+        self.assertNotIn(secret_text, json.dumps(rec))
 
 
 if __name__ == "__main__":

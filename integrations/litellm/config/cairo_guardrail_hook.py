@@ -672,9 +672,12 @@ class CairoAnswerWithheld(CairoGuardrailBlocked):
     """An answer withheld in enforce mode (CHG-2026-102).
 
     Inside the gateway the hook raises LiteLLM's ``ModifyResponseException``
-    instead (through ``raise_passthrough_exception``), so the user receives
-    HTTP 200 with the withheld message and ``finish_reason: content_filter``
-    rather than an error. This class is the fallback when that method is not
+    instead (through ``raise_passthrough_exception``): a non-streamed answer
+    becomes HTTP 200 with the withheld message and ``finish_reason:
+    content_filter``. A streamed answer on the chat-completions and responses
+    routes still ends in an error frame carrying the same fixed message
+    (LiteLLM 1.100.1 builds clean block chunks only for the Anthropic messages
+    route; ADR-0005 §9). This class is the fallback when that method is not
     there: a bare Python in the unit tests, or a LiteLLM without it. It still
     refuses, so an answer is never released because the preferred path was
     missing.
@@ -794,8 +797,10 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
     output`` and the same table. In record mode the answer is always
     returned unchanged. In enforce mode a refused answer is replaced, through
     ``_withhold_answer``, by a short message saying it was withheld (judged)
-    or could not be checked (no verdict); the user receives HTTP 200, not an
-    error. A streamed answer is held back until it has been checked, and an
+    or could not be checked (no verdict): HTTP 200 for a non-streamed answer,
+    an error frame with the same message for a streamed one on the
+    chat-completions routes (ADR-0005 §9). Nothing from the answer is sent
+    either way. A streamed answer is held back until it has been checked, and an
     enforced redaction it needs is withheld instead, because a streamed answer
     cannot be rewritten (``output_outcome``, ``streaming_flags``).
 
@@ -1089,10 +1094,13 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
     def _withhold_answer(self, message: str, request_data: Optional[Dict[str, Any]]) -> None:
         """Refuse an answer in enforce mode. Never returns (CHG-2026-102).
 
-        Prefers LiteLLM's passthrough exception: the user gets HTTP 200 with
-        ``message`` as the answer and ``finish_reason: content_filter``, the
-        upstream call's real token usage is kept, and a streamed answer gets
-        LiteLLM's clean block chunks instead of an error frame. Without that
+        Prefers LiteLLM's passthrough exception. For a non-streamed answer the
+        user gets HTTP 200 with ``message`` as the answer and ``finish_reason:
+        content_filter``, and the upstream call's real token usage is kept.
+        For a streamed answer, which is buffered in enforce so nothing of it
+        has been sent, LiteLLM 1.100.1 ends the stream with an error frame
+        carrying ``message`` on the chat-completions and responses routes, and
+        with clean block chunks only on the Anthropic messages route. Without that
         method (a bare Python, or an older LiteLLM) it still refuses, with
         ``CairoAnswerWithheld``.
         """
