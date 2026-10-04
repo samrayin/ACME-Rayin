@@ -169,6 +169,34 @@ MAX_SETTINGS_VERSION = 2147483647
 NO_VERDICT = "none"
 JUDGE_UNAVAILABLE = "judge_unavailable"
 
+#: Outcomes where the guardrail never reached a verdict (CHG-2026-112). The
+#: request is still refused in enforce -- failing closed is the point -- but it
+#: was refused because the check could not run, not because the content was
+#: judged. ``guard_unavailable`` covers the service being down, timing out,
+#: answering 5xx, or sending a verdict that cannot be read; ``guard_unreadable``
+#: an answer whose shape is wrong; ``settings_unusable`` a verdict no single
+#: settings version decided; ``judge_unavailable`` the judge model itself.
+COULD_NOT_CHECK_EVENTS = frozenset(
+    {"guard_unavailable", "guard_unreadable", "settings_unusable", JUDGE_UNAVAILABLE}
+)
+
+
+def status_for_event(event: str) -> int:
+    """The HTTP status a refusal for ``event`` should carry.
+
+    503 when the guardrail could not check, 400 when it checked and refused.
+    Telling a caller "Bad Request" for an outage is wrong twice over: the
+    request was fine, and a 4xx keeps a guardrails or judge outage out of any
+    alerting that watches 5xx (post-merge review of CHG-2026-111, finding 1).
+
+    The owner chose 503 on 2026-10-04 knowing OpenAI-SDK clients retry 5xx
+    twice by default: during an outage each refusal may cost up to three guard
+    calls. Retrying is the correct client behaviour here -- the check could not
+    run, and a later attempt may succeed -- and the request stays refused
+    either way.
+    """
+    return 503 if event in COULD_NOT_CHECK_EVENTS else 400
+
 #: Output direction (CHG-2026-102). What the user sees in place of an answer
 #: withheld in enforce mode. Plain words, and nothing from the answer or the
 #: policy: the decision and its reason are in the guardrail event, not here.
@@ -666,13 +694,19 @@ class CairoGuardrailBlocked(Exception):
     importing on a bare Python, and so the refusal is attributable to this hook
     in a gateway log rather than to the proxy's own machinery.
 
-    ``status_code`` is what makes the refusal clean (CHG-2026-111). LiteLLM's
-    shared request path reads the HTTP status off the exception with
-    ``getattr(exc, "status_code", 500)`` (verified in 1.100.1,
-    ``litellm/proxy/common_request_processing.py``), so an exception without it
-    becomes a 500 and a caller sees a server error rather than a refusal. A
-    chatbot then shows "something went wrong" for what is actually the
-    guardrail working as designed.
+    ``status_code`` is what makes the refusal clean (CHG-2026-111). On the
+    chat-completions path the exception reaches ``chat_completion``'s generic
+    ``except``, which calls ``_handle_llm_api_exception``; that reads
+    ``getattr(e, "status_code", None)`` and uses it only when it is an int from
+    400 to 599, falling back to 500 (verified in the installed 1.100.1; an
+    earlier version of this comment cited ``common_request_processing``, which
+    carries the same idiom but is not the function on this path). Without the
+    attribute a refusal becomes a 500 and a caller sees a server error rather
+    than a refusal, so a chatbot shows "something went wrong" for the guardrail
+    working as designed.
+
+    The 400-to-599 range check matters: a status outside it is silently
+    discarded and the refusal becomes a 500 again.
 
     Carrying the attribute ourselves, rather than importing a litellm
     exception, keeps both properties above: no litellm import, and the refusal
@@ -681,8 +715,10 @@ class CairoGuardrailBlocked(Exception):
     for a jailbreak, and ``BlockedPiiEntityError`` defaults to 400).
     """
 
-    #: Default for a refusal the guardrail actually decided.
+    #: A refusal the guardrail actually decided.
     DEFAULT_STATUS_CODE = 400
+    #: A refusal where it never reached a verdict (CHG-2026-112).
+    COULD_NOT_CHECK_STATUS_CODE = 503
 
     def __init__(self, message: str, status_code: int = DEFAULT_STATUS_CODE) -> None:
         super().__init__(message)
@@ -1095,24 +1131,35 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
         # it without a regex and the fields survive a message-wording change.
         log.info(json.dumps(record, separators=(",", ":"), sort_keys=True))
         if not outcome.proceed and direction == "output":
-            self._withhold_answer(withheld_message(outcome.event), request_data)
+            self._withhold_answer(
+                withheld_message(outcome.event),
+                request_data,
+                status_for_event(outcome.event),
+            )
         if not outcome.proceed:
+            status = status_for_event(outcome.event)
             if outcome.event == JUDGE_UNAVAILABLE:
                 # Operator-visible and distinct (owner decision 2026-10-02).
                 raise CairoGuardrailBlocked(
                     f"Blocked by {self.guardrail_name} ({JUDGE_UNAVAILABLE}): the "
                     "guardrail's judge model could not check this request, so it was "
                     "refused. Retry later; if it persists, the judge's capacity is "
-                    "exhausted."
+                    "exhausted.",
+                    status,
                 )
             raise CairoGuardrailBlocked(
-                f"Blocked by {self.guardrail_name} ({outcome.event})."
+                f"Blocked by {self.guardrail_name} ({outcome.event}).", status
             )
         if outcome.text is not None:
             return self._replace_text(inputs, outcome.text)
         return inputs
 
-    def _withhold_answer(self, message: str, request_data: Optional[Dict[str, Any]]) -> None:
+    def _withhold_answer(
+        self,
+        message: str,
+        request_data: Optional[Dict[str, Any]],
+        status_code: int = CairoGuardrailBlocked.DEFAULT_STATUS_CODE,
+    ) -> None:
         """Refuse an answer in enforce mode. Never returns (CHG-2026-102).
 
         Prefers LiteLLM's passthrough exception. For a non-streamed answer the
@@ -1121,17 +1168,34 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
         For a streamed answer, which is buffered in enforce so nothing of it
         has been sent, LiteLLM 1.100.1 ends the stream with an error frame
         carrying ``message`` on the chat-completions and responses routes, and
-        with clean block chunks only on the Anthropic messages route. Without that
-        method (a bare Python, or an older LiteLLM) it still refuses, with
-        ``CairoAnswerWithheld``.
+        with clean block chunks only on the Anthropic messages route. That
+        frame takes its code from the exception, so ``status_code`` decides
+        whether a withheld answer reads as a refusal or as a server error
+        (CHG-2026-112); before it, the frame always said 500.
+
+        Without that method (a bare Python, or an older LiteLLM) it still
+        refuses, with ``CairoAnswerWithheld``, carrying the same status.
         """
         raiser = getattr(self, "raise_passthrough_exception", None)
         if callable(raiser):
-            raiser(
-                violation_message=message,
-                request_data=request_data if isinstance(request_data, dict) else {},
-            )
-        raise CairoAnswerWithheld(message)
+            try:
+                raiser(
+                    violation_message=message,
+                    request_data=request_data if isinstance(request_data, dict) else {},
+                )
+            except Exception as exc:  # LiteLLM's ModifyResponseException
+                # CHG-2026-112. ModifyResponseException carries no status_code.
+                # A non-streamed answer never needs one -- chat_completion's
+                # handler builds its own HTTP 200 and does not read the
+                # attribute -- but a stream withheld after it has opened is
+                # finished by async_data_generator, whose error frame takes
+                # ``code=getattr(e, "status_code", 500)``. Without this the
+                # frame claims a server error for a policy refusal. Setting it
+                # changes only that frame; both 200 paths are untouched.
+                if getattr(exc, "status_code", None) is None:
+                    exc.status_code = status_code  # type: ignore[attr-defined]
+                raise
+        raise CairoAnswerWithheld(message, status_code)
 
     def _replace_text(self, inputs: Any, text: str) -> Any:
         """Put a redaction back in the shape the caller handed us.
