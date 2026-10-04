@@ -895,5 +895,162 @@ class TestRefusalIsCleanNotAServerError(unittest.TestCase):
         self.assertEqual(m.CairoAnswerWithheld("withheld").status_code, 400)
 
 
+class TestStatusSaysWhetherTheCheckRan(unittest.TestCase):
+    """CHG-2026-112 — 503 when the guardrail could not check, 400 when it did.
+
+    Post-merge review of CHG-2026-111, finding 1: four outcomes reach the same
+    raise sites without a verdict ever being reached -- the guardrails service
+    down or garbled, settings that cannot be trusted, an unreadable answer, and
+    the judge model itself. Sending all of them as 400 "Bad Request" is wrong
+    twice: the caller's request was fine, and a 4xx keeps a guardrails or judge
+    outage out of any alerting that watches 5xx.
+
+    The request is refused either way. Only the status changes.
+    """
+
+    def test_a_decided_refusal_is_a_client_error(self):
+        import cairo_guardrail_hook as m
+
+        self.assertEqual(m.status_for_event("blocked"), 400)
+
+    def test_every_could_not_check_outcome_is_503(self):
+        import cairo_guardrail_hook as m
+
+        for event in sorted(m.COULD_NOT_CHECK_EVENTS):
+            with self.subTest(event=event):
+                self.assertEqual(m.status_for_event(event), 503)
+
+    def test_the_four_outcomes_are_exactly_the_ones_the_review_listed(self):
+        """Pinned as a set: adding a no-verdict outcome later and forgetting to
+        list it here would silently send an outage back as a 400."""
+        import cairo_guardrail_hook as m
+
+        self.assertEqual(
+            m.COULD_NOT_CHECK_EVENTS,
+            frozenset(
+                {
+                    "guard_unavailable",
+                    "guard_unreadable",
+                    "settings_unusable",
+                    "judge_unavailable",
+                }
+            ),
+        )
+
+    def test_every_status_survives_litellms_range_check(self):
+        """LiteLLM's _handle_llm_api_exception uses the status only when it is
+        an int in 400..599, and falls back to 500 otherwise. A status outside
+        that range would be silently discarded."""
+        import cairo_guardrail_hook as m
+
+        for event in sorted(m.COULD_NOT_CHECK_EVENTS | {"blocked", "redact_unmappable"}):
+            with self.subTest(event=event):
+                status = m.status_for_event(event)
+                self.assertIsInstance(status, int)
+                self.assertTrue(400 <= status <= 599)
+
+    def test_judge_unavailable_raises_503_end_to_end(self):
+        import asyncio
+
+        import cairo_guardrail_hook as m
+
+        g, _ = TestApplyGuardrailEndToEnd._hook(
+            TestApplyGuardrailEndToEnd(),
+            {"verdict": m.NO_VERDICT, "reason": m.JUDGE_UNAVAILABLE},
+            mode="enforce",
+        )
+        with self.assertRaises(m.CairoGuardrailBlocked) as caught:
+            asyncio.run(g.apply_guardrail(inputs="hello", request_data=req(key_meta={})))
+        self.assertEqual(caught.exception.status_code, 503)
+
+    def test_a_judged_block_still_raises_400_end_to_end(self):
+        import asyncio
+
+        import cairo_guardrail_hook as m
+
+        g, _ = TestApplyGuardrailEndToEnd._hook(
+            TestApplyGuardrailEndToEnd(), {"action": "block"}, mode="enforce"
+        )
+        with self.assertRaises(m.CairoGuardrailBlocked) as caught:
+            asyncio.run(g.apply_guardrail(inputs="bad", request_data=req(key_meta={})))
+        self.assertEqual(caught.exception.status_code, 400)
+
+
+class TestWithheldAnswerCarriesAStatus(unittest.TestCase):
+    """CHG-2026-112 F2 — a stream withheld after it opened must not read as 500.
+
+    A non-streamed withheld answer is already fine: chat_completion's handler
+    builds its own HTTP 200 with ``finish_reason: content_filter`` and never
+    reads the attribute. But in enforce a streamed answer is buffered, so the
+    withhold lands after the StreamingResponse has been returned, and the
+    stream is finished by ``async_data_generator`` -- whose error frame takes
+    ``code=getattr(e, "status_code", 500)``. LiteLLM's ModifyResponseException
+    carries no status_code, so that frame claimed a server error for a policy
+    refusal.
+    """
+
+    class _Raiser:
+        """Stands in for LiteLLM's ModifyResponseException raiser."""
+
+        class Modify(Exception):
+            pass
+
+        def __init__(self):
+            self.raised = None
+
+        def __call__(self, violation_message, request_data):
+            self.raised = self.Modify(violation_message)
+            raise self.raised
+
+    def _hook_with_raiser(self):
+        import cairo_guardrail_hook as m
+
+        g = m.CairoGuardrail()
+        raiser = self._Raiser()
+        g.raise_passthrough_exception = raiser  # type: ignore[attr-defined]
+        return g, raiser
+
+    def test_the_passthrough_exception_gains_a_status(self):
+        g, raiser = self._hook_with_raiser()
+        with self.assertRaises(raiser.Modify) as caught:
+            g._withhold_answer("withheld", {}, 400)
+        self.assertEqual(caught.exception.status_code, 400)
+
+    def test_a_could_not_check_withhold_carries_503(self):
+        g, raiser = self._hook_with_raiser()
+        with self.assertRaises(raiser.Modify) as caught:
+            g._withhold_answer("not checked", {}, 503)
+        self.assertEqual(caught.exception.status_code, 503)
+
+    def test_a_status_already_set_by_litellm_is_not_overwritten(self):
+        """If a future LiteLLM sets one itself, it wins -- ours is the fallback."""
+        g, raiser = self._hook_with_raiser()
+
+        def raise_with_status(violation_message, request_data):
+            exc = raiser.Modify(violation_message)
+            exc.status_code = 418
+            raise exc
+
+        g.raise_passthrough_exception = raise_with_status  # type: ignore[attr-defined]
+        with self.assertRaises(raiser.Modify) as caught:
+            g._withhold_answer("withheld", {}, 400)
+        self.assertEqual(caught.exception.status_code, 418)
+
+    def test_the_fallback_carries_the_status_too(self):
+        """The path taken on a bare Python, or a LiteLLM without the raiser.
+
+        Forced rather than skipped: the raiser is present in both environments
+        this suite runs in, so a skipTest here would never execute and the
+        fallback would go untested in every configuration.
+        """
+        import cairo_guardrail_hook as m
+
+        g = m.CairoGuardrail()
+        g.raise_passthrough_exception = None  # type: ignore[attr-defined]
+        with self.assertRaises(m.CairoAnswerWithheld) as caught:
+            g._withhold_answer("withheld", {}, 503)
+        self.assertEqual(caught.exception.status_code, 503)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
