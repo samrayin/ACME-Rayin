@@ -5774,5 +5774,5 @@ Console only (Tier 1). No schema change; under ADR-0011. Owner decision, 2026-10
   - `auditLogMasking.servertest.ts` (unit) pins the masking rules.
   - `acme-audit-logs-masking.servertest.ts` calls the router as Owner and Admin (full states), Security Analyst and Auditor (masked), and Business Analyst (refused).
 - **Rollback:** revert the commit and release. No data changes.
-- **Approval:** pending; the owner merges after the fresh-session security review. The release to dev is a separate Tier 1 step with the owner's go-ahead. Not a production approval.
-- **Deployment status:** not deployed.
+- **Approval:** merged by the owner as #298 on 2026-10-04, after the fresh-session security review. Released to dev under the owner's standing dev-release approval of 2026-10-04 (merged, fresh-session-reviewed PRs; image-only releases to dev until 2026-10-10). Not a production approval.
+- **Deployment status:** in dev as console `acme-v4.38.0.32` (commit `3134edbb2`), released 2026-10-04; `verify-deployed.sh` TRACED, health 200, no migration. The live check by role (an Auditor sees masked entries, an Owner sees full ones) is the owner's, in the browser.
