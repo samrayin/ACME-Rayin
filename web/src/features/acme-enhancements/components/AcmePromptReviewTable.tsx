@@ -119,21 +119,21 @@ export function AcmePromptReviewTable({ projectId }: { projectId: string }) {
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-1">
-            <CardTitle className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+            <CardTitle className="text-muted-foreground text-xs tracking-wide uppercase">
               Total prompts
             </CardTitle>
           </CardHeader>
-          <CardContent className="pt-0 text-2xl font-semibold">
+          <CardContent className="pt-0 text-2xl font-bold">
             {all.data.prompts.length}
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-1">
-            <CardTitle className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+            <CardTitle className="text-muted-foreground text-xs tracking-wide uppercase">
               Past review date
             </CardTitle>
           </CardHeader>
-          <CardContent className="text-dark-red pt-0 text-2xl font-semibold">
+          <CardContent className="text-dark-red pt-0 text-2xl font-bold">
             {due.isPending ? "…" : dueCount}
           </CardContent>
         </Card>

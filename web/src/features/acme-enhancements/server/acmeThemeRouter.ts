@@ -50,7 +50,7 @@ export const acmeThemeRouter = createTRPCRouter({
 
   update: protectedProjectProcedure
     .input(
-      z.object({ projectId: z.string() }).merge(acmeThemeSchema),
+      z.object({ projectId: z.string() }).extend(acmeThemeSchema.shape),
     )
     .mutation(async ({ ctx, input }) => {
       throwIfNoProjectAccess({

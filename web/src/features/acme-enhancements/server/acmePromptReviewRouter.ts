@@ -14,7 +14,7 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProjectProcedure } from "@/src/server/api/trpc";
 import { throwIfNoProjectAccess } from "@/src/features/rbac/utils/checkProjectAccess";
-import { prisma, Prisma } from "@langfuse/shared/src/db";
+import { prisma, type Prisma } from "@langfuse/shared/src/db";
 import { LATEST_PROMPT_LABEL } from "@langfuse/shared";
 import { TRPCError } from "@trpc/server";
 
@@ -102,7 +102,7 @@ export const acmePromptReviewRouter = createTRPCRouter({
         projectId: z.string(),
         promptId: z.string(),
         // null clears the review date
-        reviewDate: z.string().datetime().nullable(),
+        reviewDate: z.iso.datetime().nullable(),
       }),
     )
     .mutation(async ({ ctx, input }) => {

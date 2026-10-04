@@ -44,7 +44,7 @@ const GuardrailsEventPushBody = z.object({
   // like user_id. Optional, not just nullable, so a rayin-guardrails build
   // that predates this field keeps working during a staggered rollout.
   client_host: z.string().max(255).nullable().optional(),
-  event_time: z.string().datetime(),
+  event_time: z.iso.datetime(),
   direction: z.enum(["input", "output"]),
   // "unavailable": no verdict, the judge model could not answer (N-64).
   // Metadata only: no content tier applies to it.

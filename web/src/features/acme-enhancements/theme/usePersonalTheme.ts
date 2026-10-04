@@ -12,7 +12,8 @@ import {
  * sent to the server, so nobody can change what someone else sees. An empty
  * object means "use the project default".
  */
-export const PERSONAL_THEME_STORAGE_KEY = "cairo.personalTheme.v1";
+// Not exported: used only inside this module (knip, CHG-2026-113).
+const PERSONAL_THEME_STORAGE_KEY = "cairo.personalTheme.v1";
 
 export type PersonalTheme = Partial<AcmeTheme>;
 

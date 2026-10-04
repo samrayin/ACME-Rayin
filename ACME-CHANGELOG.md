@@ -5882,3 +5882,54 @@ approval), run from the primary window so two sessions never apply over each oth
 
 **Visible only at enforce.** The gateway is in record mode and the ceiling is unset, so nothing
 is refused today. This is a prerequisite for enforce, not a fix to live behaviour.
+
+---
+
+## 2026-10-05 — The lint and knip CI gates pass again (CHG-2026-113)
+
+**What:** Housekeeping so `main`'s CI gives a usable signal. No product behaviour changes.
+
+**Why it matters:** `lint` runs with `--max-warnings 0`, so its 16 warnings failed the
+build; `knip` failed on one unused file and two unused exports. Both have been red for
+weeks, which means a red check has told reviewers nothing — while roughly fifteen changes
+a day have been merging, two of them carrying database migrations, with the v4.38 to v4.50
+upstream sync still ahead.
+
+**Lint, 16 warnings across 8 files:**
+- **Two were introduced by CHG-2026-098**: moving `acmeGuardrailsPullBackfill` into
+  `packages/shared` left `acmeGuardrailsRouter.ts` importing from
+  `@langfuse/shared/src/server` twice. Merged into one import.
+- Duplicate value and type imports in the guardrails ingest servertest, merged.
+- `??=` replaced with an explicit check (`@repo/no-exotic-operators`).
+- `Prisma` imported as a type in `acmePromptReviewRouter` — its only use is
+  `as Prisma.InputJsonObject`, a type position.
+- Two `z.string().datetime()` calls to `z.iso.datetime()`, and one zod `.merge()` to
+  `.extend(schema.shape)`, both deprecated in zod v4.
+- `switch.tsx`: `React.ElementRef` to `React.ComponentRef`, and a `cn()` wrapping a single
+  string replaced by the string. **This is an upstream MIT file**, so it adds a small
+  amount of fork drift that the next Langfuse sync pays for. Taken deliberately: the
+  alternative is leaving the gate red.
+
+**One warning deliberately not fixed.** `acmeChatRouter.ts` calls `getTraceById`, which
+upstream deprecates in favour of `getTraceByIdFromEventsTable`. That changes **where the
+AI chat reads trace detail from** — a behaviour change, not a lint fix — and no test covers
+the path. It has a scoped `eslint-disable-next-line` naming the reason. Migrating it to
+silence a linter would be the wrong trade; it should be its own change with its own tests.
+
+**A visual change, stated rather than buried.** Four `font-semibold` uses broke the design
+system's two-weight rule. The two card *values* became `font-bold` (the bold role); the two
+small uppercase *labels* lost the weight, since the size token already carries regular and
+uppercase plus tracking already separates them. There is no fix for this rule that leaves
+appearance untouched.
+
+**Knip:**
+- `AcmeAuditLogsPage.tsx` deleted. It was orphaned by CHG-2026-073, which moved audit logs
+  to Security › Logs and replaced the route with a redirect. The capability is unaffected:
+  `AcmeAuditLogsTable` still serves the new page.
+- `UNMASKED_AUDIT_RESOURCE_TYPES` and `PERSONAL_THEME_STORAGE_KEY` are no longer exported.
+  Both are used inside their own modules and imported nowhere, tests included, so the
+  `export` keyword went rather than the constants.
+
+**Not in scope:** the trace-timeline test (CHG-2026-093, #267), the remaining `tests-web`,
+`tests-worker` and `e2e-tests` failures, and the two `web/src/ee/` type errors — the EE
+boundary workflow forbids touching those files, and they are not what fails CI.
