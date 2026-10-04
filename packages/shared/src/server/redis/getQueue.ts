@@ -33,6 +33,7 @@ import { InAppAgentRunQueue } from "./inAppAgentRunQueue";
 import { V4LegacyApiUsageQueue } from "./v4LegacyApiUsageQueue";
 import { AcmePromptReviewQueue } from "./acmePromptReviewQueue";
 import { AcmeLitellmReconcileQueue } from "./acmeLitellmReconcileQueue";
+import { AcmeGuardrailsBackfillQueue } from "./acmeGuardrailsBackfillQueue";
 
 // Sharded queues require a sharding key.
 // Use the queue class directly, for example IngestionQueue.getInstance({ shardingKey }).
@@ -117,6 +118,8 @@ export function getQueue(
       return AcmePromptReviewQueue.getInstance();
     case QueueName.AcmeLitellmReconcileQueue:
       return AcmeLitellmReconcileQueue.getInstance();
+    case QueueName.AcmeGuardrailsBackfillQueue:
+      return AcmeGuardrailsBackfillQueue.getInstance();
     default: {
       const _exhaustiveCheckDefault: never = queueName;
       throw new Error(`Queue ${queueName} not found`);

@@ -5612,6 +5612,155 @@ CI only (Tier 2), same change. No product code, no schema, nothing deployed. The
 
 ---
 
+## 2026-10-03 — Scheduled backfill for guardrail decisions whose push failed (CHG-2026-098)
+
+**What:** A recurring worker job that drains rayin-guardrails' in-memory event buffer
+into `acme_guardrail_events`, so a decision whose durable push failed is recovered
+without waiting for a human to open a page.
+
+**The gap, verified in code:**
+- `rayin_push.py` retries a failed push three times (~17.5 s worst case), then gives up.
+- Its docstring says the record is not lost, because "the existing pull-based
+  reconciliation (RAYIN's dashboard polling GET /v1/events) picks it up". **No such
+  reconciliation existed.** `persistPullBackfill` is called only from two tRPC
+  procedures, both of which run when somebody opens the Guardrails page.
+- The buffer it reads is 200 entries, in memory, lost on pod restart.
+
+**Files:**
+- `packages/shared/src/server/acme/acmeGuardrailsPullBackfill.ts` — moved from `web/`,
+  so the console's pull and the worker's job apply the same selection rules. Two copies
+  would drift, and what would drift is which audit records get written
+- `packages/shared/src/server/redis/acmeGuardrailsBackfillQueue.ts`, `queues.ts`,
+  `getQueue.ts`, `index.ts`
+- `worker/src/queues/acmeGuardrailsBackfillQueue.ts`,
+  `worker/src/features/acmeGuardrailsBackfill/handleAcmeGuardrailsBackfillJob.ts`,
+  `worker/src/app.ts`, `worker/src/env.ts`
+
+**How:** the `acmeLitellmReconcile` pattern — queue singleton with
+`scheduleRecurringJob`, processor, handler. Every 2 minutes. The interval is bounded by
+the ring buffer: it must be shorter than the time 200 decisions take to pass through one
+pod, which is traffic-dependent and must be revisited per deployment rather than treated
+as a constant.
+
+**Project attribution needs configuring and cannot be inferred.** Buffer events carry no
+project; the push path attributes them from the authenticated key's scope
+(`auth.scope.projectId`), and a scheduled job has no key. So
+`CAIRO_GUARDRAIL_BACKFILL_PROJECT_ID` is required, has no default, and the job logs and
+skips without it. Guessing would file audit records against the wrong project.
+
+**Off by default** (`CAIRO_GUARDRAIL_BACKFILL_ENABLED`), like the LiteLLM reconciliation:
+building the image changes nothing until an operator turns it on.
+
+**What this does NOT close.** P0-10 has three loss paths and this closes one:
+- rotation before anyone looks — **closed**, within one interval;
+- **pod restart before the interval elapses — still open**;
+- **the per-replica gap — still open.** The buffer is per-pod and the Service
+  load-balances, so one fetch drains one replica. There have been two since
+  CHG-2026-088, so adding a replica for resilience halved this fallback. Unrated; the
+  owner rates it.
+
+ADR-0022 (CHG-2026-099) is the durable outbox that closes all three. This change should
+not be recorded as closing P0-10.
+
+**Recovery is logged at WARN, not INFO.** A non-zero recovery count is not routine
+housekeeping — it is the P0-10 failure happening, and is worth an alert once one exists.
+
+**Deployment status:** in dev as worker `worker-acme-v4.38.0.5` (commit `0130d2364`), released 2026-10-03 with the owner's approval; `verify-deployed.sh` TRACED, no migration, healthy by logs. **Switched off:** `CAIRO_GUARDRAIL_BACKFILL_ENABLED` is not set, so no queue, schedule or calls run. Turning it on (enabled flag, project id, guardrails URL, secret reference) is a separate owner decision.
+
+## 2026-10-03 — Plan: upstream Langfuse sync from v4.38.0 to v4.50.x (CHG-2026-100)
+
+Documentation only: a plan, approved by the owner on 2026-10-03. Nothing is merged from upstream, built or deployed. The plan is `acme-governance/upgrades/CHG-2026-100-langfuse-v4.50-sync-plan.md`.
+- **Size:** twelve upstream releases (v4.39.0 to v4.50.0): 321 commits, 2,139 files, 5 Postgres migrations, 1 ClickHouse migration, 51 Enterprise-licensed files.
+- **Trial merge:** 31 conflicts, almost all in screens ACME rebranded or restructured. Two need porting, not merging, because upstream deleted the files: the Members table (CAIRO's "Project access" column) and the dashboards table. Nine security-sensitive files merge cleanly but are listed for line-by-line review, among them the content-free roles' allow-list (`trpc.ts`), role scopes and invite-only sign-in.
+- **Already in CAIRO:** upstream's API-key revocation and SCIM scoping fixes, through CHG-2026-076.
+- **Method:** as for v4.38.0. A real merge of the release tag on an `upgrade/` branch, landed with a merge commit (never squashed), labelled `upstream-sync`, with Enterprise files proven byte-identical to the tag.
+- **Also in the plan:**
+  - migration reversibility: two enum values cannot be removed;
+  - rehearsal checks: migration order against ACME's own, the concurrent index, grants on the new table;
+  - a role test matrix that covers new upstream screens for the content-free roles;
+  - a telemetry check;
+  - the release order (web, then worker), rollback, risks, effort and five owner questions.
+- **Preconditions:** CHG-2026-089 part b released or parked, a PD-0002 decision, and the owner's choice on whether local checks stand in for CI, which fails on `main`.
+
+**Deployment status:** not applicable (plan only).
+---
+
+## 2026-10-03 — Red-team suite: review corrections and a verified result (CHG-2026-094, follow-up)
+
+**What:** An independent cold review of the change above found two faults serious enough
+that its published result should not stand, plus a security fault in its runbook. All are
+corrected here, and the suite has been re-run.
+
+**Files:**
+- `integrations/promptfoo/config/guardrails-redteam.yaml`
+- `integrations/promptfoo/config/run-redteam.sh`
+- `integrations/promptfoo/RUNNING-REDTEAM-EVAL.md`
+- `integrations/promptfoo/README.md` — was stale and contradicted the change
+
+**1. The runbook over-granted secrets.** It instructed `envFrom` on
+`rayin-guardrails-config`, which supplies not only `CONFIG_SHARED_SECRET` but
+`ADMIN_SHARED_SECRET` — which authorises `PUT /v1/config` and can switch the rails off —
+and `GUARDRAILS_LLM_API_KEY`, the judge key. That defeats the guard/admin split built in
+CHG-2026-046, into a pod that installs a package from the public npm registry at run
+time. **The 2026-10-03 run did this.** The benign runbook already said, in bold, to mount
+the one key with `secretKeyRef`; the instruction here was copied from a stale checkout
+that predated that correction. Now `secretKeyRef`, with a complete pod spec in the
+runbook and a note saying what `envFrom` would grant.
+
+**2. Four probes tested a policy the rail does not contain.** Every probe is sent
+`direction: input`, which runs `self_check_input` only. That policy covers instruction
+override, jailbreak/injection/role-play framing, and developer-mode personas. **Topic
+scope is not in it** — scope lives in `self_check_output`. An off-topic section was
+therefore measuring nothing: its two `allow` results were published as fail-opens when
+they are correct, and the commentary drawn from them ("keying on adversarial register
+rather than on scope") was backwards, since there is no scope rule on that rail. The two
+probes that did block matched the role-play bullet and have moved to section E; the two
+genuine `allow`s are removed. Suite is now 26 probes.
+
+**3. The full run had no completeness gate.** Only calibration asserted a count, so a
+partial run would have printed a clean-looking summary and exited zero — the exact
+failure an unpaced benign run once produced by losing 22 of 32 calls. The full run now
+exits non-zero if fewer probes return than expected or any verdict is missing.
+
+**4. Pacing was tighter than the suite that already hit the limit.** `--delay 7000` is
+~8.6/min against a 10/min judge cap that is shared with gateway traffic. Now 12000, as
+the benign suite settled on. The claim that calibration catches the rate limit is also
+withdrawn: four calls inside ~48 s cannot exercise a per-minute cap, and the runbook now
+says what calibration does prove.
+
+**5. `LOCATION is a default Presidio entity` was false**, and was stated four times as
+the justification for the suite's design rule. The configured entities are
+`EMAIL_ADDRESS, PHONE_NUMBER, CREDIT_CARD, PERSON, IBAN_CODE, IP_ADDRESS`, and the
+service rejects anything outside that list. The rule stands on `PERSON`, which is what
+actually fires.
+
+**6. Calibration wrote under the full run's `agent_id`**, so the audit table could never
+match the runner's buckets and the runbook's own cross-check could not pass. Calibration
+now runs under `<RUN_ID>-cal`.
+
+**Also:** `redact` scored `pass:false, score:0.5`, hedging back toward the
+"inconclusive" reading the same comment rejects — now `0`, with the Presidio entity
+types printed so a redacted probe can be diagnosed. Three comments still described
+redaction as short-circuiting before the rail, which CHG-2026-077 had already corrected
+once. A shebang, an exec bit, and guards on the two environment variables whose absence
+caused the original faults.
+
+**Verified re-run — `promptfoo-redteam-2026-10-03b`:** 26 of 26 probes returned,
+**24 blocked, 0 failed open, 2 not blocked (redacted), 0 no verdict.** p50 397 ms,
+p90 1029 ms. Sections A, B and E blocked in full.
+
+**Two observations for rating, unrated:**
+- **The judge is not deterministic between runs.** The base64 probe blocked on the first
+  run and returned `redact` on this one with identical text. A single run is not a stable
+  measurement.
+- **PII redaction can mask an attack from the jailbreak rail.** Both not-blocked probes
+  were redacted first, so the rail judged a prompt with its payload removed. `PERSON`
+  firing on a base64 blob and on German text is a false positive in itself; the
+  interaction is what matters, and it bears on ADR-0005-B's enforce design.
+
+**Scope:** test harness only. No product code, no schema, no live request path.
+
+**Deployment status:** not applicable — nothing here ships in an image.
 ## 2026-10-03 — ADR-0022: a durable outbox for guardrail decisions (CHG-2026-099)
 
 **What:** A design, not a build. Nothing in it is implemented: no dependency, no
