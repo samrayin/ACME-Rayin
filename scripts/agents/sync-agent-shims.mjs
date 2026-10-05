@@ -10,9 +10,13 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import process from "node:process";
 
-const repoRoot = resolve(new URL("../..", import.meta.url).pathname);
+// fileURLToPath, not .pathname: on Windows a file:// URL keeps a leading
+// slash before the drive letter, so resolve() produced C:\C:\... and the
+// config was never found (CHG-2026-117).
+const repoRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const sourcePath = resolve(repoRoot, ".agents/config.json");
 const config = JSON.parse(readFileSync(sourcePath, "utf8"));
 const servers = config.mcpServers;
@@ -544,13 +548,32 @@ for (const output of symlinkOutputs) {
     }
   }
 
+  const linkTarget = relative(dirname(output.path), output.target);
   rmSync(output.path, { force: true, recursive: true });
-  symlinkSync(
-    relative(dirname(output.path), output.target),
-    output.path,
-    lstatSync(output.target).isDirectory() ? "dir" : "file",
-  );
-  console.log(`Linked ${output.path}`);
+  try {
+    symlinkSync(
+      linkTarget,
+      output.path,
+      lstatSync(output.target).isDirectory() ? "dir" : "file",
+    );
+    console.log(`Linked ${output.path}`);
+  } catch (error) {
+    // Windows refuses symlinks without Developer Mode or elevation. Git has
+    // the same problem and answers it the same way: under core.symlinks=false
+    // it checks a symlink out as a regular file holding the target path. We
+    // write exactly those bytes, so the working tree matches what git expects
+    // and `git status` stays clean.
+    //
+    // This is not a nicety. The rmSync above has already removed the shim, so
+    // letting EPERM escape leaves the repository with AGENTS.md DELETED --
+    // which is precisely what the path fix above causes on Windows without
+    // this, turning a harmless early failure into a destructive one.
+    if (error?.code !== "EPERM" && error?.code !== "EACCES") {
+      throw error;
+    }
+    writeFileSync(output.path, linkTarget.split("\\").join("/"), "utf8");
+    console.log(`Wrote ${output.path} (symlinks unavailable on this platform)`);
+  }
 }
 
 for (const staleShim of findStaleClaudeShims(repoRoot)) {
