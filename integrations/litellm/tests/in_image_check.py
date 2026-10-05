@@ -85,6 +85,23 @@ def _main() -> int:
     if (hook.streaming_buffer_until_moderated, hook.streaming_end_of_stream_only) != (False, True):
         problems.append("record-mode streaming flags are not (no buffering, end of stream only)")
 
+    # CHG-2026-112 follow-up. The hook decides "this is OUR integration failing,
+    # page somebody" from the input container's keys, so that list has to match
+    # the LiteLLM actually installed. If an upgrade adds a key, every request
+    # carrying it reads as an unknown shape -- refused with a 503 under enforce.
+    # That is the loud direction, but it belongs here, before switch-on, not in
+    # production: CHG-2026-044 with the sign reversed.
+    _installed_keys = set(getattr(_Inputs, "__annotations__", {}))
+    _known_keys = set(LITELLM_INPUT_KEYS)  # noqa: F821
+    if not _installed_keys:
+        problems.append("could not read GenericGuardrailAPIInputs' keys to compare them")
+    elif _installed_keys != _known_keys:
+        problems.append(
+            "GenericGuardrailAPIInputs keys differ from the hook's LITELLM_INPUT_KEYS: "
+            f"installed-only={sorted(_installed_keys - _known_keys)}, "
+            f"hook-only={sorted(_known_keys - _installed_keys)}"
+        )
+
     for p in problems:
         print("FAIL:", p)
     if not problems:

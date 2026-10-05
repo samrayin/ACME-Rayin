@@ -920,21 +920,90 @@ class TestStatusSaysWhetherTheCheckRan(unittest.TestCase):
             with self.subTest(event=event):
                 self.assertEqual(m.status_for_event(event), 503)
 
-    def test_the_four_outcomes_are_exactly_the_ones_the_review_listed(self):
-        """Pinned as a set: adding a no-verdict outcome later and forgetting to
-        list it here would silently send an outage back as a 400."""
+    def test_every_outcome_the_module_can_emit_is_registered(self):
+        """The protection the old version of this test only claimed to give.
+
+        It compared ``COULD_NOT_CHECK_EVENTS`` with a literal set, which is a
+        tautology: a fifth no-verdict outcome added in ``decide`` or ``judge``
+        passed it untouched (CHG-2026-112 review, finding 3).
+
+        This reads the module's own source with ``ast`` and collects the third
+        argument of every ``GuardOutcome(...)`` constructed, resolving names
+        through the module and descending into conditional expressions -- which
+        is where ``would_block`` lives, and is exactly what a regex missed when
+        this was first attempted. Every outcome found must be registered, so a
+        new one cannot appear without a decision about its status.
+        """
+        import ast
+        import pathlib
+
         import cairo_guardrail_hook as m
 
+        tree = ast.parse(pathlib.Path(m.__file__).read_text(encoding="utf-8"))
+
+        def literals(node):
+            """Every string this expression can evaluate to, as far as we can tell."""
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                return {node.value}
+            if isinstance(node, ast.IfExp):
+                return literals(node.body) | literals(node.orelse)
+            if isinstance(node, ast.Name):
+                value = getattr(m, node.id, None)
+                return {value} if isinstance(value, str) else set()
+            return set()
+
+        emitted, unresolved = set(), []
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "GuardOutcome"
+            ):
+                # Positional third argument, or event= as a keyword. A
+                # construction this test cannot read is a failure, not a skip:
+                # the first version matched only positional calls, so an
+                # unregistered outcome built with keywords passed silently
+                # (CHG-2026-112 review, finding 3).
+                arg = None
+                if len(node.args) >= 3:
+                    arg = node.args[2]
+                else:
+                    for kw in node.keywords:
+                        if kw.arg == "event":
+                            arg = kw.value
+                            break
+                if arg is None:
+                    unresolved.append("GuardOutcome(...) with no readable event")
+                    continue
+                found = literals(arg)
+                if found:
+                    emitted |= found
+                else:
+                    unresolved.append(ast.dump(arg)[:80])
+
         self.assertEqual(
+            unresolved,
+            [],
+            "an outcome this test cannot resolve statically; extend literals() "
+            "rather than leaving it unchecked",
+        )
+        self.assertTrue(emitted, "found no GuardOutcome constructions at all")
+        self.assertEqual(
+            emitted - m.ALL_OUTCOME_EVENTS,
+            set(),
+            "outcome(s) the module emits but ALL_OUTCOME_EVENTS does not list",
+        )
+
+    def test_the_could_not_check_set_is_part_of_the_registry(self):
+        """A 503 can only be given to an outcome the module actually emits."""
+        import cairo_guardrail_hook as m
+
+        self.assertEqual(m.COULD_NOT_CHECK_EVENTS - m.ALL_OUTCOME_EVENTS, set())
+        self.assertNotIn(
+            m.NOTHING_TO_CHECK,
             m.COULD_NOT_CHECK_EVENTS,
-            frozenset(
-                {
-                    "guard_unavailable",
-                    "guard_unreadable",
-                    "settings_unusable",
-                    "judge_unavailable",
-                }
-            ),
+            "nothing_to_check is decided by the request; a 503 would let any "
+            "caller produce gateway 5xx at will",
         )
 
     def test_every_status_survives_litellms_range_check(self):
@@ -975,6 +1044,56 @@ class TestStatusSaysWhetherTheCheckRan(unittest.TestCase):
             asyncio.run(g.apply_guardrail(inputs="bad", request_data=req(key_meta={})))
         self.assertEqual(caught.exception.status_code, 400)
 
+    # The review's mutation run showed the generic prompt-side raise -- the one
+    # carrying three of the four no-verdict outcomes -- could drop its status
+    # with nothing failing (finding 3). Only judge_unavailable had an end-to-end
+    # test. These cover the rest, through the real path.
+
+    def _raise_status(self, verdict, inputs="hello"):
+        import asyncio
+
+        import cairo_guardrail_hook as m
+
+        g, _ = TestApplyGuardrailEndToEnd._hook(
+            TestApplyGuardrailEndToEnd(), verdict, mode="enforce"
+        )
+        with self.assertRaises(m.CairoGuardrailBlocked) as caught:
+            asyncio.run(g.apply_guardrail(inputs=inputs, request_data=req(key_meta={})))
+        return caught.exception
+
+    def test_the_guardrail_being_unreachable_raises_503_end_to_end(self):
+        """guard_unavailable: no verdict came back at all."""
+        self.assertEqual(self._raise_status(None).status_code, 503)
+
+    def test_settings_we_cannot_trust_raise_503_end_to_end(self):
+        """settings_unusable: an action verdict carrying no settings labels."""
+        import asyncio
+
+        import cairo_guardrail_hook as m
+
+        g, _ = TestApplyGuardrailEndToEnd._hook(
+            TestApplyGuardrailEndToEnd(), {"action": "allow"}, mode="enforce"
+        )
+
+        async def unlabelled(_payload):
+            return {"action": "allow"}
+
+        g._post_guard = unlabelled
+        with self.assertRaises(m.CairoGuardrailBlocked) as caught:
+            asyncio.run(g.apply_guardrail(inputs="hello", request_data=req(key_meta={})))
+        self.assertEqual(caught.exception.status_code, 503)
+
+    def test_a_shape_we_cannot_read_raises_503_end_to_end(self):
+        """guard_unreadable: ours. A repeat of CHG-2026-044 must stay loud."""
+        exc = self._raise_status({"action": "allow"}, inputs={"texts": "not-a-list"})
+        self.assertEqual(exc.status_code, 503)
+
+    def test_a_prompt_with_nothing_to_check_raises_400_not_503(self):
+        """nothing_to_check: decided by the request, so a caller must not be
+        able to make the gateway emit 5xx on demand."""
+        exc = self._raise_status({"action": "allow"}, inputs={"texts": []})
+        self.assertEqual(exc.status_code, 400)
+
 
 class TestWithheldAnswerCarriesAStatus(unittest.TestCase):
     """CHG-2026-112 F2 — a stream withheld after it opened must not read as 500.
@@ -982,7 +1101,10 @@ class TestWithheldAnswerCarriesAStatus(unittest.TestCase):
     A non-streamed withheld answer is already fine: chat_completion's handler
     builds its own HTTP 200 with ``finish_reason: content_filter`` and never
     reads the attribute. But in enforce a streamed answer is buffered, so the
-    withhold lands after the StreamingResponse has been returned, and the
+    withhold lands after the StreamingResponse has been returned. In practice
+    that frame then becomes the HTTP status of the whole response, because the
+    buffered answer makes it the first chunk the response awaits (#317 review,
+    finding 2). The
     stream is finished by ``async_data_generator`` -- whose error frame takes
     ``code=getattr(e, "status_code", 500)``. LiteLLM's ModifyResponseException
     carries no status_code, so that frame claimed a server error for a policy
@@ -1039,9 +1161,11 @@ class TestWithheldAnswerCarriesAStatus(unittest.TestCase):
     def test_the_fallback_carries_the_status_too(self):
         """The path taken on a bare Python, or a LiteLLM without the raiser.
 
-        Forced rather than skipped: the raiser is present in both environments
-        this suite runs in, so a skipTest here would never execute and the
-        fallback would go untested in every configuration.
+        Forced rather than skipped. An earlier version skipped when the raiser
+        was present and claimed it is present in both environments the suite
+        runs in -- which is wrong: CI runs on a bare Python, where it is
+        absent. Forcing it is still the right fix, because the skip made the
+        test's coverage depend on the environment rather than on the code.
         """
         import cairo_guardrail_hook as m
 
@@ -1050,6 +1174,89 @@ class TestWithheldAnswerCarriesAStatus(unittest.TestCase):
         with self.assertRaises(m.CairoAnswerWithheld) as caught:
             g._withhold_answer("withheld", {}, 503)
         self.assertEqual(caught.exception.status_code, 503)
+
+
+class TestUnreadableIsDecidedOnTheOuterShape(unittest.TestCase):
+    """CHG-2026-112 follow-up, review finding 1 -- the regression that got this
+    PR rejected, pinned so it cannot come back.
+
+    The first version of the split decided "ours or theirs" on whether any text
+    was found. That classified the CHG-2026-044 input -- LiteLLM handing us a
+    container this build did not understand -- as ``nothing_to_check`` with a
+    400, i.e. routine. It silenced the exact outage its own comment said it was
+    keeping loud, and would have turned a repeat into a wall of 400s instead of
+    the 503s meant to page somebody.
+
+    The decision is now made on the OUTER container, which only LiteLLM
+    controls. A caller still cannot force a 5xx, because everything a caller can
+    influence -- the content -- stays on the 400 side.
+    """
+
+    def _reason(self, inputs):
+        import cairo_guardrail_hook as m
+
+        return m.extract_text_with_reason(inputs)[1]
+
+    def test_the_historical_chg_2026_044_shape_is_ours(self):
+        """A container with a key this build has never seen."""
+        import cairo_guardrail_hook as m
+
+        self.assertEqual(
+            self._reason({"messages": [{"role": "user", "content": "hi"}]}),
+            m.UNREADABLE_SHAPE,
+        )
+
+    def test_the_historical_shape_refuses_with_503_end_to_end(self):
+        import asyncio
+
+        import cairo_guardrail_hook as m
+
+        g, _ = TestApplyGuardrailEndToEnd._hook(
+            TestApplyGuardrailEndToEnd(), {"action": "allow"}, mode="enforce"
+        )
+        with self.assertRaises(m.CairoGuardrailBlocked) as caught:
+            asyncio.run(
+                g.apply_guardrail(
+                    inputs={"messages": [{"role": "user", "content": "hi"}]},
+                    request_data=req(key_meta={}),
+                )
+            )
+        self.assertEqual(caught.exception.status_code, 503)
+        self.assertIn("guard_unreadable", str(caught.exception))
+
+    def test_an_unknown_key_beside_a_known_one_is_still_ours(self):
+        import cairo_guardrail_hook as m
+
+        self.assertEqual(
+            self._reason({"texts": ["hello"], "surprise": 1}), m.UNREADABLE_SHAPE
+        )
+
+    def test_litellms_own_empty_containers_stay_routine(self):
+        """1.100.1 really does send these; none may produce a 5xx."""
+        import cairo_guardrail_hook as m
+
+        for inputs in ({}, {"texts": []}, {"model": "gpt-4o-mini"}, {"tool_calls": []}):
+            with self.subTest(inputs=inputs):
+                self.assertEqual(self._reason(inputs), m.UNREADABLE_EMPTY)
+
+    def test_a_message_with_no_content_is_routine(self):
+        import cairo_guardrail_hook as m
+
+        self.assertEqual(self._reason({"role": "user", "content": None}), m.UNREADABLE_EMPTY)
+
+    def test_the_key_list_is_not_empty(self):
+        """A sanity floor only.
+
+        The real check is in ``in_image_check.py``, which compares this list
+        with the installed ``GenericGuardrailAPIInputs`` inside the gateway
+        image -- the unit tests run on a bare Python and cannot see it. If this
+        list were ever emptied, every container would read as unknown and every
+        request would refuse with 503 under enforce.
+        """
+        import cairo_guardrail_hook as m
+
+        self.assertIn("texts", m.LITELLM_INPUT_KEYS)
+        self.assertGreaterEqual(len(m.LITELLM_INPUT_KEYS), 7)
 
 
 if __name__ == "__main__":
