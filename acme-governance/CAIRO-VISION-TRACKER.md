@@ -147,6 +147,25 @@
 | **CI on `main`** | The CI/CD run for `main` @ `29a7fdae` | 🟡 **Pending for about 10 hours with no jobs started**, observed 2026-09-23. "Storybook Preview" and "Deploy to ECS" (an upstream Langfuse workflow) are queued behind it. Cause not yet diagnosed |
 | **CHG-2026-063** | Make the CI `knip` check pass (issue #96): 21 in-file-only exports un-exported, 3 dead symbols deleted (incl. the `useIsSecurityAnalyst` hook), unused `@anthropic-ai/sdk` removed from web, 3 standalone integration scripts added to knip's ignore list. No runtime change, no Enterprise file | 🟢 **Merged 2026-09-24** (#172 `cc8af8010`, closes issue #96). Claim #170 self-merged under Tier 2.5. Before merge `main` was merged in, and one new finding was ignored: an Enterprise file CHG-2026-065 had unmounted. CI on #172: `knip`, `prettier-check`, the changelog, change-ID, Enterprise-files and licence checks pass. `lint` (42 warnings, none in changed files) and 4 server/worker tests fail identically on docs-only PR #167, so they predate this change. **`knip` on `main` not yet confirmed:** the `main` run for `789ecc3bc` is pending with no jobs, the known `main` CI stall |
 
+### 2026-10-04 and 05
+
+**Coverage note.** The table above is current to 2026-09-24 (CHG-2026-063) and was
+not kept up between then and now; roughly forty changes landed in between. The
+complete record is `ACME-CHANGELOG.md` and the change-ID register — read those,
+not this table, for anything in that window. The rows below are this session's
+work, each verified against the merge list rather than assumed. Other sessions
+also landed CHG-2026-118 and CHG-2026-119 today; they are not characterised here
+because this session did not do them.
+
+| Change | What | Status |
+|---|---|---|
+| **CHG-2026-111** | Gateway guardrail hook: a refused prompt reaches the client as a clean refusal, not an HTTP 500 | 🟢 **Merged (#314) 2026-10-04**, applied to the gateway the same day. Landed as HTTP 400 |
+| **CHG-2026-112** | The same hook: HTTP 503 when the guardrail *could not check*, separated from 400 when it checked and refused — so an outage cannot read as a policy decision | 🟢 **Merged (#317) 2026-10-04**; follow-up #321 merged 2026-10-05 after review found the first split classified a known outage shape as a routine refusal, silencing the very failure its own comment claimed to keep loud. Not applied to the gateway |
+| **CHG-2026-113** | Make the `lint` and `knip` CI gates pass | 🟢 **Merged (#319) 2026-10-05** |
+| **CHG-2026-114** | CAIRO-owned observability for Claude Code: a fork of `langfuse/Claude-Observability-Plugin` (MIT) rebranded so the integration reads as CAIRO rather than a separate Langfuse offering | 🟢 **Delivered and verified end to end 2026-10-05.** Private repo `samrayin/cairo-observability`, v1.2.1, installed and enabled; Claude Code sessions export to CAIRO and appear in the console. Three defects in the fork were found and fixed during install — the marketplace manifest still carried the upstream name (which made the fork **uninstallable**), the config message named option names the plugin does not declare, and the identity diagnostic could not fire after the rename. Hook timeout raised 60 s → 300 s; state file bounded by a TTL |
+| **CHG-2026-116** | Guardrail event labels show the mode: a block verdict reads "Blocked" only when the gateway was enforcing, "Would block" otherwise | 🟢 **Merged (#328) 2026-10-05** |
+| **CHG-2026-117** | `scripts/agents/sync-agent-shims.mjs` could not run on Windows, **and the recorded one-line fix for that is destructive**: with the path corrected the script reaches `symlinkSync`, which Windows refuses *after* `rmSync` has deleted the shim, leaving `AGENTS.md` gone | 🟢 **Merged (#329) 2026-10-05.** Reproduced in an isolated worktree before fixing. Does **not** address the CI "shims are stale" complaint, which compares against real symlinks and so cannot be verified from Windows |
+
 ---
 
 ## Findings this work surfaced (rated, tracked, not swept under)
