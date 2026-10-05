@@ -920,21 +920,75 @@ class TestStatusSaysWhetherTheCheckRan(unittest.TestCase):
             with self.subTest(event=event):
                 self.assertEqual(m.status_for_event(event), 503)
 
-    def test_the_four_outcomes_are_exactly_the_ones_the_review_listed(self):
-        """Pinned as a set: adding a no-verdict outcome later and forgetting to
-        list it here would silently send an outage back as a 400."""
+    def test_every_outcome_the_module_can_emit_is_registered(self):
+        """The protection the old version of this test only claimed to give.
+
+        It compared ``COULD_NOT_CHECK_EVENTS`` with a literal set, which is a
+        tautology: a fifth no-verdict outcome added in ``decide`` or ``judge``
+        passed it untouched (CHG-2026-112 review, finding 3).
+
+        This reads the module's own source with ``ast`` and collects the third
+        argument of every ``GuardOutcome(...)`` constructed, resolving names
+        through the module and descending into conditional expressions -- which
+        is where ``would_block`` lives, and is exactly what a regex missed when
+        this was first attempted. Every outcome found must be registered, so a
+        new one cannot appear without a decision about its status.
+        """
+        import ast
+        import pathlib
+
         import cairo_guardrail_hook as m
 
+        tree = ast.parse(pathlib.Path(m.__file__).read_text(encoding="utf-8"))
+
+        def literals(node):
+            """Every string this expression can evaluate to, as far as we can tell."""
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                return {node.value}
+            if isinstance(node, ast.IfExp):
+                return literals(node.body) | literals(node.orelse)
+            if isinstance(node, ast.Name):
+                value = getattr(m, node.id, None)
+                return {value} if isinstance(value, str) else set()
+            return set()
+
+        emitted, unresolved = set(), []
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "GuardOutcome"
+                and len(node.args) >= 3
+            ):
+                found = literals(node.args[2])
+                if found:
+                    emitted |= found
+                else:
+                    unresolved.append(ast.dump(node.args[2])[:80])
+
         self.assertEqual(
+            unresolved,
+            [],
+            "an outcome this test cannot resolve statically; extend literals() "
+            "rather than leaving it unchecked",
+        )
+        self.assertTrue(emitted, "found no GuardOutcome constructions at all")
+        self.assertEqual(
+            emitted - m.ALL_OUTCOME_EVENTS,
+            set(),
+            "outcome(s) the module emits but ALL_OUTCOME_EVENTS does not list",
+        )
+
+    def test_the_could_not_check_set_is_part_of_the_registry(self):
+        """A 503 can only be given to an outcome the module actually emits."""
+        import cairo_guardrail_hook as m
+
+        self.assertEqual(m.COULD_NOT_CHECK_EVENTS - m.ALL_OUTCOME_EVENTS, set())
+        self.assertNotIn(
+            m.NOTHING_TO_CHECK,
             m.COULD_NOT_CHECK_EVENTS,
-            frozenset(
-                {
-                    "guard_unavailable",
-                    "guard_unreadable",
-                    "settings_unusable",
-                    "judge_unavailable",
-                }
-            ),
+            "nothing_to_check is decided by the request; a 503 would let any "
+            "caller produce gateway 5xx at will",
         )
 
     def test_every_status_survives_litellms_range_check(self):
@@ -974,6 +1028,56 @@ class TestStatusSaysWhetherTheCheckRan(unittest.TestCase):
         with self.assertRaises(m.CairoGuardrailBlocked) as caught:
             asyncio.run(g.apply_guardrail(inputs="bad", request_data=req(key_meta={})))
         self.assertEqual(caught.exception.status_code, 400)
+
+    # The review's mutation run showed the generic prompt-side raise -- the one
+    # carrying three of the four no-verdict outcomes -- could drop its status
+    # with nothing failing (finding 3). Only judge_unavailable had an end-to-end
+    # test. These cover the rest, through the real path.
+
+    def _raise_status(self, verdict, inputs="hello"):
+        import asyncio
+
+        import cairo_guardrail_hook as m
+
+        g, _ = TestApplyGuardrailEndToEnd._hook(
+            TestApplyGuardrailEndToEnd(), verdict, mode="enforce"
+        )
+        with self.assertRaises(m.CairoGuardrailBlocked) as caught:
+            asyncio.run(g.apply_guardrail(inputs=inputs, request_data=req(key_meta={})))
+        return caught.exception
+
+    def test_the_guardrail_being_unreachable_raises_503_end_to_end(self):
+        """guard_unavailable: no verdict came back at all."""
+        self.assertEqual(self._raise_status(None).status_code, 503)
+
+    def test_settings_we_cannot_trust_raise_503_end_to_end(self):
+        """settings_unusable: an action verdict carrying no settings labels."""
+        import asyncio
+
+        import cairo_guardrail_hook as m
+
+        g, _ = TestApplyGuardrailEndToEnd._hook(
+            TestApplyGuardrailEndToEnd(), {"action": "allow"}, mode="enforce"
+        )
+
+        async def unlabelled(_payload):
+            return {"action": "allow"}
+
+        g._post_guard = unlabelled
+        with self.assertRaises(m.CairoGuardrailBlocked) as caught:
+            asyncio.run(g.apply_guardrail(inputs="hello", request_data=req(key_meta={})))
+        self.assertEqual(caught.exception.status_code, 503)
+
+    def test_a_shape_we_cannot_read_raises_503_end_to_end(self):
+        """guard_unreadable: ours. A repeat of CHG-2026-044 must stay loud."""
+        exc = self._raise_status({"action": "allow"}, inputs={"texts": "not-a-list"})
+        self.assertEqual(exc.status_code, 503)
+
+    def test_a_prompt_with_nothing_to_check_raises_400_not_503(self):
+        """nothing_to_check: decided by the request, so a caller must not be
+        able to make the gateway emit 5xx on demand."""
+        exc = self._raise_status({"action": "allow"}, inputs={"texts": []})
+        self.assertEqual(exc.status_code, 400)
 
 
 class TestWithheldAnswerCarriesAStatus(unittest.TestCase):

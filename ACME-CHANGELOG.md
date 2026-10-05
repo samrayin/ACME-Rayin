@@ -5931,3 +5931,75 @@ Checked by mutation - making `status_for_event` always return 400 fails 5 tests.
 
 **Not deployed.** Applying needs a gateway ConfigMap apply and restart (Tier 1, owner's
 approval), run from the primary window.
+
+---
+
+## 2026-10-05 — A caller can no longer make the gateway emit 5xx (CHG-2026-112, follow-up)
+
+**What:** The four findings from #317's fresh-session review. Enforce still fails closed in
+every case, in both directions; only the status a refusal carries changes.
+
+**Files:** `integrations/litellm/config/cairo_guardrail_hook.py`,
+`integrations/litellm/tests/test_cairo_guardrail_hook.py`,
+`integrations/litellm/tests/test_cairo_guardrail_output.py`
+
+**1 — `guard_unreadable` split by cause.** CHG-2026-112 sent it to 503 as a no-verdict
+outcome. But it fired for two unrelated reasons, and one of them is decided by the request:
+**any caller could make the gateway emit 5xx on demand**, polluting the very alerting the
+503 split existed to protect.
+
+Tracing `build_guard_payload` showed `extract_text` returning `None` for two different
+things, which is why the causes had been indistinguishable:
+- **The content held no text.** A recognised shape with nothing in it — an empty prompt, or
+  a tool-call-only answer, which is routine. New outcome **`nothing_to_check`**, status
+  **400**. A retry can never fix it and it must not page anyone.
+- **The shape or direction could not be mapped.** Our own integration failing. Stays
+  `guard_unreadable`, status **503** — this is the CHG-2026-044 shape, where a LiteLLM
+  input-shape change sent every request down this path and nothing was inspected. It has to
+  stay loud.
+
+`extract_text_with_reason` and `build_guard_payload_with_reason` carry the cause;
+`extract_text` and `build_guard_payload` stay as the single-value forms their callers and
+tests use.
+
+**2 — the two mutations the review found uncaught are now caught.** Its run showed the
+generic prompt-side raise (carrying three of the four no-verdict outcomes) and the
+answer-side `_withhold_answer` call could both drop their status with nothing failing. The
+existing tests called `_withhold_answer` directly with a status supplied by the test, so
+they pinned the plumbing below the decision rather than the decision. Ten end-to-end tests
+now drive each outcome through `apply_guardrail`, both directions. Re-running the review's
+two mutations: **3 and 4 failures respectively**, where both previously passed.
+
+**3 — the "exact set" test now does what it claimed.** It compared a constant with a
+literal, which is a tautology: a fifth no-verdict outcome would have passed it untouched.
+It now reads the module with `ast`, collects the outcome of every `GuardOutcome(...)`
+constructed — resolving names through the module and descending into conditional
+expressions, which is where `would_block` lives — and requires each to be registered in a
+new `ALL_OUTCOME_EVENTS`. Verified by adding an unregistered outcome: **caught**.
+
+A first attempt used a regex and silently missed `would_block`, which is why it uses `ast`.
+The test also failed on its author's own first draft, because the new outcome was chosen
+into a local variable it could not resolve; the conditional is now written inline so it
+stays statically checkable.
+
+**4 — the F3 comment nit.** `_handle_llm_api_exception` is itself in
+`common_request_processing.py`, so the previous wording read as if it lived elsewhere. It
+now names file and function.
+
+**One existing test's expectation changed.**
+`test_unreadable_answer_record_still_names_the_direction` asserted `guard_unreadable` for an
+answer with no text. That is now `nothing_to_check`. The outcome genuinely moved; the test
+was pinning the old classification, and its actual subject — that the record names the
+direction — is unchanged. A sibling test covers the shape case.
+
+**Worth knowing:** `nothing_to_check` is a **new value in the health log's `outcome`**
+field. Anything parsing those records will see a code it has not seen before.
+
+**Confirmed by the owner and unchanged here:** `redact_unmappable` stays 400, and 503 stays
+retryable — the streamed-answer retry cost is accepted.
+
+**Left out deliberately:** on the prompt side a `redact_unmappable` refusal is recorded as
+`redacted` with `refused: false`, so the audit line contradicts the 400 the caller got
+(review finding 6). It is outside this diff and needs its own change.
+
+**Tests:** 228 pass, 12 added. **Not deployed.**
