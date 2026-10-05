@@ -169,15 +169,51 @@ MAX_SETTINGS_VERSION = 2147483647
 NO_VERDICT = "none"
 JUDGE_UNAVAILABLE = "judge_unavailable"
 
+#: A container this build understands, holding no text it could read
+#: (CHG-2026-112 follow-up). Refused in enforce like any other no-verdict
+#: outcome, but NOT a 503: the request decides it, no retry can fix it, and
+#: treating it as an outage would let any caller make the gateway emit 5xx on
+#: demand -- polluting the very alerting the 503 split exists to protect.
+#:
+#: Read it as "nothing we could check", not "nothing was there". A tool-call-only
+#: answer lands here and it DOES have content: the call arguments, which can
+#: carry personal data and which this build does not read. The outcome records
+#: that the answer went uninspected, not that it was empty (review finding 4).
+NOTHING_TO_CHECK = "nothing_to_check"
+
 #: Outcomes where the guardrail never reached a verdict (CHG-2026-112). The
 #: request is still refused in enforce -- failing closed is the point -- but it
 #: was refused because the check could not run, not because the content was
 #: judged. ``guard_unavailable`` covers the service being down, timing out,
 #: answering 5xx, or sending a verdict that cannot be read; ``guard_unreadable``
-#: an answer whose shape is wrong; ``settings_unusable`` a verdict no single
-#: settings version decided; ``judge_unavailable`` the judge model itself.
+#: a shape or direction THIS BUILD could not map, which is our side failing;
+#: ``settings_unusable`` a verdict no single settings version decided;
+#: ``judge_unavailable`` the judge model itself.
+#:
+#: ``NOTHING_TO_CHECK`` is deliberately absent: see its comment above.
 COULD_NOT_CHECK_EVENTS = frozenset(
     {"guard_unavailable", "guard_unreadable", "settings_unusable", JUDGE_UNAVAILABLE}
+)
+
+#: Every outcome code this module can put on a GuardOutcome. The registry exists
+#: so a test can prove the set above partitions it: a new no-verdict outcome
+#: added without being classified is otherwise silently a 400 (review finding 3).
+ALL_OUTCOME_EVENTS = frozenset(
+    {
+        "allow",
+        "blocked",
+        "excluded",
+        "guard_unavailable",
+        "guard_unreadable",
+        JUDGE_UNAVAILABLE,
+        NOTHING_TO_CHECK,
+        "redact_on_stream",
+        "redact_unmappable",
+        "redacted",
+        "settings_unusable",
+        "would_block",
+        "would_redact",
+    }
 )
 
 
@@ -190,10 +226,15 @@ def status_for_event(event: str) -> int:
     alerting that watches 5xx (post-merge review of CHG-2026-111, finding 1).
 
     The owner chose 503 on 2026-10-04 knowing OpenAI-SDK clients retry 5xx
-    twice by default: during an outage each refusal may cost up to three guard
-    calls. Retrying is the correct client behaviour here -- the check could not
-    run, and a later attempt may succeed -- and the request stays refused
-    either way.
+    twice by default, and confirmed it on 2026-10-05 after the review priced
+    the streamed-answer case: there a retry re-runs the whole request, a fresh
+    upstream generation plus both guard calls, not three guard calls. Retrying
+    is still the correct client behaviour -- the check could not run, and a
+    later attempt may succeed -- and the request stays refused either way.
+
+    ``NOTHING_TO_CHECK`` is deliberately NOT in the 503 set even though no
+    verdict was reached. It is decided by the request, so a retry can never
+    succeed, and a 503 there would let any caller produce gateway 5xx at will.
     """
     return 503 if event in COULD_NOT_CHECK_EVENTS else 400
 
@@ -205,6 +246,14 @@ ANSWER_WITHHELD_UNCHECKED = (
     "This answer could not be checked, so it was withheld. Please try again later."
 )
 ANSWER_WITHHELD_PERSONAL_DATA = "This answer contained personal data and was withheld."
+#: For ``nothing_to_check``. Deliberately does NOT say "try again later": the
+#: outcome is deterministic, which is the whole reason it carries a 400 rather
+#: than a 503 (CHG-2026-112 follow-up, review finding 4). It also does not claim
+#: there was nothing there -- a tool-call-only answer has content, in the call
+#: arguments, which this build did not read.
+ANSWER_WITHHELD_UNREADABLE = (
+    "This answer held nothing the guardrail could check, so it was withheld."
+)
 
 #: The outcome code for an enforced redaction that cannot be applied because
 #: the answer was streamed (LiteLLM 1.100.1 replays the original chunks on
@@ -395,6 +444,89 @@ class GuardOutcome(NamedTuple):
     event: str
 
 
+#: Why no text could be read. The difference decides the HTTP status of a
+#: refusal (CHG-2026-112 follow-up, review finding 1), so it is carried rather
+#: than collapsed into one "unreadable".
+#:
+#: The caller's content held nothing to check. Determined by the request, so no
+#: retry can fix it, and a caller must not be able to make the gateway emit 5xx
+#: on demand.
+UNREADABLE_EMPTY = "empty"
+#: A shape this build does not recognise, or a direction it cannot map. This is
+#: OUR side failing: on 2026-09-23 a LiteLLM input-shape change sent every
+#: request down this path and nothing was inspected (CHG-2026-044). It has to
+#: stay loud, which is why it keeps a 503.
+UNREADABLE_SHAPE = "unknown_shape"
+
+#: The keys ``GenericGuardrailAPIInputs`` documents (LiteLLM 1.100.1,
+#: ``litellm/types/utils.py``). The OUTER structure is the only part of the
+#: input a caller cannot influence, so it -- not the content -- is what decides
+#: whether an unreadable input is our failure or theirs.
+#:
+#: A container holding only these keys is one we understand, even when it has no
+#: text in it: 1.100.1 does send dicts with no ``texts``, and ``{}``. A container
+#: holding a key we have never heard of is LiteLLM talking to us in a shape this
+#: build does not know, which is precisely CHG-2026-044 and must stay loud.
+#:
+#: ``in_image_check.py`` asserts this equals the installed type's keys, so an
+#: upgrade that adds one fails before switch-on rather than in production.
+LITELLM_INPUT_KEYS = frozenset(
+    {
+        "texts",
+        "images",
+        "tools",
+        "tool_calls",
+        "structured_messages",
+        "model",
+        "stream_holdback_chars",
+    }
+)
+
+#: What makes a dict a chat message rather than an input container. A message
+#: with no readable content is ordinary, not an integration failure.
+_MESSAGE_KEYS = frozenset({"role", "content"})
+
+
+def extract_text_with_reason(inputs: Any) -> Tuple[Optional[str], Optional[str]]:
+    """``(text, None)``, or ``(None, reason)`` with one of the reasons above.
+
+    The split exists because "there was nothing we could check" and "we did not
+    understand what we were handed" are different failures that happened to look
+    identical. The second is an integration mismatch on our side.
+
+    **The decision is made on the outer structure, never on the content.** A
+    caller controls what is inside the container; only LiteLLM controls the
+    container. Deciding on content would let any caller choose the gateway's
+    HTTP status, and deciding "no text found" means "nothing wrong" would have
+    classified CHG-2026-044 itself as routine -- which an earlier version of this
+    function did, in exactly the case its own comment said it was catching.
+    """
+    try:
+        if isinstance(inputs, str):
+            return (inputs, None) if inputs else (None, UNREADABLE_EMPTY)
+        if isinstance(inputs, dict):
+            keys = set(inputs)
+            recognised = keys <= LITELLM_INPUT_KEYS or bool(keys & _MESSAGE_KEYS)
+            if not recognised:
+                # A container shaped in a way this build has never seen.
+                return None, UNREADABLE_SHAPE
+            if "texts" in inputs:
+                texts = inputs.get("texts")
+                if not isinstance(texts, (list, tuple)):
+                    return None, UNREADABLE_SHAPE
+                joined = "\n".join(t for t in texts if isinstance(t, str) and t)
+                return (joined, None) if joined else (None, UNREADABLE_EMPTY)
+            text = _text_of_message(inputs)
+            return (text, None) if text else (None, UNREADABLE_EMPTY)
+        if isinstance(inputs, (list, tuple)):
+            parts = [_text_of_message(m) for m in inputs]
+            joined = "\n".join(p for p in parts if p)
+            return (joined, None) if joined else (None, UNREADABLE_EMPTY)
+        return None, UNREADABLE_SHAPE
+    except Exception:
+        return None, UNREADABLE_SHAPE
+
+
 def extract_text(inputs: Any) -> Optional[str]:
     """Best-effort text of what is being checked, or None when unknown.
 
@@ -406,25 +538,11 @@ def extract_text(inputs: Any) -> Optional[str]:
     None means "could not read this", which is a record-mode proceed. It is
     deliberately not an exception: an input shape we have not seen must not be
     able to fail a request in the mode whose contract is to change nothing.
+
+    Kept as the single-value form its callers and tests use;
+    ``extract_text_with_reason`` carries why.
     """
-    try:
-        if isinstance(inputs, str):
-            return inputs or None
-        if isinstance(inputs, dict) and "texts" in inputs:
-            texts = inputs.get("texts")
-            if not isinstance(texts, (list, tuple)):
-                return None
-            joined = "\n".join(t for t in texts if isinstance(t, str) and t)
-            return joined or None
-        if isinstance(inputs, dict):
-            return _text_of_message(inputs)
-        if isinstance(inputs, (list, tuple)):
-            parts = [_text_of_message(m) for m in inputs]
-            joined = "\n".join(p for p in parts if p)
-            return joined or None
-        return None
-    except Exception:
-        return None
+    return extract_text_with_reason(inputs)[0]
 
 
 def _text_of_message(message: Any) -> Optional[str]:
@@ -463,25 +581,27 @@ def _authenticated_agent_id(request_data: Dict[str, Any]) -> str:
     return UNKNOWN_AGENT_ID
 
 
-def build_guard_payload(
+def build_guard_payload_with_reason(
     inputs: Any,
     request_data: Any,
     input_type: str,
-) -> Optional[Dict[str, Any]]:
-    """The /v1/guard request body, or None when one cannot honestly be built.
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """``(payload, None)``, or ``(None, reason)`` saying why one cannot be built.
 
-    None is returned when the text is unreadable or the direction is unrecognised
-    -- never a payload with an invented field. The service requires non-empty
-    ``text`` and a valid ``direction``; sending a placeholder would produce an
-    audit row asserting something we did not check.
+    An unrecognised ``input_type`` is ``UNREADABLE_SHAPE``: LiteLLM handed us a
+    call this build does not know how to map, which is our side, not the
+    caller's. Everything else comes from ``extract_text_with_reason``.
     """
     try:
         direction = _DIRECTION_BY_INPUT_TYPE.get(input_type)
         if direction is None:
-            return None
-        text = extract_text(inputs)
+            return None, UNREADABLE_SHAPE
+        text, reason = extract_text_with_reason(inputs)
         if not text:
-            return None
+            # Default to the loud side: unreachable today, because
+            # extract_text_with_reason always gives a reason, but a future gap
+            # should page somebody rather than read as routine.
+            return None, reason or UNREADABLE_SHAPE
         data = request_data if isinstance(request_data, dict) else {}
         payload: Dict[str, Any] = {
             "agent_id": _authenticated_agent_id(data),
@@ -493,9 +613,27 @@ def build_guard_payload(
             value = data.get(source)
             if isinstance(value, str) and value.strip():
                 payload[field] = value.strip()
-        return payload
+        return payload, None
     except Exception:
-        return None
+        return None, UNREADABLE_SHAPE
+
+
+def build_guard_payload(
+    inputs: Any,
+    request_data: Any,
+    input_type: str,
+) -> Optional[Dict[str, Any]]:
+    """The /v1/guard request body, or None when one cannot honestly be built.
+
+    None is returned when the text is unreadable or the direction is unrecognised
+    -- never a payload with an invented field. The service requires non-empty
+    ``text`` and a valid ``direction``; sending a placeholder would produce an
+    audit row asserting something we did not check.
+
+    Kept as the single-value form its callers and tests use;
+    ``build_guard_payload_with_reason`` carries why.
+    """
+    return build_guard_payload_with_reason(inputs, request_data, input_type)[0]
 
 
 def decide(verdict: Any, enforcing: bool) -> GuardOutcome:
@@ -594,16 +732,22 @@ def withheld_message(event: str) -> str:
     """What the user sees in place of a withheld answer, by outcome code.
 
     A ``blocked`` answer was judged and refused. ``redact_on_stream`` had
-    personal data that could not be removed. Everything else (the judge
-    unavailable, the guardrails service down, an unreadable verdict or
-    answer, settings that cannot be trusted) means the answer was NOT
-    checked, and is said so plainly: a check that could not run is never
-    reported as a pass or as a policy decision.
+    personal data that could not be removed. ``nothing_to_check`` had nothing
+    this build could read, which no retry will change. Everything else (the
+    judge unavailable, the guardrails service down, an unreadable verdict,
+    settings that cannot be trusted) means the answer was NOT checked, and is
+    said so plainly: a check that could not run is never reported as a pass or
+    as a policy decision.
     """
     if event == "blocked":
         return ANSWER_WITHHELD_BLOCKED
     if event in (REDACT_ON_STREAM, "redact_unmappable"):
         return ANSWER_WITHHELD_PERSONAL_DATA
+    if event == NOTHING_TO_CHECK:
+        # Not ANSWER_WITHHELD_UNCHECKED: that text says "try again later", and
+        # this outcome is deterministic -- the same answer gives the same result
+        # every time, which is why it carries a 400 (review finding 4).
+        return ANSWER_WITHHELD_UNREADABLE
     return ANSWER_WITHHELD_UNCHECKED
 
 
@@ -696,14 +840,13 @@ class CairoGuardrailBlocked(Exception):
 
     ``status_code`` is what makes the refusal clean (CHG-2026-111). On the
     chat-completions path the exception reaches ``chat_completion``'s generic
-    ``except``, which calls ``_handle_llm_api_exception``; that reads
+    ``except``, which calls ``_handle_llm_api_exception`` -- in
+    ``litellm/proxy/common_request_processing.py``. That reads
     ``getattr(e, "status_code", None)`` and uses it only when it is an int from
-    400 to 599, falling back to 500 (verified in the installed 1.100.1; an
-    earlier version of this comment cited ``common_request_processing``, which
-    carries the same idiom but is not the function on this path). Without the
-    attribute a refusal becomes a 500 and a caller sees a server error rather
-    than a refusal, so a chatbot shows "something went wrong" for the guardrail
-    working as designed.
+    400 to 599, falling back to 500 (verified in the installed 1.100.1). Without
+    the attribute a refusal becomes a 500 and a caller sees a server error
+    rather than a refusal, so a chatbot shows "something went wrong" for the
+    guardrail working as designed.
 
     The 400-to-599 range check matters: a status outside it is silently
     discarded and the refusal becomes a 500 again.
@@ -1052,13 +1195,31 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
             )
 
         mode_before = self.current_mode()
-        payload = build_guard_payload(inputs, data, input_type)
+        payload, unreadable = build_guard_payload_with_reason(inputs, data, input_type)
         if payload is None:
             # Nothing honest to ask. Record: proceed. Enforce: fail closed.
             # For an answer this includes a tool-call-only answer, which has
             # no text to check (ADR-0005 "Output direction", fact 2g).
+            #
+            # Which outcome depends on WHY (CHG-2026-112 follow-up, review
+            # finding 1), because the two have different causes and so deserve
+            # different statuses. The caller's content holding no text is
+            # decided by the request: NOTHING_TO_CHECK, a 400. A shape or
+            # direction this build cannot map is our own integration failing:
+            # guard_unreadable, a 503, which is what makes a repeat of
+            # CHG-2026-044 page somebody instead of looking like client noise.
+            #
+            # Written inline rather than through a local: the outcome registry
+            # test reads these constructions statically, and a local variable
+            # would be invisible to it.
             return self._resolve(
-                GuardOutcome(mode_before != "enforce", None, "guard_unreadable"),
+                GuardOutcome(
+                    mode_before != "enforce",
+                    None,
+                    NOTHING_TO_CHECK
+                    if unreadable == UNREADABLE_EMPTY
+                    else "guard_unreadable",
+                ),
                 inputs,
                 mode=mode_before,
                 duration_ms=None,

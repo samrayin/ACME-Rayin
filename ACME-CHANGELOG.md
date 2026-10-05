@@ -5921,13 +5921,88 @@ is an int from 400 to 599** and falls back to 500 otherwise. Corrected, and the 
 is now documented - a status outside it would be silently discarded and the refusal would
 become a 500 again.
 
-**Tests:** 10 added, 216 pass with no skips. They pin the mapping, that the four
+**Tests:** 10 added, 216 pass (CI runs them on a bare Python, where 1 is skipped). They pin the mapping, that the four
 could-not-check outcomes are exactly the ones the review listed (so adding a fifth later
 and forgetting it cannot silently send an outage back as 400), that every status survives
 LiteLLM's 400-599 range check, both end-to-end paths, and the withheld-answer cases
 including the fallback. The fallback test is forced rather than skipped: the raiser is
-present in both environments the suite runs in, so a `skipTest` there would never execute.
-Checked by mutation - making `status_for_event` always return 400 fails 5 tests.
+present when LiteLLM is importable, so a `skipTest` there would not execute in that
+environment. (Corrected 2026-10-05: an earlier wording said "both environments"; CI runs
+bare, where the raiser is absent.) Checked by mutation - making `status_for_event` always
+return 400 fails 2 test methods.
 
 **Not deployed.** Applying needs a gateway ConfigMap apply and restart (Tier 1, owner's
 approval), run from the primary window.
+
+---
+
+## 2026-10-05 — `guard_unreadable` split on the outer shape (CHG-2026-112, follow-up)
+
+**What:** The findings from #317's fresh-session review, and then the findings from the
+review of the first attempt at them (#320, NOT SAFE TO MERGE). Enforce still fails closed
+in every case, both directions; only the status a refusal carries changes.
+
+**Files:** `integrations/litellm/config/cairo_guardrail_hook.py`,
+`integrations/litellm/tests/test_cairo_guardrail_hook.py`,
+`integrations/litellm/tests/test_cairo_guardrail_output.py`,
+`integrations/litellm/tests/in_image_check.py`
+
+**The split, and the mistake in the first attempt.** CHG-2026-112 sent `guard_unreadable`
+to 503 as a no-verdict outcome, but it fired for two unrelated reasons and one is decided
+by the request -- so any caller could make the gateway emit 5xx on demand, polluting the
+alerting the 503 split existed to protect.
+
+The first attempt split it on **whether any text was found**. That classified the
+CHG-2026-044 input -- LiteLLM handing us a container this build does not understand -- as
+routine, with a 400. **It silenced the exact outage its own comment claimed to keep loud**,
+and a repeat would have produced a wall of 400s instead of the 503s meant to page someone.
+The review caught it and the PR was rejected.
+
+The decision is now made on the **outer container**, which only LiteLLM controls:
+- a container whose keys are all in `GenericGuardrailAPIInputs`, or a chat message, is one
+  we understand. With no text in it the outcome is **`nothing_to_check`**, status **400**.
+  1.100.1 really does send `{}` and dicts with no `texts`;
+- a container with a key this build has never seen is **`guard_unreadable`**, status
+  **503**. That is the CHG-2026-044 shape.
+
+Everything a caller can influence -- the content -- stays on the 400 side, so a caller
+still cannot force a 5xx.
+
+**`in_image_check.py` now compares `LITELLM_INPUT_KEYS` with the installed
+`GenericGuardrailAPIInputs`.** The unit tests run on a bare Python and cannot see the real
+type. An upgrade that adds a key would otherwise make every request carrying it read as an
+unknown shape -- CHG-2026-044 with the sign reversed. Run against the live gateway on
+2026-10-05: **PASS**.
+
+**Mutations closed.** The review's two uncaught mutations (the generic prompt-side raise,
+the answer-side withhold call) now fail 3 and 4 tests. Reverting the outer-shape decision
+fails 3, including the end-to-end 503.
+
+**The registry test**, which replaced a tautology comparing a constant with a literal, now
+also reads keyword constructions (`event=`) and fails on any `GuardOutcome` it cannot read.
+Verified against both a positional and a keyword unregistered outcome: caught.
+
+**`nothing_to_check` no longer invites a retry.** Its withheld message was
+`ANSWER_WITHHELD_UNCHECKED`, which ends "Please try again later" -- wrong for a
+deterministic outcome, which is the whole reason it carries a 400. It also no longer claims
+nothing was there: a tool-call-only answer has content, in the call arguments, which this
+build did not read.
+
+**Corrections to the CHG-2026-112 record above**, from #317's review finding 5: "216 pass
+with no skips" (CI runs bare, where 1 is skipped), "present in both environments" (CI runs
+bare, where the raiser is absent) and "fails 5 tests" (2 test methods). #317's PR body
+cannot be edited after its review; this entry supersedes those statements.
+
+**Scope note.** The earlier headline, "a caller can no longer make the gateway emit 5xx",
+overstated: this closes the empty-content route. Content-dependent ways to make the guard
+call fail or time out still end as `guard_unavailable` (503), which may well be right for
+them.
+
+**Left for their own changes:** the prompt-side `redact_unmappable` audit record, which
+says `redacted` with `refused: false` while the caller gets a 400; ADR-0005's statements
+about a tool-call-only answer; and ADR-0009's planned health-outcome enum, which lists
+neither `nothing_to_check` nor the codes added since it was written.
+
+**Confirmed and unchanged:** `redact_unmappable` stays 400, and 503 stays retryable.
+
+**Tests:** 234 pass, 18 added. **Not deployed.**
