@@ -63,11 +63,13 @@ import { TRPCError } from "@trpc/server";
 import {
   buildHiddenTestTrafficWhere,
   buildHistoryWhere,
+  countHistoryVerdicts,
   GUARDRAIL_EXPORT_MAX_ROWS,
   GuardrailHistoryFilterSchema,
   TEST_TRAFFIC_AGENT_PREFIXES,
 } from "@/src/features/acme-enhancements/server/acmeGuardrailsHistory";
 import { auditLog } from "@/src/features/audit-logs/auditLog";
+import { gatewayModeFromDb } from "@/src/features/acme-enhancements/utils/guardrailVerdictLabel";
 import { mayCallProjectProcedure } from "@/src/features/rbac/server/securityRoleAllowList";
 import {
   ALL_PII_ENTITIES,
@@ -216,6 +218,7 @@ const EVENT_ROW_SELECT = {
   action: true,
   userId: true,
   clientHost: true,
+  gatewayMode: true,
 } satisfies Prisma.AcmeGuardrailEventSelect;
 
 // updateConfig's and setMode's paths as the content-free roles' allow-lists
@@ -297,6 +300,8 @@ function toEventRow(
     direction: DIRECTION_FROM_DB[event.direction],
     policy_triggered: event.policyTriggered,
     action: ACTION_FROM_DB[event.action],
+    // CHG-2026-116: whether the gateway applied the verdict or only recorded it.
+    mode: gatewayModeFromDb(event.gatewayMode),
   };
 }
 
@@ -375,6 +380,7 @@ export const acmeGuardrailsRouter = createTRPCRouter({
             direction: event.direction,
             policy_triggered: event.policy_triggered,
             action: event.action,
+            mode: gatewayModeFromDb(event.gateway_mode),
           })),
         };
       }
@@ -422,7 +428,7 @@ export const acmeGuardrailsRouter = createTRPCRouter({
           select: EVENT_ROW_SELECT,
         }),
         prisma.acmeGuardrailEvent.groupBy({
-          by: ["action"],
+          by: ["action", "gatewayMode"],
           where,
           _count: { _all: true },
         }),
@@ -431,25 +437,7 @@ export const acmeGuardrailsRouter = createTRPCRouter({
           : Promise.resolve(0),
       ]);
 
-      const counts = {
-        total: 0,
-        blocked: 0,
-        redacted: 0,
-        allowed: 0,
-        unavailable: 0,
-      };
-      for (const group of byAction) {
-        const n = group._count._all;
-        counts.total += n;
-        if (group.action === AcmeGuardrailEventAction.BLOCK)
-          counts.blocked += n;
-        if (group.action === AcmeGuardrailEventAction.REDACT)
-          counts.redacted += n;
-        if (group.action === AcmeGuardrailEventAction.ALLOW)
-          counts.allowed += n;
-        if (group.action === AcmeGuardrailEventAction.UNAVAILABLE)
-          counts.unavailable += n;
-      }
+      const counts = countHistoryVerdicts(byAction);
 
       const page = rows.slice(0, input.pageSize);
       return {
@@ -593,6 +581,7 @@ export const acmeGuardrailsRouter = createTRPCRouter({
         traceId: event.traceId,
         direction: DIRECTION_FROM_DB[event.direction],
         action: ACTION_FROM_DB[event.action],
+        mode: gatewayModeFromDb(event.gatewayMode),
         policyTriggered: event.policyTriggered,
         source: sourceLabel(event.source),
         redactedText: event.redactedText,

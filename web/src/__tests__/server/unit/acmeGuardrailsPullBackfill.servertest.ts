@@ -30,6 +30,33 @@ const BASE: PulledGuardrailsEvent = {
 };
 
 describe("selectPullBackfillRows", () => {
+  it("keeps the gateway's reported mode, and only the two known modes (CHG-2026-116)", () => {
+    const rows = selectPullBackfillRows(
+      [
+        { ...BASE, event_id: "e-enforce", gateway_mode: "enforce" },
+        { ...BASE, event_id: "e-record", gateway_mode: "record" },
+        { ...BASE, event_id: "e-odd", gateway_mode: "ENFORCE" },
+        { ...BASE, event_id: "e-none" },
+      ],
+      "proj-1",
+      NOW,
+    );
+    expect(rows.map((row) => row.gatewayMode)).toEqual([
+      "enforce",
+      "record",
+      null,
+      null,
+    ]);
+  });
+
+  it("does not drop a buffered event whose mode it cannot read", () => {
+    const { events, dropped } = parseBufferedEvents([
+      { ...BASE, gateway_mode: "something-new" },
+    ]);
+    expect(dropped).toBe(0);
+    expect(events).toHaveLength(1);
+  });
+
   it("persists an old-enough event with an event_id, marked as pull", () => {
     const [row] = selectPullBackfillRows([BASE], "proj-1", NOW);
     expect(row).toMatchObject({

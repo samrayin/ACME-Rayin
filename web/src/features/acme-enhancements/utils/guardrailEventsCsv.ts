@@ -19,6 +19,9 @@ export function csvCell(value: string | null | undefined): string {
 const COLUMNS = [
   ["event_time_utc", "time"],
   ["action", "action"],
+  // CHG-2026-116: "enforce" when the gateway applied the verdict, "record"
+  // when it only recorded it, empty when the caller did not report a mode.
+  ["gateway_mode", "mode"],
   ["direction", "direction"],
   ["policy_triggered", "policy_triggered"],
   ["agent_id", "agent_id"],

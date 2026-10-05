@@ -6054,3 +6054,42 @@ appearance untouched.
 **Not in scope:** the trace-timeline test (CHG-2026-093, #267), the remaining `tests-web`,
 `tests-worker` and `e2e-tests` failures, and the two `web/src/ee/` type errors — the EE
 boundary workflow forbids touching those files, and they are not what fails CI.
+
+## 2026-10-05 — Guardrail events say whether the gateway enforced them (CHG-2026-116)
+
+**What:** the console labels a guardrail decision by what the gateway did with it. A block
+verdict reads **Blocked** only when the gateway was enforcing; in record mode, or when no
+mode was reported, it reads **Would block**. Redactions follow the same rule (**Redacted** /
+**Would redact**). The event log gains a **Mode** column (Enforce, Record, Not reported), the
+event detail shows the gateway's mode, and the CSV export gains a `gateway_mode` column.
+
+**Why it matters:** in record mode the gateway records a block verdict and lets the request
+through, but the console called it "Blocked". Anyone reading the log, a demo audience
+included, would take that as a refusal. With enforce now possible, the same badge has to
+tell the two apart.
+
+**Where the mode comes from:** each event already carries the mode the calling gateway
+replica reported (`gateway_mode`, CHG-2026-089 part b). Nothing is inferred from the current
+setting, so an event keeps the label it earned when it happened. An event with no reported
+mode (a caller other than the gateway, or an event older than the field) is treated as not
+enforced, because nothing says it was.
+
+**Changes:**
+- One labelling rule, `guardrailVerdictLabel`, used by the log, the detail panel and the
+  badge, with a client test.
+- The Guardrails page's totals are now **Block verdicts** and **Redact verdicts**, each with
+  a split such as "2 blocked · 5 would block". The log's summary line splits the same way, and
+  the Action filter reads "Blocked or would block". The counts come from one group-by on
+  action and mode (`countHistoryVerdicts`, with a server test).
+- The Enforcement card's evidence line says "block verdicts" instead of "blocked", since it
+  counts record-mode verdicts to estimate what enforce would refuse.
+- The pull backfill (`acmeGuardrailsPullBackfill`, shared with the worker) now stores the
+  `gateway_mode` the guardrails buffer already carries. Before, an event that reached CAIRO
+  only by the pull path lost its mode. An unknown value is stored as unreported, never
+  dropped.
+- The detail panel's "Blocked content" row reads "Flagged content" unless the gateway
+  enforced the verdict.
+
+**Not changed:** no migration; the column exists. "Allowed" and "No verdict" keep their
+labels. There is no filter by mode yet. The worker's scheduled backfill picks up the mode
+only when the worker image is next released, and it is switched off today.
