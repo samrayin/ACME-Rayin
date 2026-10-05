@@ -268,11 +268,22 @@ class TestEnforceMode(unittest.TestCase):
             self.assertEqual(cm.exception.violation_message, ANSWER_WITHHELD_UNCHECKED, verdict)
 
     def test_unreadable_answer_is_withheld_as_not_checked(self):
-        """Owner decision 2: a tool-call-only answer is refused in enforce."""
+        """Owner decision 2: a tool-call-only answer is refused in enforce.
+
+        The message changed in the CHG-2026-112 follow-up (review finding 4).
+        ``ANSWER_WITHHELD_UNCHECKED`` ends "Please try again later", which is
+        wrong here: the outcome is deterministic, and that is exactly why it
+        carries a 400 rather than a 503. The refusal itself is unchanged.
+        """
         g, calls = Hook.make({"action": "allow"}, mode="enforce")
         with self.assertRaises(PassthroughRaised) as cm:
             run(g, {"texts": [], "tool_calls": [{"id": "t1"}]}, req())
-        self.assertEqual(cm.exception.violation_message, ANSWER_WITHHELD_UNCHECKED)
+        self.assertEqual(cm.exception.violation_message, m.ANSWER_WITHHELD_UNREADABLE)
+        self.assertNotIn(
+            "try again",
+            cm.exception.violation_message.lower(),
+            "a deterministic outcome must not invite a retry",
+        )
         self.assertEqual(calls, [], "nothing to check, so the service is not called")
 
     def test_redaction_is_applied_to_a_whole_answer(self):
@@ -370,7 +381,27 @@ class TestHealthRecordOnAnswers(_CaptureHealth, unittest.TestCase):
         self.assertTrue(rec["refused"])
 
     def test_unreadable_answer_record_still_names_the_direction(self):
+        """An answer with no text: a recognised shape holding nothing.
+
+        The outcome was ``guard_unreadable`` until the CHG-2026-112 follow-up
+        split that code by cause. A tool-call-only answer is routine, not an
+        outage, so it is now ``nothing_to_check`` and carries a 400 rather than
+        a 503 that would page somebody for normal behaviour. The direction
+        assertion is what this test was always for, and is unchanged.
+        """
         rec = self._capture({"action": "allow"}, "record", req(), inputs={"texts": []})
+        self.assertEqual(rec["outcome"], "nothing_to_check")
+        self.assertEqual(rec["direction"], "output")
+
+    def test_an_answer_in_a_shape_we_cannot_read_stays_guard_unreadable(self):
+        """The other half of the split: ``texts`` that is not a list at all.
+
+        This is the CHG-2026-044 shape -- LiteLLM handing us something this
+        build does not understand -- and it has to stay loud.
+        """
+        rec = self._capture(
+            {"action": "allow"}, "record", req(), inputs={"texts": "not-a-list"}
+        )
         self.assertEqual(rec["outcome"], "guard_unreadable")
         self.assertEqual(rec["direction"], "output")
 
@@ -467,6 +498,55 @@ class TestMoreHealthRecordsOnAnswers(_CaptureHealth, unittest.TestCase):
         secret_text = "Fatima's account number is in this answer"
         rec = self._capture({"action": "block"}, "record", req(), inputs=answer(secret_text))
         self.assertNotIn(secret_text, json.dumps(rec))
+
+
+class TestWithheldAnswerStatusEndToEnd(unittest.TestCase):
+    """CHG-2026-112 follow-up — the answer side, driven through apply_guardrail.
+
+    The review's mutation run found that deleting ``status_for_event(...)`` from
+    the ``_withhold_answer`` call was caught by nothing: the existing tests call
+    ``_withhold_answer`` directly and hand it a status, so they pin the plumbing
+    below the decision rather than the decision itself (finding 3).
+
+    These run the real path and assert the status the hook *chose*.
+    """
+
+    def _withheld(self, verdict, inputs=None):
+        g, _ = Hook.make(verdict, mode="enforce")
+        with self.assertRaises(PassthroughRaised) as caught:
+            run(g, inputs if inputs is not None else answer(), req())
+        return caught.exception
+
+    def test_a_judged_block_withholds_with_400(self):
+        self.assertEqual(self._withheld({"action": "block"}).status_code, 400)
+
+    def test_judge_unavailable_withholds_with_503(self):
+        exc = self._withheld({"verdict": m.NO_VERDICT, "reason": m.JUDGE_UNAVAILABLE})
+        self.assertEqual(exc.status_code, 503)
+
+    def test_the_guardrail_being_unreachable_withholds_with_503(self):
+        self.assertEqual(self._withheld(None).status_code, 503)
+
+    def test_settings_we_cannot_trust_withhold_with_503(self):
+        """An action verdict carrying no settings labels at all."""
+        g, _ = Hook.make({"action": "allow"}, mode="enforce")
+
+        async def unlabelled(_payload):
+            return {"action": "allow"}
+
+        g._post_guard = unlabelled
+        with self.assertRaises(PassthroughRaised) as caught:
+            run(g, answer(), req())
+        self.assertEqual(caught.exception.status_code, 503)
+
+    def test_an_answer_with_no_text_withholds_with_400_not_503(self):
+        """Routine (a tool-call-only answer), so it must not page anyone."""
+        self.assertEqual(self._withheld({"action": "allow"}, inputs={"texts": []}).status_code, 400)
+
+    def test_an_answer_shape_we_cannot_read_withholds_with_503(self):
+        """The CHG-2026-044 shape: our integration, not the content."""
+        exc = self._withheld({"action": "allow"}, inputs={"texts": "not-a-list"})
+        self.assertEqual(exc.status_code, 503)
 
 
 if __name__ == "__main__":
