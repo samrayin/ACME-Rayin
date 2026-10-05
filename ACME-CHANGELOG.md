@@ -6078,8 +6078,14 @@ word alone, because the full-repo run died locally with a JavaScript heap error;
 one file costs nothing and would have caught this before the merge.
 
 **Not fixed here: the agent-shim check.** The same job reports "Agent shims are stale. Run
-'pnpm run agents:sync'". That script cannot run on Windows -
-`scripts/agents/sync-agent-shims.mjs` builds `C:\C:\...\.agents\config.json`, a doubled
-drive letter, and exits. So the staleness cannot be confirmed or corrected from a Windows
-machine, and no Windows developer can satisfy that check. Left for its own change rather
-than bundled in a lint fix.
+'pnpm run agents:sync'". That script cannot run on Windows, and **this is already a
+recorded finding**, not a new one: an earlier entry in this changelog isolated the cause to
+`scripts/agents/sync-agent-shims.mjs:15`, which passes a `file://` URL's `.pathname`
+straight to `resolve()` instead of through `fileURLToPath()`, producing a doubled drive
+prefix. It was logged as incidental, with the note that it "would block any future
+contributor doing a fresh clone-and-install on Windows".
+
+**It is no longer incidental.** A CI job now fails on stale shims that cannot be
+regenerated from a Windows machine, so the gate is unsatisfiable here. The one-line fix is
+already written down in that earlier entry. Left for its own change rather than bundled
+into a lint fix.
