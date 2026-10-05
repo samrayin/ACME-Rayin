@@ -15,8 +15,28 @@
 # `import` blocks. Do not `apply` until that reconciliation is done and
 # reviewed. See ACME-CHANGELOG.md for status.
 
+# Console settings that are specific to this deployment (CHG-2026-118). Until
+# then they existed only on the live web Deployment (Ledger TF-17 drift), so a
+# Helm upgrade from this config would have dropped them. Their values come from
+# a private variables file (see variables.tf). Account linking
+# (AUTH_AZURE_AD_ALLOW_ACCOUNT_LINKING) stays unset on purpose: CHG-2026-108
+# removed it, and nothing here may set it.
+locals {
+  cairo_access_env = concat(
+    [{ name = "CAIRO_GUARDRAIL_MODE_MAX", value = var.guardrail_mode_max }],
+    length(var.sso_enforced_domains) > 0 ? [
+      { name = "AUTH_DOMAINS_WITH_SSO_ENFORCEMENT", value = join(",", var.sso_enforced_domains) },
+    ] : [],
+    length(var.guardrail_admins) > 0 ? [
+      { name = "CAIRO_GUARDRAIL_ADMINS", value = join(",", var.guardrail_admins) },
+    ] : [],
+  )
+}
+
 module "langfuse" {
   source = "../../infra/langfuse-terraform-azure"
+
+  additional_env = local.cairo_access_env
 
   domain   = "langfuse-dev.aiatacme.com"
   location = "swedencentral"
