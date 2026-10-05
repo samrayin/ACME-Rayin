@@ -5885,6 +5885,52 @@ is refused today. This is a prerequisite for enforce, not a fix to live behaviou
 
 ---
 
+## 2026-10-04 — A refusal says whether the guardrail actually checked (CHG-2026-112)
+
+**What:** Two status fixes in the gateway hook, both from the post-merge review of
+CHG-2026-111. Neither changes what is refused: enforce still fails closed in every case.
+
+**Files:** `integrations/litellm/config/cairo_guardrail_hook.py`,
+`integrations/litellm/tests/test_cairo_guardrail_hook.py`
+
+**F1 — 503 when the check could not run.** CHG-2026-111 sent every refusal as 400. Four
+outcomes reach those raise sites without a verdict ever being reached:
+`guard_unavailable` (service down, timeout, 5xx or a garbled verdict), `guard_unreadable`,
+`settings_unusable` and `judge_unavailable`. Calling those "Bad Request" is wrong twice:
+the caller's request was fine, and a 4xx keeps a guardrails or judge outage out of any
+alerting that watches 5xx. They now return **503**; a refusal the guardrail actually
+decided stays **400**. The owner chose 503 on 2026-10-04 knowing OpenAI-SDK clients retry
+5xx twice by default, so during an outage one refusal may cost up to three guard calls -
+retrying is correct here, because the check could not run and a later attempt may succeed.
+
+**F2 — a withheld answer no longer reads as a server error mid-stream.** Traced in the
+installed 1.100.1. A non-streamed withheld answer was already fine: `chat_completion`'s
+`ModifyResponseException` handler builds its own HTTP 200 with
+`finish_reason: content_filter` and never reads a status. But in enforce a streamed answer
+is buffered, so the withhold lands *after* the `StreamingResponse` has been returned, and
+the stream is finished by `async_data_generator` - whose error frame takes
+`code=getattr(e, "status_code", 500)`. LiteLLM's `ModifyResponseException` carries no
+`status_code`, so **that frame claimed a server error for a policy refusal**. The hook now
+sets the attribute on the exception it raises, which changes only that frame; both HTTP 200
+paths are untouched, and a status LiteLLM sets itself is left alone.
+
+**F3 — the comment cited the wrong function.** CHG-2026-111's docstring pointed at
+`common_request_processing`. That file carries the same idiom, but the function on the
+chat-completions path is `_handle_llm_api_exception`, which uses the status **only when it
+is an int from 400 to 599** and falls back to 500 otherwise. Corrected, and the range check
+is now documented - a status outside it would be silently discarded and the refusal would
+become a 500 again.
+
+**Tests:** 10 added, 216 pass with no skips. They pin the mapping, that the four
+could-not-check outcomes are exactly the ones the review listed (so adding a fifth later
+and forgetting it cannot silently send an outage back as 400), that every status survives
+LiteLLM's 400-599 range check, both end-to-end paths, and the withheld-answer cases
+including the fallback. The fallback test is forced rather than skipped: the raiser is
+present in both environments the suite runs in, so a `skipTest` there would never execute.
+Checked by mutation - making `status_for_event` always return 400 fails 5 tests.
+
+**Not deployed.** Applying needs a gateway ConfigMap apply and restart (Tier 1, owner's
+approval), run from the primary window.
 ## 2026-10-05 — The lint and knip CI gates pass again (CHG-2026-113)
 
 **What:** Housekeeping so `main`'s CI gives a usable signal. No product behaviour changes.
