@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { AcmeGuardrailEventAction } from "@langfuse/shared/src/db";
 import {
   buildHiddenTestTrafficWhere,
   buildHistoryWhere,
+  countHistoryVerdicts,
   GuardrailHistoryFilterSchema,
   TEST_TRAFFIC_AGENT_PREFIXES,
 } from "@/src/features/acme-enhancements/server/acmeGuardrailsHistory";
@@ -79,5 +81,35 @@ describe("guardrail history filter", () => {
 
   it("rejects oversized free-text filters", () => {
     expect(() => filter({ agent: "x".repeat(201) })).toThrow();
+  });
+});
+
+describe("guardrail history counts (CHG-2026-116)", () => {
+  it("splits block and redact verdicts by whether the gateway enforced them", () => {
+    const g = (
+      action: AcmeGuardrailEventAction,
+      gatewayMode: string | null,
+      n: number,
+    ) => ({ action, gatewayMode, _count: { _all: n } });
+    expect(
+      countHistoryVerdicts([
+        g(AcmeGuardrailEventAction.BLOCK, "enforce", 2),
+        g(AcmeGuardrailEventAction.BLOCK, "record", 5),
+        g(AcmeGuardrailEventAction.BLOCK, null, 1),
+        g(AcmeGuardrailEventAction.REDACT, "enforce", 3),
+        g(AcmeGuardrailEventAction.REDACT, null, 4),
+        g(AcmeGuardrailEventAction.ALLOW, "enforce", 10),
+        g(AcmeGuardrailEventAction.ALLOW, null, 6),
+        g(AcmeGuardrailEventAction.UNAVAILABLE, "enforce", 1),
+      ]),
+    ).toEqual({
+      total: 32,
+      blocked: 8,
+      blockedEnforced: 2,
+      redacted: 7,
+      redactedEnforced: 3,
+      allowed: 16,
+      unavailable: 1,
+    });
   });
 });

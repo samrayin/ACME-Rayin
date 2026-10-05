@@ -233,9 +233,9 @@ export function AcmeGuardrailsEnforcement({
               {evidence.windowDays} days)
             </div>
             <div className="text-muted-foreground text-xs">
-              {evidence.total} decisions: {evidence.blocked} blocked (
+              {evidence.total} decisions: {evidence.blocked} block verdicts (
               {percent(evidence.blocked, evidence.total)} would be refused in
-              enforce), {evidence.redacted} redacted (
+              enforce), {evidence.redacted} redact verdicts (
               {percent(evidence.redacted, evidence.total)} would be sent
               redacted), {evidence.allowed} allowed, {evidence.unavailable}{" "}
               without a verdict ({percent(evidence.unavailable, evidence.total)}{" "}

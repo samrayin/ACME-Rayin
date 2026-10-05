@@ -42,6 +42,9 @@ const PulledGuardrailsEventSchema = z.object({
   direction: z.enum(["input", "output"]),
   policy_triggered: z.string().nullable(),
   action: z.enum(["allow", "redact", "block", "unavailable"]),
+  // CHG-2026-116: the mode the calling gateway replica reported. Read
+  // leniently: an unknown value is stored as unreported, never dropped.
+  gateway_mode: z.string().nullish(),
 });
 
 /**
@@ -75,6 +78,7 @@ export type PulledGuardrailsEvent = {
   direction: "input" | "output";
   policy_triggered: string | null;
   action: "allow" | "redact" | "block" | "unavailable";
+  gateway_mode?: string | null;
 };
 
 const PULLED_ACTION_TO_DB: Record<
@@ -114,6 +118,10 @@ export function selectPullBackfillRows(
       direction: event.direction === "input" ? "INPUT" : "OUTPUT",
       policyTriggered: event.policy_triggered,
       action: PULLED_ACTION_TO_DB[event.action],
+      gatewayMode:
+        event.gateway_mode === "enforce" || event.gateway_mode === "record"
+          ? event.gateway_mode
+          : null,
       source: "PULL",
     }));
 }
