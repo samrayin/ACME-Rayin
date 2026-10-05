@@ -140,12 +140,17 @@ async function runTool(
   if (name === "get_trace_detail") {
     const traceId = String(input.traceId ?? "");
     const [trace, observations, scores] = await Promise.all([
-      // eslint-disable-next-line @typescript-eslint/no-deprecated -- CHG-2026-113.
       // Upstream prefers getTraceByIdFromEventsTable for new use-cases. Swapping
       // it here changes WHERE the AI chat reads trace detail from, which is a
       // behaviour change, not a lint fix, and nothing covers this path with a
       // test. Migrating it to silence a warning would be the wrong trade.
-      // Tracked as its own change; see the CHG-2026-113 PR.
+      // Tracked as its own change; see CHG-2026-113.
+      //
+      // The directive has to be the line IMMEDIATELY above the call: it covers
+      // the next line, and when the explanation sat between the two it covered
+      // a comment instead, leaving the call still flagged AND the directive
+      // itself reported as unused. Two warnings where there should be none.
+      // eslint-disable-next-line @typescript-eslint/no-deprecated
       getTraceById({ traceId, projectId }),
       getObservationsForTrace({ traceId, projectId, includeIO: false }),
       getScoresForTraces({

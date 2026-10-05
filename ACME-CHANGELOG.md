@@ -6054,3 +6054,38 @@ appearance untouched.
 **Not in scope:** the trace-timeline test (CHG-2026-093, #267), the remaining `tests-web`,
 `tests-worker` and `e2e-tests` failures, and the two `web/src/ee/` type errors — the EE
 boundary workflow forbids touching those files, and they are not what fails CI.
+
+---
+
+## 2026-10-05 — The lint gate actually passes (CHG-2026-113, follow-up)
+
+**What:** CHG-2026-113 merged with its `lint` job still failing. One-line placement fix.
+
+**File:** `web/src/features/acme-enhancements/server/acmeChatRouter.ts`
+
+**The defect.** `eslint-disable-next-line` covers the line immediately after it. The
+directive was written with six lines of explanation between it and the `getTraceById`
+call, so it covered a **comment**. That produced two warnings, not zero: the call was
+still flagged, and the directive was additionally reported as unused. With
+`--max-warnings 0`, the gate stayed red.
+
+The explanation now sits above the directive, and the directive immediately above the
+call.
+
+**Verified this time.** `eslint --max-warnings 0` on that single file: exit **0** with the
+fix, exit **1** with two warnings without it. CHG-2026-113 claimed lint passed on CI's
+word alone, because the full-repo run died locally with a JavaScript heap error; linting
+one file costs nothing and would have caught this before the merge.
+
+**Not fixed here: the agent-shim check.** The same job reports "Agent shims are stale. Run
+'pnpm run agents:sync'". That script cannot run on Windows, and **this is already a
+recorded finding**, not a new one: an earlier entry in this changelog isolated the cause to
+`scripts/agents/sync-agent-shims.mjs:15`, which passes a `file://` URL's `.pathname`
+straight to `resolve()` instead of through `fileURLToPath()`, producing a doubled drive
+prefix. It was logged as incidental, with the note that it "would block any future
+contributor doing a fresh clone-and-install on Windows".
+
+**It is no longer incidental.** A CI job now fails on stale shims that cannot be
+regenerated from a Windows machine, so the gate is unsatisfiable here. The one-line fix is
+already written down in that earlier entry. Left for its own change rather than bundled
+into a lint fix.
