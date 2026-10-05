@@ -115,3 +115,44 @@ export function buildHiddenTestTrafficWhere(
   if (!filter.hideTestTraffic) return null;
   return { projectId, AND: [...filterConditions(filter), isTestTraffic] };
 }
+
+/**
+ * The history view's counts, from a groupBy on action and gateway mode.
+ * `blocked` and `redacted` count every such verdict; the `...Enforced` counts
+ * only those the gateway applied, which it reports as mode "enforce". The
+ * rest were recorded and let through (CHG-2026-116).
+ */
+export function countHistoryVerdicts(
+  groups: {
+    action: AcmeGuardrailEventAction;
+    gatewayMode: string | null;
+    _count: { _all: number };
+  }[],
+) {
+  const counts = {
+    total: 0,
+    blocked: 0,
+    blockedEnforced: 0,
+    redacted: 0,
+    redactedEnforced: 0,
+    allowed: 0,
+    unavailable: 0,
+  };
+  for (const group of groups) {
+    const n = group._count._all;
+    const enforced = group.gatewayMode === "enforce";
+    counts.total += n;
+    if (group.action === AcmeGuardrailEventAction.BLOCK) {
+      counts.blocked += n;
+      if (enforced) counts.blockedEnforced += n;
+    }
+    if (group.action === AcmeGuardrailEventAction.REDACT) {
+      counts.redacted += n;
+      if (enforced) counts.redactedEnforced += n;
+    }
+    if (group.action === AcmeGuardrailEventAction.ALLOW) counts.allowed += n;
+    if (group.action === AcmeGuardrailEventAction.UNAVAILABLE)
+      counts.unavailable += n;
+  }
+  return counts;
+}

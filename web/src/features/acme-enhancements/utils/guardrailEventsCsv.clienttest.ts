@@ -26,6 +26,7 @@ describe("guardrail events CSV", () => {
       {
         time: "2026-09-24T10:00:00.000Z",
         action: "block",
+        mode: "record",
         direction: "input",
         policy_triggered: "Jailbreak Detection",
         agent_id: "gateway",
@@ -37,8 +38,8 @@ describe("guardrail events CSV", () => {
       },
     ]);
     expect(csv).toBe(
-      "event_time_utc,action,direction,policy_triggered,agent_id,user_id,client_host,trace_id,event_id,source\r\n" +
-        "2026-09-24T10:00:00.000Z,block,input,Jailbreak Detection,gateway,,'=evil(),,e1,push\r\n",
+      "event_time_utc,action,gateway_mode,direction,policy_triggered,agent_id,user_id,client_host,trace_id,event_id,source\r\n" +
+        "2026-09-24T10:00:00.000Z,block,record,input,Jailbreak Detection,gateway,,'=evil(),,e1,push\r\n",
     );
   });
 });

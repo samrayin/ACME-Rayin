@@ -57,6 +57,12 @@ import { cn } from "@/src/utils/tailwind";
 import { useReadPath } from "@/src/features/events/hooks/useReadPath";
 import { type QueryType, type ViewVersion } from "@langfuse/shared/query";
 import { AcmeGuardrailsEnforcement } from "@/src/features/acme-enhancements/components/AcmeGuardrailsEnforcement";
+import {
+  type GatewayMode,
+  type GuardrailAction,
+  gatewayModeLabel,
+  guardrailVerdictLabel,
+} from "@/src/features/acme-enhancements/utils/guardrailVerdictLabel";
 
 const ALL_PII_ENTITIES = [
   "EMAIL_ADDRESS",
@@ -81,19 +87,25 @@ const ENTITY_LABELS: Record<string, string> = {
   BH_CPR: "Bahrain CPR number",
 };
 
+// CHG-2026-116: "Blocked" only when the gateway enforced the verdict; in
+// record mode, or with no reported mode, it reads "Would block".
 function ActionBadge({
   action,
+  mode,
 }: {
-  action: "allow" | "redact" | "block" | "unavailable";
+  action: GuardrailAction;
+  mode: GatewayMode | null;
 }) {
-  if (action === "block") return <Badge variant="error">Blocked</Badge>;
-  if (action === "redact") return <Badge variant="warning">Redacted</Badge>;
-  // N-64: the judge model could not answer, so there is no verdict. In
-  // enforce the gateway refuses such a request.
-  if (action === "unavailable")
-    return <Badge variant="secondary">No verdict</Badge>;
-  return <Badge variant="success">Allowed</Badge>;
+  const { label, variant } = guardrailVerdictLabel(action, mode);
+  return <Badge variant={variant}>{label}</Badge>;
 }
+
+const GATEWAY_MODE_DETAIL: Record<GatewayMode | "none", string> = {
+  enforce: "Enforce: the gateway applied this decision.",
+  record:
+    "Record: the gateway recorded this decision and let the request through.",
+  none: "Not reported: not treated as applied.",
+};
 
 function formatDateTime(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
@@ -181,7 +193,13 @@ function AcmeGuardrailEventDetail({
                 {detail.data.policyTriggered ?? "—"}
               </DetailRow>
               <DetailRow label="Action">
-                <ActionBadge action={detail.data.action} />
+                <ActionBadge
+                  action={detail.data.action}
+                  mode={detail.data.mode}
+                />
+              </DetailRow>
+              <DetailRow label="Gateway mode">
+                {GATEWAY_MODE_DETAIL[detail.data.mode ?? "none"]}
               </DetailRow>
               {detail.data.action === "redact" && detail.data.redactedText && (
                 <DetailRow label="Redacted text">
@@ -191,7 +209,13 @@ function AcmeGuardrailEventDetail({
                 </DetailRow>
               )}
               {detail.data.action === "block" && (
-                <DetailRow label="Blocked content">
+                <DetailRow
+                  label={
+                    detail.data.mode === "enforce"
+                      ? "Blocked content"
+                      : "Flagged content"
+                  }
+                >
                   {detail.data.hasEncryptedContent ? (
                     <span className="text-muted-foreground">
                       Stored encrypted. Not shown here.
@@ -893,21 +917,33 @@ export function AcmeGuardrailsTable({ projectId }: { projectId: string }) {
         <Card>
           <CardHeader className="pb-1">
             <CardTitle className="text-muted-foreground text-xs font-bold tracking-wide uppercase">
-              Blocked
+              Block verdicts
             </CardTitle>
           </CardHeader>
-          <CardContent className="text-dark-red pt-0 text-2xl font-bold">
-            {summary.blocked}
+          <CardContent className="pt-0">
+            <div className="text-dark-red text-2xl font-bold">
+              {summary.blocked}
+            </div>
+            <div className="text-muted-foreground text-xs">
+              {summary.blockedEnforced} blocked ·{" "}
+              {summary.blocked - summary.blockedEnforced} would block
+            </div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-1">
             <CardTitle className="text-muted-foreground text-xs font-bold tracking-wide uppercase">
-              Redacted
+              Redact verdicts
             </CardTitle>
           </CardHeader>
-          <CardContent className="text-dark-yellow pt-0 text-2xl font-bold">
-            {summary.redacted}
+          <CardContent className="pt-0">
+            <div className="text-dark-yellow text-2xl font-bold">
+              {summary.redacted}
+            </div>
+            <div className="text-muted-foreground text-xs">
+              {summary.redactedEnforced} redacted ·{" "}
+              {summary.redacted - summary.redactedEnforced} would redact
+            </div>
           </CardContent>
         </Card>
         <Card>
@@ -1028,7 +1064,18 @@ const GUARDRAIL_EVENT_COLUMNS: LangfuseColumnDef<GuardrailEventRow>[] = [
   {
     accessorKey: "action",
     header: "Action",
-    cell: ({ row }) => <ActionBadge action={row.original.action} />,
+    cell: ({ row }) => (
+      <ActionBadge action={row.original.action} mode={row.original.mode} />
+    ),
+  },
+  {
+    accessorKey: "mode",
+    header: "Mode",
+    headerTooltip: {
+      description:
+        "The gateway's mode when it asked for this decision. Enforce: the gateway applied it. Record: it was recorded and the request went through. Not reported: the caller was not the gateway, or the event is older than this field.",
+    },
+    cell: ({ row }) => gatewayModeLabel(row.original.mode),
   },
 ];
 
@@ -1160,8 +1207,10 @@ export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All actions</SelectItem>
-                  <SelectItem value="block">Blocked</SelectItem>
-                  <SelectItem value="redact">Redacted</SelectItem>
+                  <SelectItem value="block">Blocked or would block</SelectItem>
+                  <SelectItem value="redact">
+                    Redacted or would redact
+                  </SelectItem>
                   <SelectItem value="allow">Allowed</SelectItem>
                   <SelectItem value="unavailable">
                     No verdict (judge unavailable)
@@ -1239,7 +1288,10 @@ export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
                 </span>
                 <span className="text-muted-foreground">
                   {" "}
-                  · {counts.blocked} blocked · {counts.redacted} redacted ·{" "}
+                  · {counts.blockedEnforced} blocked ·{" "}
+                  {counts.blocked - counts.blockedEnforced} would block ·{" "}
+                  {counts.redactedEnforced} redacted ·{" "}
+                  {counts.redacted - counts.redactedEnforced} would redact ·{" "}
                   {counts.allowed} allowed · {counts.unavailable} without a
                   verdict
                   {applied.hideTestTraffic &&
