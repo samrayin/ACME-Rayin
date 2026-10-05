@@ -6093,3 +6093,34 @@ enforced, because nothing says it was.
 **Not changed:** no migration; the column exists. "Allowed" and "No verdict" keep their
 labels. There is no filter by mode yet. The worker's scheduled backfill picks up the mode
 only when the worker image is next released, and it is switched off today.
+
+## 2026-10-05 — Agent shim sync runs on Windows without deleting the shims (CHG-2026-117)
+
+**What:** `scripts/agents/sync-agent-shims.mjs` now resolves its own repository root with
+`fileURLToPath()` and, where the platform refuses symlinks, writes the shim as a regular
+file holding the target path.
+
+**Why it matters:** the script could not run on Windows at all, and the obvious one-line fix
+for that makes it destructive. Line 15 passed a `file://` URL's `.pathname` straight to
+`resolve()`. On Windows that string keeps a leading slash before the drive letter, so the
+path came out as `C:\C:\...`, the agent config was never found, and the script failed before
+touching anything — harmless. Fix only that, and the script gets as far as `symlinkSync`,
+which Windows refuses with `EPERM` unless Developer Mode is on — **after** `rmSync` has
+already removed the shim. The repository is left with `AGENTS.md` deleted. Reproduced in an
+isolated worktree, and it is how the file was lost here once already.
+
+**Changes:**
+- `fileURLToPath(new URL("../..", import.meta.url))` for the repository root, with a comment
+  saying why `.pathname` is wrong.
+- `symlinkSync` wrapped: on `EPERM` or `EACCES` the script writes the relative target path
+  into a regular file with forward slashes, and says which of the two it did. Any other
+  error still throws.
+
+**Why a plain file is the right fallback:** it is byte-identical to what git itself checks
+out for a mode `120000` entry when `core.symlinks=false`, which is how these shims already
+appear in a Windows clone. Verified: after a full run, `AGENTS.md` is 17 bytes containing
+`.agents/AGENTS.md`, and no tracked file shows a content change.
+
+**Not changed:** this does not address the CI "Agent shims are stale" complaint. That check
+compares against real symlinks, which cannot exist on Windows, so the comparison itself
+cannot be verified from this machine — only from CI or a POSIX checkout.
