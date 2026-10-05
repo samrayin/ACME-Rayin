@@ -40,8 +40,38 @@ Before any `apply`:
    progress — see the "Outstanding" section of `ACME-CHANGELOG.md`)
 3. Confirm `terraform plan` shows **zero** changes before trusting `apply`
 
+## Deployment-specific values (private)
+
+Some console settings name the environment or its people, so their values are
+not kept in this public repository (CHG-2026-118). `variables.tf` declares
+them; the dev values live in a private variables file in the operations
+repository, `envs/dev/deploy-azure.tfvars`. Pass it to every plan:
+
+```bash
+terraform plan -var-file=<path to the operations repository>/envs/dev/deploy-azure.tfvars
+```
+
+| Variable | Console setting | Without the file |
+|---|---|---|
+| `guardrail_mode_max` | `CAIRO_GUARDRAIL_MODE_MAX`, the guardrail deployment ceiling | `record` |
+| `sso_enforced_domains` | `AUTH_DOMAINS_WITH_SSO_ENFORCEMENT` | not set: no domain is SSO-only |
+| `guardrail_admins` | `CAIRO_GUARDRAIL_ADMINS` | not set: nobody can change guardrail policy or mode |
+
+A plan without the file would therefore lower dev's ceiling to record, reopen
+password sign-in for users, and leave no guardrail administrator. Account
+linking (`AUTH_AZURE_AD_ALLOW_ACCOUNT_LINKING`) stays unset; there is no
+variable for it.
+
+To check that these values, and the gateway manifests, match the live
+environment (read-only):
+
+```bash
+scripts/release/check-declared-settings.sh --web-env <ops>/envs/dev/web.env --tfvars <ops>/envs/dev/deploy-azure.tfvars
+```
+
 ## Files
 
 - `versions.tf` — provider requirements + the remote state backend
 - `providers.tf` — azurerm/kubernetes/helm provider configuration
 - `main.tf` — the actual `module "langfuse"` call, pinned to live values
+- `variables.tf` — deployment-specific settings whose values come from the private variables file

@@ -1,0 +1,18 @@
+# At most one gateway replica may be unavailable during a voluntary
+# disruption, such as a node drain or an AKS upgrade (CHG-2026-088 a). With two
+# replicas, one per node, this keeps the gateway serving through a drain.
+#
+# Declared here by CHG-2026-118; before that it existed only on the cluster.
+# Apply with: kubectl apply -f pdb.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: litellm-pdb
+  namespace: rayin-platform
+  labels:
+    acme.change: chg-2026-088
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: litellm

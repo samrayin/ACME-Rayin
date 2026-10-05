@@ -6124,3 +6124,40 @@ appear in a Windows clone. Verified: after a full run, `AGENTS.md` is 17 bytes c
 **Not changed:** this does not address the CI "Agent shims are stale" complaint. That check
 compares against real symlinks, which cannot exist on Windows, so the comparison itself
 cannot be verified from this machine — only from CI or a POSIX checkout.
+
+## 2026-10-05 — Live console and gateway settings declared in code (CHG-2026-118)
+
+**What:** settings that existed only on the cluster are now declared in this repository,
+so a future Helm upgrade or `kubectl apply` from the code no longer silently drops them.
+Nothing was applied to the cluster.
+
+**Why it matters:** on 5 October dev moved to enforce: the guardrail ceiling went to
+`enforce` and sign-in became SSO-only for users (CHG-2026-108). Both were set directly on
+the Deployments. The gateway manifest still said one replica, with no spread rule and no
+ceiling, so applying it would have halved the gateway and put it back in record mode.
+Applying the console's Terraform would have reopened password sign-in.
+
+**Changes:**
+- **Gateway** (`integrations/litellm/k8s/`): `deployment.yaml` now has the live replica
+  count (2), the required one-per-node spread rule (CHG-2026-088 a) and the ceiling
+  (`CAIRO_GUARDRAIL_MODE_MAX`). A new `pdb.yaml` holds its disruption budget, at most one
+  replica unavailable. A server-side `kubectl diff` of both files against the cluster
+  shows no difference.
+- **Console** (`deploy/azure/`): a new `variables.tf` declares the guardrail ceiling, the
+  SSO-enforced sign-in domains and the guardrail administrators, and `main.tf` passes them
+  to the console through the module's `additional_env`. Their dev values live in a
+  private variables file in the operations repository, because the domain and the
+  administrators' emails identify the environment and its people. Without that file, the
+  defaults are a `record` ceiling, no SSO-only domain and no administrator. Account
+  linking stays unset; there is no variable for it. `terraform validate` passes. Evaluated
+  with the private file, the three values equal the live ones (compared by hash).
+- **Check** (`scripts/release/check-declared-settings.sh`): read-only. It diffs the
+  gateway files against the cluster and compares the three console settings with the
+  private file, printing only the ceiling's value. It exits non-zero on any difference.
+  Tested both ways: a matching file passes; a changed ceiling, domain list, administrator
+  list or replica count fails.
+
+**Not changed:** `deploy/azure` is still not reconciled with the live environment and
+must not be applied. The console's other live-only settings (replicas, spread rule,
+outbound allowlist and others) are not declared yet; that is the Phase C reconciliation.
+The check compares only the settings this change declares.

@@ -13,7 +13,10 @@ metadata:
   name: litellm
   namespace: rayin-platform
 spec:
-  replicas: 1
+  # Two replicas, one per node (CHG-2026-088 a). This file said 1 until
+  # CHG-2026-118 declared the live value; applying the old file would have
+  # dropped the gateway to a single replica.
+  replicas: 2
   selector:
     matchLabels:
       app: litellm
@@ -22,6 +25,20 @@ spec:
       labels:
         app: litellm
     spec:
+      # Required spread, one replica per node (CHG-2026-088 a follow-up): the
+      # first rule was only a preference, and a restart put both replicas on
+      # one node. pod-template-hash scopes the rule to one rollout, so a new
+      # ReplicaSet can start beside the old one. Declared here by CHG-2026-118.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          nodeTaintsPolicy: Honor
+          matchLabelKeys:
+            - pod-template-hash
+          labelSelector:
+            matchLabels:
+              app: litellm
       containers:
         - name: litellm
           # Pinned by digest (CHG-2026-006, 2026-09-19): this is the multi-arch
@@ -45,6 +62,14 @@ spec:
             allowPrivilegeEscalation: false
           ports:
             - containerPort: 4000
+          env:
+            # The guardrail deployment ceiling (CHG-2026-089 part b, decision
+            # D-B3): "enforce" lets the console's enforce switch take effect at
+            # this gateway; unset or any other value means record. Dev has run
+            # with "enforce" since 2026-10-05, on the owner's yes. Declared
+            # here by CHG-2026-118; before that it existed only on the cluster.
+            - name: CAIRO_GUARDRAIL_MODE_MAX
+              value: "enforce"
           envFrom:
             - secretRef:
                 name: litellm-provider-keys
