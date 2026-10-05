@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
-import { buildEventRow } from "@/src/features/acme-enhancements/server/acmeGuardrailsEventsIngestService";
-import type { GuardrailsEventPushInput } from "@/src/features/acme-enhancements/server/acmeGuardrailsEventsIngestService";
+import {
+  buildEventRow,
+  type GuardrailsEventPushInput,
+} from "@/src/features/acme-enhancements/server/acmeGuardrailsEventsIngestService";
 
 // Pure-logic coverage for the tiered-content rule (POSTGRES-COMPLIANCE-
 // FRAMEWORK.md §1.1): allow -> metadata only, redact -> redactedText +

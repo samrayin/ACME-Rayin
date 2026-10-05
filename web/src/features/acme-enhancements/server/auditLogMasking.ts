@@ -60,7 +60,8 @@ export const AUDIT_LOG_METADATA_FIELDS: ReadonlySet<string> = new Set([
  * that these roles already read through `acmeGuardrails.getConfig` and
  * `acmeGuardrails.modeChanges`.
  */
-export const UNMASKED_AUDIT_RESOURCE_TYPES: ReadonlySet<string> = new Set([
+// Not exported: used only inside this module (knip, CHG-2026-113).
+const UNMASKED_AUDIT_RESOURCE_TYPES: ReadonlySet<string> = new Set([
   "acmeGuardrailSettings",
 ]);
 

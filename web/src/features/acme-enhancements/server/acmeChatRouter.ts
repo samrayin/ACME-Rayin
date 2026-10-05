@@ -140,6 +140,12 @@ async function runTool(
   if (name === "get_trace_detail") {
     const traceId = String(input.traceId ?? "");
     const [trace, observations, scores] = await Promise.all([
+      // eslint-disable-next-line @typescript-eslint/no-deprecated -- CHG-2026-113.
+      // Upstream prefers getTraceByIdFromEventsTable for new use-cases. Swapping
+      // it here changes WHERE the AI chat reads trace detail from, which is a
+      // behaviour change, not a lint fix, and nothing covers this path with a
+      // test. Migrating it to silence a warning would be the wrong trade.
+      // Tracked as its own change; see the CHG-2026-113 PR.
       getTraceById({ traceId, projectId }),
       getObservationsForTrace({ traceId, projectId, includeIO: false }),
       getScoresForTraces({

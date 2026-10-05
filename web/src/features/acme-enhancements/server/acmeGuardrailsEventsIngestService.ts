@@ -33,9 +33,11 @@ function getWriterClient(): PrismaClient {
         "event writes. See POSTGRES-COMPLIANCE-FRAMEWORK.md.",
     );
   }
-  writerClient ??= new PrismaClient({
-    datasourceUrl: env.RAYIN_GUARDRAILS_WRITER_DATABASE_URL,
-  });
+  if (writerClient === null || writerClient === undefined) {
+    writerClient = new PrismaClient({
+      datasourceUrl: env.RAYIN_GUARDRAILS_WRITER_DATABASE_URL,
+    });
+  }
   return writerClient;
 }
 
