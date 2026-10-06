@@ -890,6 +890,197 @@ jobs:
           NODE_COMPILE_CACHE: /tmp/node-compile-cache
         run: npx dotenv -e ../.env.test -e ../.env -- vitest run --project server --project server-isolated --project server-shared-source --project server-unit --project server-shared-source-unit --maxWorkers="${VITEST_MAX_WORKERS:-8}"
 
+  # CHG-2026-123 / ADR-0024 -- Gap Register EE-12.
+  #
+  # tests-web injects LANGFUSE_EE_LICENSE_KEY=langfuse_ee_test, so CI runs the
+  # suite on an enterprise plan while every CAIRO deployment runs as 'oss'. CI is
+  # therefore not testing what ships, and no one can see which tests pass only
+  # because of that key.
+  #
+  # This job is tests-web with the key left out and nothing else changed. The
+  # difference between the two runs, on the same commit, is the answer.
+  # tests-web itself is untouched.
+  tests-web-no-ee-licence:
+    timeout-minutes: 30
+    # Diagnostic only. It must never block a merge, and it is not in
+    # all-ci-passed, so a failure here reports without gating anything.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    needs:
+      - pre-job
+    # pre-job only runs on push events; everywhere else it resolves as skipped
+    # at run creation, so this job starts immediately (!cancelled() lets the
+    # condition evaluate despite the skipped dependency).
+    # Costs nothing until asked for: run it from the Actions tab, or by putting
+    # the 'ee-licence-check' label on a PR. Deliberately kept off every ordinary
+    # run because GitHub Actions minutes are a live constraint (IMP-1).
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'ee-licence-check') }}
+    name: tests-web without the EE licence key (node${{ matrix.node-version }}, pg${{ matrix.postgres-version }})
+    env:
+      # ACME CHG-2026-034: was 12, sized for 16 Blacksmith vCPUs (0.75
+      # workers/vCPU, the ratio this job's own "one vCPU per worker" comment
+      # below already keeps headroom under). Retuned to 3 for the same ratio
+      # on ubuntu-latest's 4 vCPUs.
+      VITEST_MAX_WORKERS: "3"
+      NODE_ENV: test
+    strategy:
+      matrix:
+        node-version: [24]
+        postgres-version: [15]
+        deploy-mode: [""] # one mode only: this job answers a licence question, not a deploy-mode one
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install golang-migrate for Clickhouse migrations in background
+        # Only needed by the "Migrate DB" step, so let the dependency setup
+        # overlap the 1-25s download. "Migrate DB" waits for the marker file.
+        run: |
+          (
+            set -e
+            curl --fail --location --retry 5 --retry-delay 2 --retry-all-errors \
+              --output migrate.linux-amd64.tar.gz \
+              https://github.com/golang-migrate/migrate/releases/download/v4.19.1/migrate.linux-amd64.tar.gz
+            tar xzf migrate.linux-amd64.tar.gz
+            sudo mv migrate /usr/bin/migrate
+            touch /tmp/migrate-installed
+          ) > /tmp/migrate-install.log 2>&1 &
+      - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        with:
+          install: false
+          cache: false
+      - name: Login to Docker Hub
+        if: github.repository == 'langfuse/langfuse' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME_READ }}
+          password: ${{ secrets.DOCKERHUB_TOKEN_READ }}
+      - name: Use Node.js ${{ matrix.node-version }} without cache
+        if: env.CI_CACHE_ALLOWED != 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node-version }}
+          package-manager-cache: false
+      - name: Use Node.js ${{ matrix.node-version }} with pnpm cache
+        if: env.CI_CACHE_ALLOWED == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # zizmor: ignore[cache-poisoning] test job dependency cache only; no released artifacts are built or published from this cached state
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "pnpm"
+          cache-dependency-path: "pnpm-lock.yaml"
+      - name: install dependencies
+        run: |
+          pnpm install
+      - name: Load default env
+        run: |
+          write_test_env() {
+            {
+              grep -v -e '^LANGFUSE_S3_BATCH_EXPORT_ENABLED=' -e '^NEXT_PUBLIC_LANGFUSE_RUN_NEXT_INIT=' "$1"
+              echo "LANGFUSE_INGESTION_QUEUE_DELAY_MS=1"
+              echo "LANGFUSE_CACHE_PROMPT_ENABLED=false"
+              echo "LANGFUSE_INGESTION_CLICKHOUSE_WRITE_INTERVAL_MS=1"
+              echo "LANGFUSE_TRACE_DELETE_DELAY_MS=1"
+              echo "LANGFUSE_TRACE_DELETE_CONCURRENCY=100"
+              echo "ADMIN_API_KEY=admin-api-key"
+              # CHG-2026-123 / EE-12: deliberately NOT set here. That is the whole point
+              # of this job -- it runs the suite the way CAIRO actually runs, as "oss".
+              echo "LANGFUSE_SKIP_EVALUATOR_MODEL_CALL_VALIDATION=true"
+              echo "LANGFUSE_ENABLE_SCORES_V3_API=true"
+            } > "$2"
+          }
+
+          # Compile once under the default test environment. Next's generate
+          # phase below reapplies the mode-specific config and prerendering.
+          write_test_env .env.dev.example .env
+          write_test_env .env.dev${{ matrix.deploy-mode }}.example .env.runtime
+      - name: Setup Turbo remote cache
+        if: env.CI_CACHE_ALLOWED == 'true'
+        continue-on-error: true
+        uses: rharkor/caching-for-turbo@2238fae6eb9a9936f92356f54cb3660200d105e7 # v2.5.1
+        with:
+          provider: github
+          cache-prefix: ${{ runner.os }}-${{ runner.arch }}-node${{ env.NODE_VERSION }}-turbo-ci-
+          use-relative-cache-path: true
+          server-port: "0"
+      # No Next.js build cache here on purpose: its ~30s/job restore+save cost
+      # roughly cancels the build speedup, and the Turbo cache above already
+      # replays unchanged builds.
+      - name: Start dev containers in background
+        # Independent of the build, so let the build overlap the ~15-20s
+        # container startup. "Wait for dev containers" collects the result.
+        run: |
+          (set +e; docker compose --env-file .env.runtime -f docker-compose.dev${{ matrix.deploy-mode }}.yml -f docker-compose.ci-azure-like.yml up -d --wait --wait-timeout 180 > /tmp/compose-up.log 2>&1; echo $? > /tmp/compose-up.exit) &
+        env:
+          POSTGRES_VERSION: ${{ matrix.postgres-version }}
+      - name: Build
+        run: pnpm turbo run build:test
+        env:
+          NEXT_DISABLE_BUILD_CACHE: "true"
+          NODE_OPTIONS: --max_old_space_size=8192
+          # TypeScript is checked explicitly in the lint job; skip duplicate
+          # Next.js type checks in test builds to reduce CI runtime.
+          NEXT_IGNORE_BUILD_ERRORS: "true"
+      - name: Finalize build for runtime environment
+        run: |
+          cp .env.runtime .env
+          pnpm --filter web exec dotenv -e ../.env -- next build --experimental-build-mode generate
+        env:
+          NEXT_DISABLE_BUILD_CACHE: "true"
+          NODE_OPTIONS: --max_old_space_size=8192
+          NEXT_IGNORE_BUILD_ERRORS: "true"
+      - name: Wait for dev containers
+        run: |
+          timeout 300 bash -c 'until [ -f /tmp/compose-up.exit ]; do sleep 1; done' \
+            || { echo "Timed out waiting for background docker compose up"; cat /tmp/compose-up.log; exit 1; }
+          cat /tmp/compose-up.log
+          docker compose --env-file .env.runtime -f docker-compose.dev${{ matrix.deploy-mode }}.yml -f docker-compose.ci-azure-like.yml ps
+          exit "$(cat /tmp/compose-up.exit)"
+      - name: Migrate DB
+        run: |
+          timeout 120 bash -c 'until [ -f /tmp/migrate-installed ]; do sleep 1; done' \
+            || { cat /tmp/migrate-install.log; exit 1; }
+          pnpm run db:migrate
+          pnpm --filter=shared ch:up
+      - name: Provide ClickHouse client via dev container for dev-tables setup
+        if: matrix.deploy-mode == ''
+        # The clickhouse-server container already ships the client binary;
+        # a shim avoids re-downloading the ~300MB client package every run.
+        run: |
+          sudo tee /usr/local/bin/clickhouse > /dev/null <<'EOF'
+          #!/bin/bash
+          exec docker exec -i langfuse-clickhouse clickhouse "$@"
+          EOF
+          sudo chmod +x /usr/local/bin/clickhouse
+      - name: Setup Dev Tables
+        if: matrix.deploy-mode == ''
+        run: |
+          pnpm --filter=shared ch:dev-tables
+      - name: Start Langfuse
+        run: (pnpm run start&)
+        env:
+          LANGFUSE_INIT_ORG_ID: "seed-org-id"
+          LANGFUSE_INIT_ORG_NAME: "Seed Org"
+          LANGFUSE_INIT_ORG_CLOUD_PLAN: "Team"
+          LANGFUSE_INIT_PROJECT_ID: "7a88fb47-b4e2-43b8-a06c-a5ce950dc53a"
+          LANGFUSE_INIT_PROJECT_NAME: "Seed Project"
+          LANGFUSE_INIT_PROJECT_PUBLIC_KEY: "pk-lf-1234567890"
+          LANGFUSE_INIT_PROJECT_SECRET_KEY: "sk-lf-1234567890"
+          LANGFUSE_INIT_USER_EMAIL: "demo@langfuse.com"
+          LANGFUSE_INIT_USER_NAME: "Demo User"
+          LANGFUSE_INIT_USER_PASSWORD: "password"
+      - name: run tests
+        working-directory: web
+        # The server tests are I/O-bound (Postgres/ClickHouse/HTTP roundtrips),
+        # but still need one runner vCPU per worker to avoid oversubscribing the
+        # local databases when several DB-heavy files run concurrently. Worker
+        # isolation is configured per project in vitest.config.mts. The
+        # CPU-bound client (jsdom) tests measured slower when merged into this
+        # invocation, so they run in their own parallel job below.
+        env:
+          NODE_COMPILE_CACHE: /tmp/node-compile-cache
+        run: npx dotenv -e ../.env.test -e ../.env -- vitest run --project server --project server-isolated --project server-shared-source --project server-unit --project server-shared-source-unit --maxWorkers="${VITEST_MAX_WORKERS:-8}"
+
+
   tests-web-client:
     timeout-minutes: 10
     runs-on: ubuntu-latest

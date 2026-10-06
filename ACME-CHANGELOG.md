@@ -6326,3 +6326,35 @@ free and closes a live exposure.
 **Release:** web image only. No migration, no new setting.
 
 **Tests:** 16 new unit tests (32 in all) pin the threat-type mapping (each label the guardrail sends today, keyword matches, unknown and missing labels), the breakdown's order, the top-risk ranking and cap, how far past its threshold each dimension is, the enforced share, and the day buckets across a month end.
+
+## 2026-10-07 — CI can now run the web suite without the Enterprise licence key (CHG-2026-123)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-123 · Tier 2 (CI only) · owner: Anees Ur Rahman |
+| **Dates** | CI only. No product code, no image, no deployment |
+| **Impact** | None by default: the new job runs only on demand |
+| **Rollback** | Delete the job |
+
+**Why:** `tests-web` injects `LANGFUSE_EE_LICENSE_KEY=langfuse_ee_test`, so CI runs the
+suite on an **enterprise** plan while every CAIRO deployment runs as `oss`. CI is
+therefore not testing what ships, and nobody can see which tests pass only because
+of that key. Gap Register **EE-12**. It also blocks the impact check for CHG-2026-123:
+the 17 web server tests that import Enterprise paths cannot run on a workstation with
+no container runtime, so CI is the only place the question can be answered.
+
+**What:** a new job, `tests-web-no-ee-licence`, which is `tests-web` with the licence
+key line left out and nothing else changed. The difference between the two runs on the
+same commit is the answer.
+
+- `tests-web` is **untouched** — the diff is 191 additions and 0 deletions.
+- The job is **not** in `all-ci-passed`, and carries `continue-on-error: true`, so it
+  reports and can never block a merge.
+- It runs **only on demand**: from the Actions tab, or by putting the
+  `ee-licence-check` label on a PR. GitHub Actions minutes are a live constraint
+  (IMP-1), so it costs nothing until asked for.
+- One deploy mode instead of three: this answers a licence question, not a
+  deploy-mode one.
+
+**Note:** `tests-worker` never set the key, so the five worker tests that import
+Enterprise paths already run licence-free.
