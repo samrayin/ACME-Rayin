@@ -6326,3 +6326,7 @@ free and closes a live exposure.
 **Release:** web image only. No migration, no new setting.
 
 **Tests:** 16 new unit tests (32 in all) pin the threat-type mapping (each label the guardrail sends today, keyword matches, unknown and missing labels), the breakdown's order, the top-risk ranking and cap, how far past its threshold each dimension is, the enforced share, and the day buckets across a month end.
+
+## 2026-10-07 — ADR-0023 written: the Applications page (CHG-2026-115)
+
+Documentation only (Tier 2). ADR-0023, claimed on 2026-10-05 and put on hold, is written: an application is a key lineage; how its guardrail decisions, request log and change record are joined; the scorecard as built under CHG-2026-122 (#340, #346); a detail screen (phase 2, needs indexes) and one trace per request (phase 3, feasibility) as proposals; risks and the owner decisions still open. It was written after phase 1 shipped, which the ADR records. The register marks CHG-2026-115 and CHG-2026-122 merged. Rollback: revert the commit.
