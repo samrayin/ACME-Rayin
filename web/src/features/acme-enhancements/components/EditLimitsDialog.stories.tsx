@@ -22,11 +22,7 @@ import {
 
 const meta = preview.meta({ component: EditLimitsDialog });
 
-const availableModels = [
-  "groq-safeguard",
-  "nvidia-nemotron",
-  "claude-sonnet",
-];
+const availableModels = ["groq-safeguard", "nvidia-nemotron", "claude-sonnet"];
 
 const baseRow = {
   id: "7fe9a9d4-75db-4cda-b0bf-7cb958cec8c9",
