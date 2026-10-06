@@ -332,7 +332,7 @@ function SecretRevealDialog({
         <DialogHeader>
           <DialogTitle>{revealed?.title}</DialogTitle>
           <DialogDescription>
-            This is the only time this key is shown. CAIRO does not store it and
+            This is the only time this key is shown. EYEON does not store it and
             cannot show it again. If it is lost, rotate the key.
           </DialogDescription>
         </DialogHeader>
@@ -491,12 +491,12 @@ export function EditLimitsDialog({
           {liveUnavailable ? (
             <Banner tone="warning" title="Gateway state unavailable">
               Could not read this key&apos;s current state from the gateway. The
-              fields below start from CAIRO&apos;s own record, which may not
+              fields below start from EYEON&apos;s own record, which may not
               match the gateway.
             </Banner>
           ) : (
             <p className="text-muted-foreground text-xs">
-              CAIRO currently records:{" "}
+              EYEON currently records:{" "}
               {row && row.models.length ? row.models.join(", ") : "all models"},{" "}
               {row?.rpmLimit ? `${row.rpmLimit} rpm` : "no rpm limit"}.
               {row?.drift === "drifted" ? (
@@ -695,7 +695,7 @@ function KeysTab({
     onSuccess: () => {
       showSuccessToast({
         title: "Limits updated",
-        description: "The gateway and CAIRO's own record now agree.",
+        description: "The gateway and EYEON's own record now agree.",
       });
       setEditing(null);
       refresh();
@@ -735,7 +735,7 @@ function KeysTab({
     },
     rotate: {
       title: "Rotate this key?",
-      body: "CAIRO creates a new key with the same settings and then deletes this one. The secret changes, so every application using it must be given the new secret. Both keys are valid for a moment in between. (LiteLLM's built-in rotation needs an Enterprise licence; this is CAIRO's own two-step equivalent.)",
+      body: "EYEON creates a new key with the same settings and then deletes this one. The secret changes, so every application using it must be given the new secret. Both keys are valid for a moment in between. (LiteLLM's built-in rotation needs an Enterprise licence; this is EYEON's own two-step equivalent.)",
       action: "Rotate key",
     },
     resolve: {
@@ -750,7 +750,7 @@ function KeysTab({
       {keys.data && !keys.data.reachable ? (
         <Banner
           tone="warning"
-          title="The gateway is unreachable: showing CAIRO's own records"
+          title="The gateway is unreachable: showing EYEON's own records"
         >
           Live spend and drift are unknown, and keys cannot be created, rotated
           or revoked until it is back.
@@ -977,10 +977,10 @@ function KeysTab({
         <Card>
           <CardHeader>
             <CardTitle className="text-sm">
-              Keys created outside CAIRO ({unmanaged.data.length})
+              Keys created outside EYEON ({unmanaged.data.length})
             </CardTitle>
             <p className="text-muted-foreground text-xs">
-              These exist in the gateway but were not issued by CAIRO, so they
+              These exist in the gateway but were not issued by EYEON, so they
               belong to no project and carry no record of who created them.
               Visible to organisation owners only. Read-only here.
             </p>
@@ -1226,7 +1226,7 @@ function TeamsTab({
                       {t.hasLitellmAdmin ? (
                         <Badge
                           variant="error"
-                          title="A LiteLLM team admin can manage keys outside CAIRO"
+                          title="A LiteLLM team admin can manage keys outside EYEON"
                         >
                           Has a gateway-side admin
                         </Badge>
@@ -1700,7 +1700,7 @@ export function EventsTab({ projectId }: { projectId: string }) {
     <>
       <AcmeLogTable
         tableName="acmeGatewayChanges"
-        description='Every change CAIRO made to the gateway for this project. An "intent" row is written before the gateway is called and an "outcome" row before the user sees a result; rows of one operation share a correlation ID. CAIRO only adds rows here; it never edits or deletes them, and they never contain a key. Select a row for details.'
+        description='Every change EYEON made to the gateway for this project. An "intent" row is written before the gateway is called and an "outcome" row before the user sees a result; rows of one operation share a correlation ID. EYEON only adds rows here; it never edits or deletes them, and they never contain a key. Select a row for details.'
         summary={
           totalCount !== undefined ? (
             <span className="text-muted-foreground text-sm">
@@ -1741,7 +1741,7 @@ export function EventsTab({ projectId }: { projectId: string }) {
           open={detailOpen}
           onClose={() => setDetailOpen(false)}
           title="Gateway change"
-          description="One row of CAIRO's append-only change record for the gateway."
+          description="One row of EYEON's append-only change record for the gateway."
           fields={[
             ["Time", when(selected.eventTime)],
             ["Who", actorName(selected)],
@@ -1826,7 +1826,7 @@ export function AcmeLitellmGateway({ projectId }: { projectId: string }) {
         tone="info"
         title="LLM Gateway management is switched off on this deployment"
       >
-        Nothing here is active and CAIRO is not calling the gateway. An operator
+        Nothing here is active and EYEON is not calling the gateway. An operator
         turns it on with CAIRO_LITELLM_MANAGEMENT_ENABLED.
       </Banner>
     );
@@ -1867,8 +1867,8 @@ export function AcmeLitellmGateway({ projectId }: { projectId: string }) {
           tone="warning"
           title="The LLM gateway is unreachable: this page is read-only"
         >
-          CAIRO&apos;s own records and the last answers it received are shown,
-          marked with their age. Keys already issued are not affected by CAIRO
+          EYEON&apos;s own records and the last answers it received are shown,
+          marked with their age. Keys already issued are not affected by EYEON
           being unable to reach the gateway&apos;s management API. Nothing can
           be created, rotated or revoked until the gateway is back.
         </Banner>
@@ -1878,7 +1878,7 @@ export function AcmeLitellmGateway({ projectId }: { projectId: string }) {
           tone="error"
           title="Changes are disabled: the change record is not configured"
         >
-          CAIRO refuses to change the gateway unless it can first write the
+          EYEON refuses to change the gateway unless it can first write the
           change to its append-only record. An operator must set the
           record&apos;s database connection (RAYIN_LITELLM_WRITER_DATABASE_URL).
         </Banner>

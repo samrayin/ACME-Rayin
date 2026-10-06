@@ -275,7 +275,7 @@ export function MembersTable({
                 }
               : {
                   description:
-                    "CAIRO project access: an optional limit that narrows the member's organization role in this project (it can never widen it). Set by Owners and Admins in Organization settings > Project access.",
+                    "EYEON project access: an optional limit that narrows the member's organization role in this project (it can never widen it). Set by Owners and Admins in Organization settings > Project access.",
                   href: `/organization/${orgId}/settings/project-access`,
                 },
             cell: ({ row }) => {

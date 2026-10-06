@@ -31,7 +31,7 @@ export function AgentToolsBanner() {
               <Bot className="mt-0.5 h-4 w-4 shrink-0 sm:mt-0" />
               <span>
                 <span className="font-bold">
-                  ACME CAIRO works great with your AI coding agents.
+                  ACME EYEON works great with your AI coding agents.
                 </span>{" "}
                 Connect Claude Code, Codex, and other agents to your data with
                 the Langfuse Agent Skill, MCP server, and CLI.

@@ -13,10 +13,10 @@ vi.mock("next/head", () => ({
 }));
 
 describe("NotFoundPage (CHG-2026-085 b)", () => {
-  it("titles the tab CAIRO, not Next.js", () => {
+  it("titles the tab EYEON, not Next.js", () => {
     render(<NotFoundPage />);
 
-    expect(document.title).toBe("404: This page could not be found | CAIRO");
+    expect(document.title).toBe("404: This page could not be found | EYEON");
   });
 
   it("shows the error page's 404 with a way home", () => {
@@ -41,15 +41,15 @@ describe("NotFoundPage (CHG-2026-085 b)", () => {
 
 describe("App Router not-found (CHG-2026-085 c)", () => {
   // Because src/app exists, Next.js serves every unmatched URL from here.
-  it("titles the tab CAIRO through the page metadata", () => {
+  it("titles the tab EYEON through the page metadata", () => {
     expect(appNotFoundMetadata.title).toBe(
-      "404: This page could not be found | CAIRO",
+      "404: This page could not be found | EYEON",
     );
     expect(JSON.stringify(appNotFoundMetadata)).not.toContain("Next.js");
   });
 
   it("drops Next.js's boilerplate from the root layout", () => {
-    expect(appLayoutMetadata).toEqual({ title: "CAIRO" });
+    expect(appLayoutMetadata).toEqual({ title: "EYEON" });
   });
 
   it("shows the same 404 card as the Pages Router page", () => {

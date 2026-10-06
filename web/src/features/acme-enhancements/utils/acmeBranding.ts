@@ -1,10 +1,11 @@
 /**
  * CHG-2026-085 / ADR-0019: the product name shown in browser tab titles and
- * the other places the console names itself.
+ * the other places the console names itself. EYEON since CHG-2026-121 (CEO
+ * decision, 2026-10-06); it was CAIRO.
  */
-export const ACME_PRODUCT_NAME = "CAIRO";
+export const ACME_PRODUCT_NAME = "EYEON";
 
-/** acmePageTitle is "<page> | CAIRO", or "CAIRO" when there is no page. */
+/** acmePageTitle is "<page> | EYEON", or "EYEON" when there is no page. */
 export function acmePageTitle(page?: string): string {
   return page ? `${page} | ${ACME_PRODUCT_NAME}` : ACME_PRODUCT_NAME;
 }
@@ -13,12 +14,12 @@ export function acmePageTitle(page?: string): string {
 // runs, prompt experiments, natural-language filters, ...): public ingestion
 // strips it from customer environments, so only Langfuse's own carry it.
 const INTERNAL_ENVIRONMENT_PREFIX = "langfuse-";
-const INTERNAL_ENVIRONMENT_LABEL_PREFIX = "cairo-";
+const INTERNAL_ENVIRONMENT_LABEL_PREFIX = "eyeon-";
 
 /**
  * acmeEnvironmentLabel is how an environment name is shown: Langfuse's
- * internal environments read "cairo-…" (for example `langfuse-llm-as-a-judge`
- * reads `cairo-llm-as-a-judge`), every other name is shown as it is.
+ * internal environments read "eyeon-…" (for example `langfuse-llm-as-a-judge`
+ * reads `eyeon-llm-as-a-judge`), every other name is shown as it is.
  *
  * Display only. The stored value is unchanged and stays what filters, queries,
  * saved views and the retention purge match on.

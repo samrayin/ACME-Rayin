@@ -337,7 +337,7 @@ export const acmeLitellmRouter = createTRPCRouter({
         throw new TRPCError({
           code: "FORBIDDEN",
           message:
-            "Keys created outside CAIRO belong to no project and are visible to organisation owners only.",
+            "Keys created outside EYEON belong to no project and are visible to organisation owners only.",
         });
       }
       return guarded("unmanagedKeys", () => listUnmanagedKeys(deps()));
@@ -816,7 +816,7 @@ export const acmeLitellmRouter = createTRPCRouter({
         throw new TRPCError({
           code: "FORBIDDEN",
           message:
-            "Requests made with keys created outside CAIRO belong to no project and are visible to organisation owners only.",
+            "Requests made with keys created outside EYEON belong to no project and are visible to organisation owners only.",
         });
       }
       // The project comes from the session-checked input, never from a row.
