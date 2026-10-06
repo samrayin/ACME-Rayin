@@ -6182,3 +6182,31 @@ The check compares only the settings this change declares.
 **Release:** the web image for the console text, and the worker image for the dashboard names. No migration.
 
 **Tests:** the not-found page and branding client tests (13) and the home-dashboard test (4) now expect EYEON; all pass.
+
+## 2026-10-06 — Applications page with a scorecard (CHG-2026-122, ADR-0023)
+
+**What:** a new Applications page under Governance Controls shows one scorecard per application connected through the gateway, and a summary for the whole project.
+
+- **An application** is a gateway key lineage: every generation of one key, across rotations. Its settings are the newest active generation's; its traffic is every generation's, so a rotation does not reset its scorecard. Revoked lineages are not shown.
+- **Six dimensions,** each rated On track, Watch, Act now or Not rated, with the numbers behind the rating on the card:
+  - **Protection:** the share of calls whose prompt the guardrail checked, the share of checks without a verdict, and whether decisions are applied (enforce) or only recorded (record).
+  - **Threat activity:** prompts refused per 100 calls.
+  - **Data protection:** redactions of personal data per 100 calls.
+  - **Access hygiene:** five checks on the key itself (budget, expiry, rotated within 90 days, limited to named models, request limit).
+  - **Spend:** spend in the period against the key's budget.
+  - **Reliability:** the share of calls that failed.
+- **The overall rating is the worst dimension,** never an average, so a red dimension is never hidden by green ones.
+- **Period:** the last 7 or 30 days. Rates are not judged below 10 calls in the period.
+- **Summary:** applications by rating, guardrail mode, calls, prompts refused and answers withheld, redactions, spend, and keys without a budget.
+
+**Why it matters:** the console already held every input (guardrail decisions, the gateway request log, each key's settings) but spread across four pages. A risk or compliance reader now sees, per application, which control is weak and the evidence for it, without reading logs.
+
+**Metadata only:** the scorecard reads counts, statuses and key settings. It never reads prompt or answer text.
+
+**Who sees it:** the same people as the gateway's Keys tab: Owner and Admin (`llmGateway:read`) and Auditor (`evidence:read`). Spend appears only with `llmGatewaySpend:read`; for anyone else the spend dimension says "Not shown for your role". The new query is on the Auditor's content-free allow-list.
+
+**Thresholds** are named in one place (`acmeApplicationScorecard.ts`) as v1 defaults, so a deployment can tune them later.
+
+**Release:** web image only. No migration, no new setting.
+
+**Tests:** 16 unit tests pin every band boundary, the traffic floor, the hidden-spend case and the summary.
