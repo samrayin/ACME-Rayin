@@ -1,5 +1,4 @@
 import { LangfuseIcon } from "@/src/components/design-system/LangfuseIcon/LangfuseIcon";
-import { env } from "@/src/env.mjs";
 import { cn } from "@/src/utils/tailwind";
 import { PlusIcon } from "lucide-react";
 
@@ -40,25 +39,15 @@ export const LangfuseLogo = ({
 
   return (
     <div className="flex items-center">
-      {/* The source logo file is an opaque (non-transparent) lockup, so it
-          needs its own light backing to stay legible on the navy sidebar in
-          light mode and the near-black sidebar in dark mode -- same fixed
-          artwork in both themes rather than a separate dark-mode variant. */}
-      <div className="rounded-md bg-white px-2 py-1 group-data-[collapsible=icon]:hidden">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          className="h-5 max-w-22 translate-y-px"
-          src={`${env.NEXT_PUBLIC_BASE_PATH ?? ""}/wordart-black.svg`}
-          alt="ACME Logo"
-        />
-      </div>
       {/* ACME (CHG-2026-121, was CHG-2026-081): EYEON, "EYE" in white and
-          "ON" in the accent colour (owner's choice, 2026-10-06). The wordmark
-          keeps its extra-bold logo weight: it is lettering, not body type. */}
+          "ON" in the accent colour (owner's choice, 2026-10-06), on its own
+          and at 24 px: the ACME logo that stood beside it is removed (owner,
+          2026-10-06). The wordmark keeps its extra-bold logo weight: it is
+          lettering, not body type. */}
       <span
         title="EYEON"
         // eslint-disable-next-line @repo/no-raw-font-weight
-        className="ml-2 truncate text-base font-extrabold tracking-wide text-white group-data-[collapsible=icon]:hidden"
+        className="truncate text-2xl leading-none font-extrabold tracking-wide text-white group-data-[collapsible=icon]:hidden"
       >
         EYE<span className="text-sidebar-accent-foreground">ON</span>
       </span>

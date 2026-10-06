@@ -1,7 +1,6 @@
 /* eslint-disable @repo/no-style-props */
 import { cn } from "@/src/utils/tailwind";
 import Link from "next/link";
-import { env } from "@/src/env.mjs";
 import { useUiCustomization } from "@/src/ee/features/ui-customization/useUiCustomization";
 import { PlusIcon } from "lucide-react";
 import { LangfuseIcon } from "@/src/components/design-system/LangfuseIcon/LangfuseIcon";
@@ -57,24 +56,13 @@ export const TopbarBrand = ({
           <LangfuseIcon size={16} />
         </>
       ) : variant === "wordmark" ? (
-        // Same fixed white-backed artwork in both themes -- see LangfuseLogo's
-        // comment: the source logo is opaque and needs its own light backing.
-        <>
-          <div className="rounded-md bg-white px-1.5 py-0.5">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              className="max-h-5 max-w-24"
-              src={`${env.NEXT_PUBLIC_BASE_PATH ?? ""}/wordart-black.svg`}
-              alt="ACME Logo"
-            />
-          </div>
-          {/* ACME (CHG-2026-081): "AI" coloured, as in the sidebar wordmark,
-              which keeps its extra-bold logo weight. */}
-          {/* eslint-disable-next-line @repo/no-raw-font-weight */}
-          <span className="text-foreground text-sm font-extrabold tracking-wide">
-            C<span className="text-primary">AI</span>RO
-          </span>
-        </>
+        // ACME (CHG-2026-121): the EYEON wordmark on its own, "ON" in the
+        // accent colour, as in the sidebar; the ACME logo is removed (owner,
+        // 2026-10-06). It keeps the sidebar wordmark's extra-bold logo weight.
+        // eslint-disable-next-line @repo/no-raw-font-weight
+        <span className="text-foreground text-lg leading-none font-extrabold tracking-wide">
+          EYE<span className="text-primary">ON</span>
+        </span>
       ) : (
         <LangfuseIcon size={28} />
       )}
