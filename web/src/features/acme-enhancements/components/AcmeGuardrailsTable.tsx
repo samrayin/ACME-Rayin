@@ -1089,7 +1089,17 @@ const GUARDRAIL_EVENT_COLUMNS: LangfuseColumnDef<GuardrailEventRow>[] = [
  * The keyset paging drives the shared footer in cursor mode: no page jumps,
  * and changing the page size starts again from the newest page.
  */
-export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
+export function AcmeGuardrailEventsLog({
+  projectId,
+  linkedFilter,
+}: {
+  projectId: string;
+  /**
+   * CHG-2026-122 (ADR-0023): filters preset by the link that opened the
+   * page, read once when the log is first shown.
+   */
+  linkedFilter?: { agent: string; from: string };
+}) {
   const [selectedEvent, setSelectedEvent] = useState<{
     id: string;
     open: boolean;
@@ -1097,9 +1107,12 @@ export function AcmeGuardrailEventsLog({ projectId }: { projectId: string }) {
   // Export writes the audit log, so it is not open to the read-only roles
   // (Security Analyst, Auditor); the server refuses them too.
   const canExport = !useIsContentFreeRole(projectId);
-  const [draft, setDraft] = useState<HistoryFilterForm>(EMPTY_HISTORY_FILTER);
-  const [applied, setApplied] =
-    useState<HistoryFilterForm>(EMPTY_HISTORY_FILTER);
+  const [initialFilter] = useState<HistoryFilterForm>(() => ({
+    ...EMPTY_HISTORY_FILTER,
+    ...linkedFilter,
+  }));
+  const [draft, setDraft] = useState<HistoryFilterForm>(initialFilter);
+  const [applied, setApplied] = useState<HistoryFilterForm>(initialFilter);
   // Cursor of each page after the first; the last one is the page shown.
   const [cursors, setCursors] = useState<string[]>([]);
   const [pageSize, setPageSize] = useState(ACME_LOG_DEFAULT_PAGE_SIZE);
