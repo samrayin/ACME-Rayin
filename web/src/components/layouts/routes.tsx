@@ -25,6 +25,7 @@ import {
   CalendarClock,
   CheckCircle2,
   ScrollText,
+  Gauge,
 } from "lucide-react";
 import { type ReactNode } from "react";
 import { type Entitlement } from "@/src/features/entitlements/constants/entitlements";
@@ -175,6 +176,17 @@ export const ROUTES: Route[] = [
     section: RouteSection.Main,
     group: RouteGroup.GovernanceControls,
     menuNode: <AcmeLitellmGatewayNavItem />,
+  },
+  {
+    // ACME (CHG-2026-122, ADR-0023): one scorecard per connected application
+    // (a gateway key), metadata only. Same read scopes as the gateway's Keys
+    // tab; spend shows only with llmGatewaySpend:read.
+    title: "Applications",
+    pathname: `/project/[projectId]/acme-enhancements/applications`,
+    icon: Gauge,
+    projectRbacScopes: ["llmGateway:read", "evidence:read"],
+    section: RouteSection.Main,
+    group: RouteGroup.GovernanceControls,
   },
   {
     // ACME (CHG-2026-073): Logs -- the audit log, guardrail decisions, and

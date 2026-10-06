@@ -76,6 +76,10 @@ const AUDITOR_ROLE_ALLOWED_PROCEDURES: ReadonlySet<string> = new Set([
   ...SECURITY_ROLE_ALLOWED_PROCEDURES,
   "acmeLitellm.keys",
   "acmeLitellm.teams",
+  // CHG-2026-122: the Applications page scorecard. Metadata only; it needs
+  // llmGateway:read or evidence:read, and shows spend only with
+  // llmGatewaySpend:read, which the Auditor does not hold.
+  "acmeApplications.scorecards",
   "acmeLitellm.models",
   "acmeLitellm.catalogue",
   "acmePromptApproval.listPending",
