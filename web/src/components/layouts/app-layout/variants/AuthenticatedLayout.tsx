@@ -372,6 +372,17 @@ function ConnectedAppSidebar({
   const capture = usePostHogClientCapture();
   const session = useSession();
   const { organization, project } = useQueryProjectOrOrganization();
+  // ACME (CHG-2026-124, ADR-0025): the organization's own logo, if one was
+  // uploaded under UI Customization. Changes rarely, so it is not refetched
+  // on focus; an upload invalidates it.
+  const customerLogo = api.acmeCustomerLogo.get.useQuery(
+    { orgId: organization?.id ?? "" },
+    {
+      enabled: Boolean(organization?.id),
+      staleTime: 5 * 60 * 1000,
+      refetchOnWindowFocus: false,
+    },
+  );
   const canCreateProjects = useHasOrganizationAccess({
     organizationId: organization?.id,
     scope: "projects:create",
@@ -436,6 +447,7 @@ function ConnectedAppSidebar({
       logo={{
         lightModeHref: uiCustomization?.logoLightModeHref,
         darkModeHref: uiCustomization?.logoDarkModeHref,
+        customerSrc: customerLogo.data?.src,
       }}
       versionState={versionState}
       v4UpgradeUiEnabled={v4UpgradeUiEnabled}

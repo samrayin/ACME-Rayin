@@ -175,6 +175,8 @@ type AppSidebarProps = {
   logo: {
     lightModeHref?: string;
     darkModeHref?: string;
+    /** ACME (CHG-2026-124): the organization's own logo, as a data URL. */
+    customerSrc?: string;
   };
   versionState: SidebarVersionState;
   showDemoBadge: boolean;
@@ -231,6 +233,7 @@ export function AppSidebar({
             <LangfuseLogo
               logoLightModeHref={logo.lightModeHref}
               logoDarkModeHref={logo.darkModeHref}
+              customerLogoSrc={logo.customerSrc}
             />
           </Link>
         </div>

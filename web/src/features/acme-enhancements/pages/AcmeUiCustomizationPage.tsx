@@ -6,8 +6,8 @@ const headerProps = {
   title: "UI Customization",
   help: {
     description:
-      "Pick the accent color and top-bar background for this deployment — " +
-      "applies live for everyone in the project, no redeploy needed.",
+      "Add your organization's logo, and pick the accent color and top-bar " +
+      "background — applied live, no redeploy needed.",
   },
 };
 
@@ -16,9 +16,7 @@ export default function AcmeUiCustomizationPage() {
 
   return (
     <Page headerProps={headerProps}>
-      {projectId ? (
-        <AcmeUiCustomizationSettings projectId={projectId} />
-      ) : null}
+      {projectId ? <AcmeUiCustomizationSettings projectId={projectId} /> : null}
     </Page>
   );
 }

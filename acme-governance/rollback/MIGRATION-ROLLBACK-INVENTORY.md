@@ -49,6 +49,16 @@ changing anything. Rehearsed locally on Postgres 16.4 on 2026-10-02 (7 of 7
 steps PASS, and its `down.sql` refuses once an `unavailable` event exists);
 it was rehearsed on the dev cluster's throwaway Postgres 15.19 on 2026-10-02 with the owner's yes, also 7 of 7 PASS (see its `ROLLBACK.md`).
 
+Added with CHG-2026-124: `20261006200000_add_acme_organization_logos` creates
+`acme_organization_logos`, one customer logo per organization (ADR-0025), with
+a cascading foreign key to `organizations` and CHECK constraints for the
+accepted types and the 100 KB limit. **Reversible with data loss**: `down.sql`
+drops the table, so every uploaded logo is lost and customers upload it again;
+the audit-log entries stay. The previous image does not read the table, so a
+release rollback does not need it. Rehearsed locally on Postgres 16.4 with the
+Azure-like roles on 2026-10-06: up, six constraint checks, down and up again,
+all PASS (see its `ROLLBACK.md`).
+
 ## Reading this
 - Nothing here is *safely reversible*: every ACME migration either holds audit data or changes something Postgres cannot undo.
 - Nothing is classed *backup-and-restore* on its own, but that is the only complete answer for 3, and the fallback for all of them. It depends on a restore that has actually been rehearsed; see the dev restore rehearsal plan.
