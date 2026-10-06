@@ -6298,3 +6298,31 @@ free and closes a live exposure.
 **Release:** web image, with the migration (applied on start). No new setting. Rollback: remove the logo, redeploy the previous tag; `down.sql` only if the table must go.
 
 **Tests:** 21 unit tests: reading PNG, JPEG and three WebP encodings; every limit; the router's access for nine roles, storage, audit content and removal.
+
+## 2026-10-06 — Applications scorecard, second iteration (CHG-2026-122, ADR-0023)
+
+**What:** the Applications page gains an executive summary for a CEO, CRO or board reader, and three additions on each application's card.
+
+- **Top risks:** every dimension rated Act now or Watch, across all applications, ranked: Act now first, then by how far past its threshold the number is. The summary lists the top five, each naming the application, the dimension and the evidence line from its card, and counts the rest.
+- **Traffic EYEON enforced:** the share of guardrail checks in the period that the gateway decided in enforce mode, shown with the mode in force now. A check whose gateway reported no mode counts as not enforced, as in the guardrail log.
+- **Threat activity by type:** each card's threat row breaks refused prompts and withheld answers down by type: jailbreak or misuse, harmful content, off-topic or outside policy, personal data, sector rules, too large to check, or other. The type comes from the guardrail's policy label. Today the guardrail labels every prompt its input rail refuses "Jailbreak Detection" (jailbreak, harmful requests and sector conduct rules are judged in one check) and every answer its output rail withholds "Topical Rail", so cards show those as "Jailbreak or misuse" and "Off-topic or outside policy". The harmful-content and sector types fill in once the guardrail reports which rule fired. An unknown or missing label counts as Other and is never shown as text.
+- **Trend:** two small lines on each card, calls per day and prompts refused per day, over the selected period (7 or 30 days) by UTC day. Plain SVG, no new dependency; hover a day for its count.
+- **Evidence one click away:** each card's "Guardrail decisions" link now opens the guardrail log filtered to that application's key from the period's first day. The log reads two new URL parameters, `agent` and `from`, into its existing "Agent contains" and "From" filters.
+- The existing summary figures are unchanged.
+
+**Why it matters:** the accepted design was per-application scorecards with an executive summary on top ("A with D as its summary"). The first iteration built the scorecards. This one adds what a board reader asks first (what is worst, and is EYEON enforcing), and lets a reader check any card against the log in one click.
+
+**Metadata only:** threat types come from the policy label alone. No prompt or answer text, redacted text, personal-data findings or encrypted content is read. The trend is two counts by day, from raw SQL with bound parameters scoped to the project, the period and the applications' key aliases. The page runs the same fixed number of queries however many applications there are.
+
+**Not included, and why:**
+
+- **Open findings by severity:** findings are tracked outside the console, so the page cannot show them.
+- **Guardrail delay under Reliability:** neither the guardrail events nor the gateway request log record how long the guardrail took. The request log's start and end times cover the whole call, model included, so they cannot measure it.
+- **A link to the gateway request log:** that log has no key filter, so the card links to guardrail decisions only.
+- **Earlier keys of a rotated application:** the evidence link filters on the key in use now. Earlier generations have their own names and appear in the log without the filter; the link says so on hover. Filtering on several keys at once needs a change to the log's filter and is left for a later iteration.
+
+**Who sees it:** unchanged. The additions are part of the existing `acmeApplications.scorecards` query: no new procedure, no change to any role or allow-list.
+
+**Release:** web image only. No migration, no new setting.
+
+**Tests:** 16 new unit tests (32 in all) pin the threat-type mapping (each label the guardrail sends today, keyword matches, unknown and missing labels), the breakdown's order, the top-risk ranking and cap, how far past its threshold each dimension is, the enforced share, and the day buckets across a month end.

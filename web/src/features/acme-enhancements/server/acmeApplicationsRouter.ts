@@ -10,6 +10,10 @@
  * Who sees it: llmGateway:read (Owner, Admin) or evidence:read (Auditor), as
  * for the gateway's Keys tab. Spend is included only with
  * llmGatewaySpend:read.
+ *
+ * Second iteration: refusals by type (from the guardrail's policy label
+ * only), the share of checks decided in enforce mode, the top risks, and a
+ * daily trend. Still metadata only: no content column is read.
  */
 import { z } from "zod";
 import { type Session } from "next-auth";
@@ -29,6 +33,7 @@ import {
   AcmeLitellmKeyStatus,
   prisma,
 } from "@langfuse/shared/src/db";
+import { gatewayModeFromDb } from "@/src/features/acme-enhancements/utils/guardrailVerdictLabel";
 import {
   getCurrentSettings,
   parseModeCeiling,
@@ -37,11 +42,18 @@ import {
 import {
   type GuardrailCounts,
   type ScorecardInput,
+  dailyTrend,
+  rankTopRisks,
   scoreApplication,
   summarise,
+  threatTypeBreakdown,
+  trendStart,
 } from "@/src/features/acme-enhancements/server/acmeApplicationScorecard";
 
 const WINDOW_DAYS = [7, 30] as const;
+
+/** How many of the top risks the executive summary lists. */
+const TOP_RISKS_SHOWN = 5;
 
 /** Statuses whose key is, or was, in use; failed and pending ones never were. */
 const USED_STATUSES = [
@@ -69,6 +81,7 @@ function emptyCounts(): GuardrailCounts {
     answerBlocks: 0,
     redactions: 0,
     noVerdict: 0,
+    enforcedChecks: 0,
   };
 }
 
@@ -138,33 +151,74 @@ export const acmeApplicationsRouter = createTRPCRouter({
             a.current !== undefined,
         );
       const allAliases = apps.flatMap((a) => a.aliases);
+      // The trend has one point per UTC day, the last windowDays days
+      // including today, so its first day is a whole one.
+      const trendFrom = trendStart(now, input.windowDays);
 
-      const [settings, events, calls] = await Promise.all([
-        getCurrentSettings(prisma),
-        allAliases.length
-          ? prisma.acmeGuardrailEvent.groupBy({
-              by: ["agentId", "direction", "action"],
-              where: {
-                projectId: input.projectId,
-                eventTime: { gte: since },
-                agentId: { in: allAliases },
-              },
-              _count: { _all: true },
-            })
-          : Promise.resolve([]),
-        allAliases.length
-          ? prisma.acmeLitellmRequestLog.groupBy({
-              by: ["keyAlias", "status"],
-              where: {
-                projectId: input.projectId,
-                startTime: { gte: since },
-                keyAlias: { in: allAliases },
-              },
-              _count: { _all: true },
-              _sum: { spend: true },
-            })
-          : Promise.resolve([]),
-      ]);
+      // A bounded number of queries whatever the number of applications:
+      // one groupBy per table for the counts, one per table for the trend.
+      // The trend needs a day bucket, which groupBy cannot do, so it is raw
+      // SQL with bound parameters, scoped like the rest to this project, the
+      // period and the applications' aliases.
+      const [settings, events, calls, dailyCalls, dailyRefused] =
+        await Promise.all([
+          getCurrentSettings(prisma),
+          allAliases.length
+            ? prisma.acmeGuardrailEvent.groupBy({
+                by: [
+                  "agentId",
+                  "direction",
+                  "action",
+                  "policyTriggered",
+                  "gatewayMode",
+                ],
+                where: {
+                  projectId: input.projectId,
+                  eventTime: { gte: since },
+                  agentId: { in: allAliases },
+                },
+                _count: { _all: true },
+              })
+            : Promise.resolve([]),
+          allAliases.length
+            ? prisma.acmeLitellmRequestLog.groupBy({
+                by: ["keyAlias", "status"],
+                where: {
+                  projectId: input.projectId,
+                  startTime: { gte: since },
+                  keyAlias: { in: allAliases },
+                },
+                _count: { _all: true },
+                _sum: { spend: true },
+              })
+            : Promise.resolve([]),
+          // Timestamps are stored as UTC without a zone, so the bound is
+          // passed as UTC text and cast the same way.
+          allAliases.length
+            ? prisma.$queryRaw<{ alias: string; day: string; n: number }[]>`
+                SELECT key_alias AS alias,
+                       to_char(date_trunc('day', start_time), 'YYYY-MM-DD') AS day,
+                       COUNT(*)::int AS n
+                FROM acme_litellm_request_logs
+                WHERE project_id = ${input.projectId}
+                  AND start_time >= ${trendFrom.toISOString()}::timestamp
+                  AND key_alias = ANY(${allAliases}::text[])
+                GROUP BY 1, 2`
+            : Promise.resolve([]),
+          allAliases.length
+            ? prisma.$queryRaw<{ alias: string; day: string; n: number }[]>`
+                SELECT agent_id AS alias,
+                       to_char(date_trunc('day', event_time), 'YYYY-MM-DD') AS day,
+                       COUNT(*)::int AS n
+                FROM acme_guardrail_events
+                WHERE project_id = ${input.projectId}
+                  AND event_time >= ${trendFrom.toISOString()}::timestamp
+                  AND agent_id = ANY(${allAliases}::text[])
+                  AND direction = 'input'
+                  AND action = 'block'
+                GROUP BY 1, 2`
+            : Promise.resolve([]),
+        ]);
 
       const mode = settings
         ? servedMode(
@@ -175,6 +229,11 @@ export const acmeApplicationsRouter = createTRPCRouter({
         : "record";
 
       const guardByAlias = new Map<string, GuardrailCounts>();
+      // Refused prompts and withheld answers by the guardrail's policy label.
+      const refusalsByAlias = new Map<
+        string,
+        { policyTriggered: string | null; count: number }[]
+      >();
       for (const e of events) {
         const c = guardByAlias.get(e.agentId) ?? emptyCounts();
         const n = e._count._all;
@@ -184,10 +243,27 @@ export const acmeApplicationsRouter = createTRPCRouter({
         if (e.action === AcmeGuardrailEventAction.BLOCK) {
           if (isPrompt) c.promptBlocks += n;
           else c.answerBlocks += n;
+          const refusals = refusalsByAlias.get(e.agentId) ?? [];
+          refusals.push({ policyTriggered: e.policyTriggered, count: n });
+          refusalsByAlias.set(e.agentId, refusals);
         }
         if (e.action === AcmeGuardrailEventAction.REDACT) c.redactions += n;
         if (e.action === AcmeGuardrailEventAction.UNAVAILABLE) c.noVerdict += n;
+        if (gatewayModeFromDb(e.gatewayMode) === "enforce")
+          c.enforcedChecks += n;
         guardByAlias.set(e.agentId, c);
+      }
+      const trendRowsByAlias = new Map<
+        string,
+        { day: string; calls: number; refused: number }[]
+      >();
+      for (const r of [
+        ...dailyCalls.map((d) => ({ ...d, calls: d.n, refused: 0 })),
+        ...dailyRefused.map((d) => ({ ...d, calls: 0, refused: d.n })),
+      ]) {
+        const list = trendRowsByAlias.get(r.alias) ?? [];
+        list.push({ day: r.day, calls: r.calls, refused: r.refused });
+        trendRowsByAlias.set(r.alias, list);
       }
       const callsByAlias = new Map<
         string,
@@ -248,6 +324,14 @@ export const acmeApplicationsRouter = createTRPCRouter({
             generation: current.generation,
             models: current.models,
             budgetDuration: current.budgetDuration,
+            threatTypes: threatTypeBreakdown(
+              aliases.flatMap((alias) => refusalsByAlias.get(alias) ?? []),
+            ),
+            trend: dailyTrend(
+              trendFrom,
+              input.windowDays,
+              aliases.flatMap((alias) => trendRowsByAlias.get(alias) ?? []),
+            ),
           },
         };
       });
@@ -265,7 +349,17 @@ export const acmeApplicationsRouter = createTRPCRouter({
         mode,
         canSeeSpend,
         generatedAt: now.toISOString(),
-        summary: summarise(scored, canSeeSpend),
+        summary: {
+          ...summarise(scored, canSeeSpend),
+          topRisks: rankTopRisks(
+            scored.map(({ app, score }) => ({
+              name: app.name,
+              alias: app.alias,
+              score,
+            })),
+            TOP_RISKS_SHOWN,
+          ),
+        },
         applications: scored.map(({ app, score, input: i }) => ({
           ...app,
           calls: i.calls,

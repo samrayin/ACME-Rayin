@@ -73,6 +73,21 @@ function AcmeSecurityLogs({ projectId }: { projectId: string }) {
 
   const requested =
     typeof router.query.tab === "string" ? router.query.tab : undefined;
+  // ACME (CHG-2026-122, ADR-0023): a link can preset the guardrail filters
+  // "Agent contains" (?agent=) and "From" (?from=yyyy-mm-dd), as the
+  // Applications scorecard does for its evidence link. Anything else is
+  // ignored; the form owns both once shown.
+  const linkedGuardrailFilter = {
+    agent:
+      typeof router.query.agent === "string"
+        ? router.query.agent.trim().slice(0, 200)
+        : "",
+    from:
+      typeof router.query.from === "string" &&
+      /^\d{4}-\d{2}-\d{2}$/.test(router.query.from)
+        ? router.query.from
+        : "",
+  };
   const current =
     requested && TABS.includes(requested) && visible.includes(requested)
       ? requested
@@ -114,7 +129,10 @@ function AcmeSecurityLogs({ projectId }: { projectId: string }) {
       ) : null}
       {canReadGuardrails ? (
         <TabsBarContent value="guardrails" className="mt-6">
-          <AcmeGuardrailEventsLog projectId={projectId} />
+          <AcmeGuardrailEventsLog
+            projectId={projectId}
+            linkedFilter={linkedGuardrailFilter}
+          />
         </TabsBarContent>
       ) : null}
       {gatewayOn ? (
