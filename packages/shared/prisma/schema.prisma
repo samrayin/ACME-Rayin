@@ -126,6 +126,8 @@ model Organization {
   verifiedDomains                  VerifiedDomain[]
   gatewayConfig                    GatewayConfig?
   gatewayAiConnections             GatewayAiConnection[]
+  // ACME (CHG-2026-124, ADR-0025): the customer's own logo.
+  acmeLogo                         AcmeOrganizationLogo?
 
   @@map("organizations")
 }
@@ -2370,4 +2372,25 @@ model AcmeProjectAccess {
   @@index([userId])
   @@index([orgId])
   @@map("acme_project_access")
+}
+
+// ACME (CHG-2026-124, ADR-0025): the customer's own logo, one per
+// organization, shown beside the EYEON wordmark in the sidebar. Its own table,
+// not Organization.metadata, because the session callback copies that
+// metadata into every session. The migration adds CHECK constraints for the
+// accepted types and the 100 KB limit, which Prisma does not model.
+model AcmeOrganizationLogo {
+  orgId        String       @id @map("org_id")
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  contentType  String       @map("content_type")
+  data         Bytes
+  width        Int
+  height       Int
+  sizeBytes    Int          @map("size_bytes")
+  sha256       String
+  updatedBy    String       @map("updated_by")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @default(now()) @updatedAt @map("updated_at")
+
+  @@map("acme_organization_logos")
 }

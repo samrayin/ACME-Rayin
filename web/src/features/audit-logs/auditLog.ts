@@ -57,7 +57,9 @@ type AuditableResource =
   // ACME (ADR-0013): exports of the guardrail event history.
   | "acmeGuardrailEvents"
   // ACME (ADR-0005-B part a): versions of the CAIRO-held guardrail settings.
-  | "acmeGuardrailSettings";
+  | "acmeGuardrailSettings"
+  // ACME (ADR-0025): uploads and removals of an organization's own logo.
+  | "acmeOrganizationLogo";
 
 type AuditLog = {
   resourceType: AuditableResource;

@@ -2,6 +2,9 @@ import { Check } from "lucide-react";
 import { api } from "@/src/utils/api";
 import { cn } from "@/src/utils/tailwind";
 import { useHasProjectAccess } from "@/src/features/rbac";
+import { useHasOrganizationAccess } from "@/src/features/rbac/utils/checkOrganizationAccess";
+import { useQueryProject } from "@/src/features/projects/hooks";
+import { AcmeCustomerLogoCard } from "@/src/features/acme-enhancements/components/AcmeCustomerLogoCard";
 import { showErrorToast, showSuccessToast } from "@/src/features/notifications";
 import { Button } from "@/src/components/ui/button";
 import {
@@ -138,6 +141,13 @@ export function AcmeUiCustomizationSettings({
 }) {
   const utils = api.useUtils();
   const canEdit = useHasProjectAccess({ projectId, scope: "project:update" });
+  // ACME (CHG-2026-124, ADR-0025): the logo belongs to the organization, so
+  // changing it takes organization:update (Owner, Admin), not project:update.
+  const { organization } = useQueryProject();
+  const canEditLogo = useHasOrganizationAccess({
+    organizationId: organization?.id,
+    scope: "organization:update",
+  });
   const { personal, hasPersonal, setPersonal, clearPersonal } =
     usePersonalTheme();
 
@@ -161,6 +171,9 @@ export function AcmeUiCustomizationSettings({
 
   return (
     <div className="flex flex-col gap-4">
+      {organization ? (
+        <AcmeCustomerLogoCard orgId={organization.id} canEdit={canEditLogo} />
+      ) : null}
       <Card>
         <CardHeader>
           <CardTitle>Your theme</CardTitle>

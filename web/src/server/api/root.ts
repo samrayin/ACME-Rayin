@@ -47,6 +47,7 @@ import { acmeAuditLogsRouter } from "@/src/features/acme-enhancements/server/acm
 import { acmeChatRouter } from "@/src/features/acme-enhancements/server/acmeChatRouter";
 import { acmeGuardrailsRouter } from "@/src/features/acme-enhancements/server/acmeGuardrailsRouter";
 import { acmeApplicationsRouter } from "@/src/features/acme-enhancements/server/acmeApplicationsRouter";
+import { acmeCustomerLogoRouter } from "@/src/features/acme-enhancements/server/acmeCustomerLogoRouter";
 import { acmeLitellmRouter } from "@/src/features/acme-enhancements/server/litellm/acmeLitellmRouter";
 import { acmePromptReviewRouter } from "@/src/features/acme-enhancements/server/acmePromptReviewRouter";
 import { acmePromptApprovalRouter } from "@/src/features/acme-enhancements/server/acmePromptApprovalRouter";
@@ -133,6 +134,7 @@ export const appRouter = createTRPCRouter({
   acmePromptReview: acmePromptReviewRouter,
   acmePromptApproval: acmePromptApprovalRouter,
   acmeTheme: acmeThemeRouter,
+  acmeCustomerLogo: acmeCustomerLogoRouter,
   acmeProjectAccess: acmeProjectAccessRouter,
   table: tableRouter,
   batchAction: batchActionRouter,

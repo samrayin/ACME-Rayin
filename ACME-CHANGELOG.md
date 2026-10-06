@@ -6267,3 +6267,34 @@ free and closes a live exposure.
 **Unchanged:** the collapsed-sidebar icon, and the logo slot that Langfuse's own UI-customization settings can fill.
 
 **Release:** web image. No migration. Rollback: revert the commit.
+
+## 2026-10-06 — Add Logo: the customer's own logo beside EYEON (CHG-2026-124, ADR-0025)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-124 · owner: Anees Ur Rahman · Tier 1 |
+| **ADR** | [ADR-0025](acme-governance/adr/ADR-0025-customer-logo.md) |
+| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Dates** | Dev: not yet · Staging: not available; isolated migration and rollback rehearsal performed. (2026-10-06) · Prod: not yet |
+| **Impact** | Client-visible: a new card in UI Customization and, once a logo is uploaded, the logo in the sidebar header. No downtime |
+| **Schema change** | Migration `20261006200000_add_acme_organization_logos` (no backfill) |
+| **Rollback** | [plan](acme-governance/rollback/20261006200000_add_acme_organization_logos/ROLLBACK.md) — tested 2026-10-06 · data lost: uploaded logos, only if `down.sql` is run |
+| **Feature flag** | None: with no logo uploaded, the sidebar is unchanged |
+
+**What:** UI Customization has a new **Add Logo** card. An organization's Owners and Admins upload the customer's own logo; everyone in the organization sees it at the top of the sidebar, on a white tile beside the EYEON wordmark.
+
+- **Upload, replace, remove,** with a preview on the sidebar's own colours. Anyone else sees the card read-only.
+- **Size note** under the upload: "PNG, JPEG or WebP, up to 100 KB, 32 to 1024 px high. It is shown 24 px high and up to 72 px wide on a white tile, so a logo no wider than 3:1, about 48 to 96 px high, with a transparent or white background works best."
+- **Checked on the server:** the type is read from the file's own header and must match; at most 100 KB; 32 to 1024 px high and 16 to 4096 px wide. SVG is not accepted, because it can carry script.
+- **Sidebar:** with a logo, EYEON is 20 px so both fit; without one, EYEON stands alone at 24 px.
+- **Audit:** every upload, replacement and removal is audit-logged with the file's type, size, dimensions and SHA-256, never the image.
+
+**Why it matters:** the customer's brand beside the product's name is now the customer's own configuration, set by their administrators without a new image.
+
+**Database:** one new table, `acme_organization_logos`, one row per organization, deleted with its organization. Not organization metadata, which every session carries. Migration `20261006200000_add_acme_organization_logos`, additive. Rollback plan and `down.sql` rehearsed locally (up, constraint checks, down, up again; all pass).
+
+**Scope:** the sidebar only. The mobile top bar's compact wordmark stays EYEON alone, and Langfuse's own logo settings keep working and take precedence when set. Nothing is under `web/src/ee`.
+
+**Release:** web image, with the migration (applied on start). No new setting. Rollback: remove the logo, redeploy the previous tag; `down.sql` only if the table must go.
+
+**Tests:** 21 unit tests: reading PNG, JPEG and three WebP encodings; every limit; the router's access for nine roles, storage, audit content and removal.
