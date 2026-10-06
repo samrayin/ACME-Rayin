@@ -6274,7 +6274,7 @@ free and closes a live exposure.
 |---|---|
 | **Change ID** | CHG-2026-124 · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | [ADR-0025](acme-governance/adr/ADR-0025-customer-logo.md) |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Approval** | Owner, 2026-10-06: reviewed and merged #345 ("#345 merged"). No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
 | **Dates** | Dev: not yet · Staging: not available; isolated migration and rollback rehearsal performed. (2026-10-06) · Prod: not yet |
 | **Impact** | Client-visible: a new card in UI Customization and, once a logo is uploaded, the logo in the sidebar header. No downtime |
 | **Schema change** | Migration `20261006200000_add_acme_organization_logos` (no backfill) |
