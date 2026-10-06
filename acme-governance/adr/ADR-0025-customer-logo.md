@@ -9,8 +9,8 @@
 | **Type** | Forward |
 | **Date** | 2026-10-06 |
 | **Author** | Claude (EYEON build session), for the owner |
-| **Approval** | Pending |
-| **Commits / tag** | to be added at release |
+| **Approval** | Owner, 2026-10-06: reviewed and merged #345 ("#345 merged"). No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
+| **Commits / tag** | `ce93865e9` (#345) · release tag to be added at release |
 
 ## 1. Purpose
 The owner asked (2026-10-06): "Can you add a feature "Add Logo" within "UI Customization" so customer can their own logo. mention the size requirement as a small info for them to know." In the same message the ACME logo was removed from the sidebar header (a CHG-2026-121 follow-up), so the header shows EYEON on its own until a customer adds their logo.
