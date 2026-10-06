@@ -6182,3 +6182,50 @@ The check compares only the settings this change declares.
 **Release:** the web image for the console text, and the worker image for the dashboard names. No migration.
 
 **Tests:** the not-found page and branding client tests (13) and the home-dashboard test (4) now expect EYEON; all pass.
+
+## 2026-10-06 — Design: strip the Langfuse Enterprise code from release images (CHG-2026-123, ADR-0024)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-123 · Tier 1 (licence compliance) · owner: Anees Ur Rahman |
+| **Dates** | Design only. Nothing built, nothing released |
+| **Impact** | None yet. No image has been built this way |
+| **Rollback** | Not applicable to a design |
+
+**Why:** Langfuse keeps 98 files under a commercial licence (`ee/`, `web/src/ee/`,
+`worker/src/ee/`). Unmodified, they are compiled into both CAIRO images, and the
+customer template has operators import those images into a customer's own
+registry — so a customer deployment would distribute Enterprise-licensed code.
+CAIRO does not use the paid features, but the licence restricts distribution and
+use, not benefit. Gap Register EE-3; Readiness Ledger N-37, rated P0.
+
+**The decision (owner, 2026-10-06):** strip the code at image build time, rather
+than buy an Enterprise licence or ask Langfuse for written permission.
+
+**How:** each image's `builder` stage deletes `web/src/ee` and `worker/src/ee`
+and copies in ACME-written stub modules at the same paths, before the build runs.
+Upstream already does this shape — `web/Dockerfile:134` deletes a source file at
+the same point. The repository stays byte-identical to upstream, none of the 58
+import sites changes, upstream syncs keep applying and the `acme-ee-boundary`
+gate keeps working. A bundler alias was rejected because it fails open and cannot
+reach the worker; deleting the files from the repository was rejected because it
+breaks syncs and removes the gate's byte-identity evidence.
+
+**Two things recorded plainly:**
+- **Counsel has not confirmed this.** The compliance conclusion is a plain reading
+  of the licence, not legal advice, and no counsel is named. Engineering may build
+  and verify an image; a customer may not rely on it.
+- **Clean-room authorship (EE-15).** The stubs must be written by an author that
+  has never read the Enterprise files. The session that wrote the ADR has read
+  detailed descriptions of them and is disqualified from writing the stubs; the
+  ADR records the process and the attestation required.
+
+**What it does not resolve:** EE-1 (the audit table derived from Enterprise code),
+EE-2 (the edited file still inside images `.1`–`.9` in ACR), EE-4 (the public-repo
+window), CMP-14 and CMP-16 (licence notices and SBOM). Those are legal and
+historical questions, not build questions.
+
+**One action it surfaces for now, independent of the strip:** the Enterprise
+data-retention queue runs nightly without a licence. It defaults on, no override
+is committed anywhere, and it has queued 0 projects (EE-5). Switching it off is
+free and closes a live exposure.
