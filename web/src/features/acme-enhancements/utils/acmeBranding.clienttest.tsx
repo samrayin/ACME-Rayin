@@ -28,13 +28,13 @@ vi.mock("use-query-params", async () => {
 });
 
 describe("acmePageTitle (CHG-2026-085)", () => {
-  it("names the page and CAIRO, or CAIRO alone", () => {
-    expect(acmePageTitle("Home")).toBe("Home | CAIRO");
-    expect(acmePageTitle()).toBe("CAIRO");
-    expect(acmePageTitle("")).toBe("CAIRO");
+  it("names the page and EYEON, or EYEON alone", () => {
+    expect(acmePageTitle("Home")).toBe("Home | EYEON");
+    expect(acmePageTitle()).toBe("EYEON");
+    expect(acmePageTitle("")).toBe("EYEON");
   });
 
-  it("titles every self-hosted page CAIRO, never Langfuse", () => {
+  it("titles every self-hosted page EYEON, never Langfuse", () => {
     for (const pathname of [
       "/auth/sign-in",
       "/auth/sign-up",
@@ -43,28 +43,28 @@ describe("acmePageTitle (CHG-2026-085)", () => {
       "/project/p1/traces",
     ]) {
       const { title, description } = getPageMetadata(pathname, undefined);
-      expect(title).toMatch(/CAIRO$/);
+      expect(title).toMatch(/EYEON$/);
       expect(title).not.toContain("Langfuse");
       expect(description ?? "").not.toContain("Langfuse");
     }
     expect(getPageMetadata("/auth/sign-in", undefined).title).toBe(
-      "Sign in | CAIRO",
+      "Sign in | EYEON",
     );
   });
 });
 
 describe("acmeEnvironmentLabel (CHG-2026-085)", () => {
-  it("shows every Langfuse internal environment as cairo-…", () => {
+  it("shows every Langfuse internal environment as eyeon-…", () => {
     for (const environment of Object.values(LangfuseInternalTraceEnvironment)) {
       const label = acmeEnvironmentLabel(environment);
-      expect(label).toBe(environment.replace(/^langfuse-/, "cairo-"));
+      expect(label).toBe(environment.replace(/^langfuse-/, "eyeon-"));
       expect(label).not.toContain("langfuse");
     }
     expect(acmeEnvironmentLabel("langfuse-llm-as-a-judge")).toBe(
-      "cairo-llm-as-a-judge",
+      "eyeon-llm-as-a-judge",
     );
     expect(acmeEnvironmentLabel("langfuse-evaluation")).toBe(
-      "cairo-evaluation",
+      "eyeon-evaluation",
     );
   });
 
@@ -101,7 +101,7 @@ describe("acmeEnvironmentOptions (CHG-2026-085)", () => {
     expect(options[1]).toEqual({
       value: "langfuse-llm-as-a-judge",
       count: 2,
-      displayValue: "cairo-llm-as-a-judge",
+      displayValue: "eyeon-llm-as-a-judge",
     });
     // An option that already has a label keeps it.
     expect(options[2]?.displayValue).toBe("Code eval");
@@ -111,7 +111,7 @@ describe("acmeEnvironmentOptions (CHG-2026-085)", () => {
 });
 
 describe("EnvironmentBadge (CHG-2026-085)", () => {
-  it("shows the CAIRO label for an internal environment", () => {
+  it("shows the EYEON label for an internal environment", () => {
     render(
       <>
         <EnvironmentBadge environment="langfuse-llm-as-a-judge" />
@@ -119,7 +119,7 @@ describe("EnvironmentBadge (CHG-2026-085)", () => {
       </>,
     );
 
-    expect(screen.getByText("Env: cairo-llm-as-a-judge")).toBeInTheDocument();
+    expect(screen.getByText("Env: eyeon-llm-as-a-judge")).toBeInTheDocument();
     expect(screen.getByText("Env: production")).toBeInTheDocument();
     expect(screen.queryByText(/langfuse-/)).not.toBeInTheDocument();
   });
@@ -166,7 +166,7 @@ describe("sidebar environment facet (CHG-2026-085)", () => {
 
     expect(JSON.parse(screen.getByTestId("facet").textContent ?? "")).toEqual({
       options: ["production", "langfuse-llm-as-a-judge"],
-      labels: { "langfuse-llm-as-a-judge": "cairo-llm-as-a-judge" },
+      labels: { "langfuse-llm-as-a-judge": "eyeon-llm-as-a-judge" },
     });
   });
 });

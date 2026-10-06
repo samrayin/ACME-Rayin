@@ -6161,3 +6161,24 @@ Applying the console's Terraform would have reopened password sign-in.
 must not be applied. The console's other live-only settings (replicas, spread rule,
 outbound allowlist and others) are not declared yet; that is the Phase C reconciliation.
 The check compares only the settings this change declares.
+
+## 2026-10-06 — The product is EYEON (CHG-2026-121)
+
+**What:** everything the console shows users says EYEON instead of CAIRO, by CEO decision.
+
+- **Sidebar wordmark:** EYEON, with "EYE" in white and "ON" in the accent colour (the owner's choice).
+- **Product name:** browser tab titles ("Home | EYEON"), the not-found page and the sign-in page descriptions, all driven by `ACME_PRODUCT_NAME` (ADR-0019).
+- **On-screen text:** about 35 sentences on the gateway, request-log, guardrail and members pages, the developer-tools banner and the environment snippet header.
+- **Built-in dashboards:** "EYEON Home", "EYEON Latency Dashboard", "EYEON Usage Management", "EYEON Cost Dashboard" and "EYEON Agent Dashboard". Their labels read "EYEON-maintained". Their `updatedAt` moves to 2026-10-06, so the worker's upsert rewrites the stored copies on its next start.
+- **Internal environment labels:** Langfuse's own environments display as `eyeon-…` (for example `eyeon-llm-as-a-judge`). The stored values are unchanged.
+
+**Why it matters:** the name a customer sees is the product's name. One constant already carried it to the tab titles and page metadata. The remaining sentences were spelled out one by one and are changed line by line.
+
+**Deliberately unchanged:**
+- **The web address** stays `cairo-dev.aiatacme.com`. Moving it touches DNS, the TLS certificate, the Azure AD sign-in redirect and the app URL, which risked single sign-on before the 10 October demo.
+- **Names that applications or operators type** stay: model names (`cairo-chat`, `cairo-evaluator`), key aliases, setting names (`CAIRO_GUARDRAIL_MODE_MAX`, `CAIRO_GUARDRAIL_ADMINS`), file and module names, and the gateway's internal-setting check for `CAIRO_` names. Renaming them would break connected applications and live configuration.
+- **History** stays as written: this changelog, the change register and every record.
+
+**Release:** the web image for the console text, and the worker image for the dashboard names. No migration.
+
+**Tests:** the not-found page and branding client tests (13) and the home-dashboard test (4) now expect EYEON; all pass.

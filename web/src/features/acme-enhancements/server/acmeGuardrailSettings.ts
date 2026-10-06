@@ -573,7 +573,7 @@ export async function saveMode(
       const before = await getCurrentSettings(tx);
       if (!before) {
         throw new GuardrailSettingsValidationError(
-          "No guardrail settings are stored in CAIRO yet.",
+          "No guardrail settings are stored in EYEON yet.",
         );
       }
       const sameMode = effectiveMode(before, now) === input.mode;

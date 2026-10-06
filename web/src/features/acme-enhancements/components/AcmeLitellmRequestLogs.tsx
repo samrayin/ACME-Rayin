@@ -128,7 +128,7 @@ function ReconcileStatus({ projectId }: { projectId: string }) {
         <CardTitle className="text-sm">Is this list complete?</CardTitle>
         <p className="text-muted-foreground text-xs">
           The gateway pushes each request here as it happens, and drops pushes
-          rather than delay model traffic. So every 5 minutes CAIRO compares the
+          rather than delay model traffic. So every 5 minutes EYEON compares the
           gateway’s own spend logs with this list, adds anything missing and
           records how many were missing: the gap count.
         </p>
@@ -224,7 +224,7 @@ const REQUEST_LOG_COLUMNS: LangfuseColumnDef<RequestLogRow>[] = [
     header: "Key",
     cell: ({ row }) =>
       row.original.keyName ?? (
-        <span className="text-muted-foreground">not issued by CAIRO</span>
+        <span className="text-muted-foreground">not issued by EYEON</span>
       ),
   },
   {
@@ -252,7 +252,7 @@ const REQUEST_LOG_COLUMNS: LangfuseColumnDef<RequestLogRow>[] = [
     header: "End user",
     headerTooltip: {
       description:
-        "As reported by the calling application. CAIRO does not verify it.",
+        "As reported by the calling application. EYEON does not verify it.",
     },
     cell: ({ row }) => row.original.endUser || "—",
   },
@@ -301,8 +301,8 @@ export function AcmeLitellmRequestLogs({ projectId }: { projectId: string }) {
         tableName="acmeGatewayRequests"
         description={
           scope === "project"
-            ? "One row per call through the gateway with this project's keys: who, which key, which model, tokens, cost, result and source address. Never the prompt or the response. CAIRO only adds rows here; it never edits or deletes them. Select a row for details."
-            : "Calls made with keys CAIRO did not issue. They belong to no project, so only organisation owners can see them. Select a row for details."
+            ? "One row per call through the gateway with this project's keys: who, which key, which model, tokens, cost, result and source address. Never the prompt or the response. EYEON only adds rows here; it never edits or deletes them. Select a row for details."
+            : "Calls made with keys EYEON did not issue. They belong to no project, so only organisation owners can see them. Select a row for details."
         }
         summary={
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
@@ -325,7 +325,7 @@ export function AcmeLitellmRequestLogs({ projectId }: { projectId: string }) {
                   This project&apos;s keys
                 </SelectItem>
                 <SelectItem value="unattributed">
-                  Keys CAIRO did not issue
+                  Keys EYEON did not issue
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -375,7 +375,7 @@ export function AcmeLitellmRequestLogs({ projectId }: { projectId: string }) {
           open={detailOpen}
           onClose={() => setDetailOpen(false)}
           title="Gateway request"
-          description="One call through the gateway, as CAIRO recorded it. Metadata only: never the prompt or the response."
+          description="One call through the gateway, as EYEON recorded it. Metadata only: never the prompt or the response."
           fields={[
             ["Time", when(selected.startTime)],
             [
@@ -384,7 +384,7 @@ export function AcmeLitellmRequestLogs({ projectId }: { projectId: string }) {
                 ? "—"
                 : `${count(selected.durationMs)} ms`,
             ],
-            ["Key", selected.keyName ?? "not issued by CAIRO"],
+            ["Key", selected.keyName ?? "not issued by EYEON"],
             [
               "Key alias",
               <span key="alias" className="font-mono text-xs">

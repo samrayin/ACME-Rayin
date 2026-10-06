@@ -257,7 +257,7 @@ export function AcmeGuardrailsEnforcement({
               </div>
             )}
             <div className="text-muted-foreground text-xs">
-              Added latency is not measured in CAIRO yet; check the
+              Added latency is not measured in EYEON yet; check the
               gateway&apos;s guardrail health records before a trial.
             </div>
           </div>

@@ -7,7 +7,7 @@ const headerProps = {
   help: {
     description:
       "Keys, teams, budgets, models and spend for the LLM gateway, managed " +
-      "from CAIRO under this project's roles. Every change is written to an " +
+      "from EYEON under this project's roles. Every change is written to an " +
       "append-only record before it is confirmed.",
   },
 };

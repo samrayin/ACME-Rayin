@@ -628,7 +628,7 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
           <CardTitle className="text-sm">Policies</CardTitle>
         </CardHeader>
         <CardContent className="text-muted-foreground pt-0 text-sm">
-          No guardrail settings are stored in CAIRO yet.
+          No guardrail settings are stored in EYEON yet.
         </CardContent>
       </Card>
     );
@@ -1039,7 +1039,7 @@ const GUARDRAIL_EVENT_COLUMNS: LangfuseColumnDef<GuardrailEventRow>[] = [
     header: "User",
     headerTooltip: {
       description:
-        "As reported by the calling application. CAIRO does not verify it.",
+        "As reported by the calling application. EYEON does not verify it.",
     },
     cell: ({ row }) => row.original.user_id ?? "—",
   },

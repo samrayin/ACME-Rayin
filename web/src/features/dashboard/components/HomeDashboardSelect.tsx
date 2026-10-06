@@ -62,7 +62,7 @@ export function HomeDashboardSelect({
           ]
         : []),
       {
-        heading: "Cairo-maintained",
+        heading: "EYEON-maintained",
         options: curated.map(toOption),
       },
     ];

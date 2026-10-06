@@ -297,7 +297,7 @@ function ModelDialog({
                   onChange={(e) => setSecret(e.target.value)}
                 />
                 <p className="text-muted-foreground mt-1 text-xs">
-                  Sent once to the gateway, which stores it encrypted. CAIRO
+                  Sent once to the gateway, which stores it encrypted. EYEON
                   does not keep it, and nobody can read it back.
                 </p>
               </>

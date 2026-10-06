@@ -101,7 +101,7 @@ export const LiveStateUnavailableFallsBackToCairoRecord = meta.story({
 
 /**
  * Contrast case: a key with no drift at all. CAIRO's record and the live
- * gateway state already agree, so the plain "CAIRO currently records" line
+ * gateway state already agree, so the plain "EYEON currently records" line
  * shows with no bold disagreement callout, and the editable fields pre-fill
  * from live state exactly matching what's already displayed.
  */

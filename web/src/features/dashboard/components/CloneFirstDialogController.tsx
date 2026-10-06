@@ -176,7 +176,7 @@ function CloneFirstDialogContent({
             <span className="text-foreground font-bold">
               &ldquo;{dashboardName}&rdquo;
             </span>{" "}
-            is maintained by Cairo and can&rsquo;t be edited directly.
+            is maintained by EYEON and can&rsquo;t be edited directly.
             We&rsquo;ll create your own editable copy in this project
             {pendingDefinition ? " with your change applied" : ""}
             {setAsHome ? " and show it on your Home page from now on" : ""}.

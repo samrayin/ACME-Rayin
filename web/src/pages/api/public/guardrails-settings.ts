@@ -121,7 +121,7 @@ export default withMiddlewares({
       const current = await getCurrentSettings(prisma);
       if (!current) {
         throw new ServiceUnavailableError(
-          "No guardrail settings are stored in CAIRO yet.",
+          "No guardrail settings are stored in EYEON yet.",
         );
       }
 
