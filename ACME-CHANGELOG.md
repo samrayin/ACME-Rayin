@@ -6257,3 +6257,13 @@ free and closes a live exposure.
 **Release:** web image only. No migration, no new setting.
 
 **Tests:** 16 unit tests pin every band boundary, the traffic floor, the hidden-spend case and the summary.
+
+## 2026-10-06 — The EYEON wordmark stands alone (CHG-2026-121, follow-up)
+
+**What:** the sidebar header shows the EYEON wordmark on its own, at 24 px instead of 16 px. The ACME logo that stood beside it is removed (owner, 2026-10-06). The compact wordmark in the mobile top bar, which still read "CAIRO" beside the ACME logo, now reads EYEON on its own too, with "ON" in the accent colour.
+
+**Why:** the owner asked for EYEON alone and larger. A customer's own logo is to come from UI Customization instead, not from the build.
+
+**Unchanged:** the collapsed-sidebar icon, and the logo slot that Langfuse's own UI-customization settings can fill.
+
+**Release:** web image. No migration. Rollback: revert the commit.
