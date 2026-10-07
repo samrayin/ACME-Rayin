@@ -6548,3 +6548,49 @@ Both addresses answer, and both send sign-in back to the new one. Images are unc
 **Release:** web image only. To switch the page on, set `CAIRO_EYEON_GUARDRAIL_DECISIONS_ENABLED=true` on the console and restart it; `deploy/azure` does not declare the flag yet.
 
 **Tests:** 25 new router tests (every role without `projectGuardrails:read`, the Business Analyst included, refused before any database read on both queries; flag off answers without a read; the keys read only for roles that can open Applications and while gateway management is on; no content column in any select, grouping or SQL; the same seven reads with few or many events and keys; only a reported enforce counts as applied, in the groupings and in the SQL; the caller-set policy label never returned; who set the mode never returned); 14 new tests of the figures, wording and stacking geometry; 4 new kit tests (the stacked bars' and bar list's accessible names, hover titles, legend and scale); 5 new page tests ("Would block" in record mode, "Not recorded" never as a number, application links only where resolved, the switched-off page links to the decision log). The pinned sidebar lists for the Security Analyst and the Auditor now include Guardrail decisions, and a test pins it after Overview. The two raw SQL statements were also run against a throwaway local Postgres 16. Existing tests still pass: content-free roles (25), the allow-list (36), the overview (22 and 20), the application detail router (13), the scorecard (32) and the application detail (19). Fresh typecheck passed (the 2 tolerated Enterprise-file errors only); ESLint with no warnings and Prettier on every changed file.
+
+## 2026-10-07 — Resource requests and limits on the console and worker (CHG-2026-135)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-135 · Tier 1 (live Deployment change; it restarts the console) · owner: Anees Ur Rahman |
+| **Dates** | Applied to dev 2026-10-07 · Prod: none exists |
+| **Impact** | Rolling restart of `langfuse-web` (2 replicas, no gap in service) and `langfuse-worker` (1 replica, a short gap in background processing) |
+| **Rollback** | `kubectl rollout undo deploy/langfuse-web -n langfuse --to-revision=98` and `deploy/langfuse-worker --to-revision=27`. Full manifests were captured before the change |
+
+**Why:** `langfuse-web` and `langfuse-worker` had **no resource requests or limits at
+all** — the only two workloads in either namespace without them. Three consequences on a
+two-node cluster whose ClickHouse and Keeper are single-replica: the scheduler could not
+reason about them when placing or evicting pods, they were the first candidates for
+eviction under node pressure, and nothing capped a runaway pod before it starved its
+neighbours. This is the Checkov finding about missing requests and limits, for these two
+workloads.
+
+**What, and how it was sized.** From usage observed on the live pods, not from a
+template:
+
+| | Observed before | Requests | Limits |
+|---|---|---|---|
+| `langfuse-web` | ~1000Mi, 5m CPU | cpu 300m, memory 1536Mi | cpu 2, memory 3Gi |
+| `langfuse-worker` | ~600Mi, 22m CPU | cpu 250m, memory 1Gi | cpu 2, memory 2Gi |
+
+The CPU limit is deliberately generous: both pods spike at startup (web reached 1217m,
+worker 438m during the rollout), and a tight CPU limit would throttle them into slow,
+flapping starts.
+
+**Verified after the change:** both rollouts completed, all pods Ready, **0 restarts and
+no OOMKill**, memory within the new limits (web 956Mi of 3Gi, worker 1064Mi of 2Gi).
+
+**Cluster headroom:** requests across both namespaces now total roughly 4.2 of 16 vCPU
+and about 15Gi of about 64Gi.
+
+**Drift, recorded rather than hidden:** this was applied with `kubectl set resources`
+directly on the Deployments, which **adds to the known Helm drift on the `langfuse`
+release**, the same class as the `NEXTAUTH_URL` edit. Do not Helm-upgrade that release.
+The declarative home is the Helm values in `deploy/azure`, which can only be applied once
+`langfuse-dev` retires; the values and this change should be reconciled then.
+
+**Watch:** the worker settled at 1064Mi, just above its 1Gi request. That is allowed —
+a request is a scheduling floor, not a cap — but it makes the worker an earlier eviction
+candidate under node pressure than a pod inside its request. If it stays there, raise the
+worker's memory request to 1.5Gi.
