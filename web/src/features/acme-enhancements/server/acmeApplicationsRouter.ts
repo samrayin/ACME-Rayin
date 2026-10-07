@@ -77,8 +77,12 @@ const WINDOW_DAYS = [7, 30] as const;
 /** How many of the top risks the executive summary lists. */
 const TOP_RISKS_SHOWN = 5;
 
-/** Statuses whose key is, or was, in use; failed and pending ones never were. */
-const USED_STATUSES: AcmeLitellmKeyStatus[] = [
+/**
+ * Statuses whose key is, or was, in use; failed and pending ones never were.
+ * ACME (CHG-2026-133, ADR-0027): exported so the Guardrail decisions page
+ * links a key alias to its application exactly as this page resolves it.
+ */
+export const USED_STATUSES: AcmeLitellmKeyStatus[] = [
   AcmeLitellmKeyStatus.ACTIVE,
   AcmeLitellmKeyStatus.ROTATED,
   AcmeLitellmKeyStatus.ROTATION_PARTIAL,

@@ -6514,3 +6514,37 @@ Both addresses answer, and both send sign-in back to the new one. Images are unc
 **Release:** web image only; no migration, setting or flag. Display only: no access, data or schema change.
 
 **Tests:** 38 theme tests (20 new): the hover shade differs visibly from the sidebar and from the active shade of every dark accent (CIELAB ΔE*ab of at least 3); sidebar text and hover text on the hover shade, section labels on the sidebar and card titles on cards meet WCAG AA (4.5:1); each new light value equals today's, and the header presets keep their light classes. Navigation tests (7, 1 new) check that hover uses the hover shade and the active item keeps the accent; the app-shell test (4, 1 new) checks the dark top bar, and now provides the theme it needs, so its 3 earlier tests, which failed without it, run again.
+
+## 2026-10-07 — EYEON Guardrail decisions page (CHG-2026-133, ADR-0027)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-133 · owner: Anees Ur Rahman · Tier 1 |
+| **ADR** | [ADR-0027](acme-governance/adr/ADR-0027-eyeon-native-pages.md) (the EYEON-native page pattern; no new ADR); slice 4 of ADR-0026 |
+| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
+| **Impact** | Client-visible once the flag is on: a "Guardrail decisions" page under Governance Controls, after Overview, for Owners, Admins, Security Analysts and Auditors. With the flag off (the default) nothing changes on screen, except that the Ctrl/Cmd K list names the entry and opening it says the page is switched off. No downtime |
+| **Schema change** | None |
+| **Rollback** | Flag off, or redeploy the previous image |
+| **Feature flag** | `CAIRO_EYEON_GUARDRAIL_DECISIONS_ENABLED`, server-only, default off |
+
+**What:** the second EYEON-native page, after the overview, built to ADR-0027's pattern with the shared EYEON UI kit: what the guardrails decided on gateway traffic, where and why, for the last 7 or 30 days. It is the Security Analyst's natural landing page.
+- **Who sees it:** the decision log's rule, `projectGuardrails:read` (Owner, Admin, Security Analyst, Auditor), checked before any read. Prompt Analyst, Viewer and Business Analyst are refused. The new queries `eyeonGuardrailDecisions.summary` and `eyeonGuardrailDecisions.status` are read-only and on the Security Analyst's content-free allow-list, which the Auditor's includes.
+- **Decisions by verdict over time:** stacked bars per UTC day of Blocked, Would block, Redacted, Would redact and No verdict, with a table view that adds checks and allowed decisions.
+- **Prompts and answers:** each verdict on the way in and on the way out, with its rate per 100 checks in that direction.
+- **Enforced or recorded only:** the mode EYEON serves now with its ceiling, the share of checks decided in enforce mode, and refusals and redactions split into applied and recorded only. A decision is "Blocked" or "Redacted" only where the gateway reported enforce mode; otherwise "Would block" or "Would redact" (CHG-2026-116's rule and function). Each count says what it holds: "Prompts refused", "Prompts that would be refused" or "Prompts refused or would be".
+- **Refusals by policy label:** the Applications scorecard's types (for example Jailbreak or misuse, Off-topic or outside policy, Too large to check, Other), from the label only, each split into Blocked and Would block and into prompts and answers. The label itself is caller-set text and is never shown.
+- **No verdict:** the judge's no-verdict rate over 24 hours against the 1% alert (the Guardrails page's own figure), with the period's rate beside it.
+- **Busiest applications by refusals:** the five callers with the most refusals, by key alias, with their rate per 100 checks (from 10 checks) and a link to their decisions in the log. Where the alias is an application's key, its name links to the application's screen, for roles that can open Applications while gateway management is on; for the Security Analyst the keys are not read and only the alias shows.
+- **Links:** the page and most cards link to the full decision log (Logs › Guardrail decisions); the mode and no-verdict figures link to the Guardrails page.
+- **Kit additions:** stacked bars and a bar list, small SVG charts with an accessible name that states their figures, a hover title on each bar, a legend or written values beside every colour, and a table view for the series. A recorded-only series is drawn lighter and always named.
+
+**Why it matters:** the Security Analyst had only the decision log, one row at a time, and could not open the overview (it needs the Applications page's scopes). This page answers what the guardrails stopped, where and why at a glance, without widening any role: it summarises what the decision log already shows the same roles, without any content field.
+
+**Metadata only:** counts of guardrail decisions by direction, verdict, policy label, caller and the reported mode; the guardrail settings in force (for the mode, not who set it); and, for roles that can open Applications, the gateway keys' lineage, name and status. No prompt or answer text, redacted text, personal-data findings, encrypted content or token hash is read; the tests check every select, grouping and SQL statement. At most seven reads per page view, however much data there is; the busiest callers are capped in the database.
+
+**Not recorded** (the page says so rather than estimating): the guardrail's added latency; the personal-data types behind redactions (stored per event only, and the page reads no content, so the prototype's Preview card is left out); a finer reason than the one policy label per decision; traffic that bypasses the gateway. Left to the decision log: individual decisions, with the user and machine as reported by the calling application. Not built in this slice: the prototype's decision-flow chart, hour-of-week heatmap and page filters.
+
+**Release:** web image only. To switch the page on, set `CAIRO_EYEON_GUARDRAIL_DECISIONS_ENABLED=true` on the console and restart it; `deploy/azure` does not declare the flag yet.
+
+**Tests:** 25 new router tests (every role without `projectGuardrails:read`, the Business Analyst included, refused before any database read on both queries; flag off answers without a read; the keys read only for roles that can open Applications and while gateway management is on; no content column in any select, grouping or SQL; the same seven reads with few or many events and keys; only a reported enforce counts as applied, in the groupings and in the SQL; the caller-set policy label never returned; who set the mode never returned); 14 new tests of the figures, wording and stacking geometry; 4 new kit tests (the stacked bars' and bar list's accessible names, hover titles, legend and scale); 5 new page tests ("Would block" in record mode, "Not recorded" never as a number, application links only where resolved, the switched-off page links to the decision log). The pinned sidebar lists for the Security Analyst and the Auditor now include Guardrail decisions, and a test pins it after Overview. The two raw SQL statements were also run against a throwaway local Postgres 16. Existing tests still pass: content-free roles (25), the allow-list (36), the overview (22 and 20), the application detail router (13), the scorecard (32) and the application detail (19). Fresh typecheck passed (the 2 tolerated Enterprise-file errors only); ESLint with no warnings and Prettier on every changed file.

@@ -36,6 +36,13 @@ const SECURITY_ROLE_ALLOWED_PROCEDURES: ReadonlySet<string> = new Set([
   // ADR-0005-B part b: the mode changes listed beside the event history.
   // Read-only; setMode, the switch itself, is not here, so it stays blocked.
   "acmeGuardrails.modeChanges",
+  // CHG-2026-133 (ADR-0027): the EYEON Guardrail decisions page and its
+  // navigation entry's on/off check. Metadata only, under the decision
+  // log's scope (projectGuardrails:read). The Auditor's list includes this
+  // one, so both content-free roles that hold the scope get them; the
+  // Business Analyst holds neither the scope nor these entries.
+  "eyeonGuardrailDecisions.summary",
+  "eyeonGuardrailDecisions.status",
   // Project audit log.
   "acmeAuditLogs.all",
   // Append-only record of LiteLLM gateway management actions (ADR-0003).
