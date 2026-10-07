@@ -133,6 +133,11 @@ export const env = createEnv({
     // path, e.g. http://litellm.rayin-platform:4000 (NOT the /v1 form
     // RAYIN_CHAT_LLM_BASE_URL uses -- management endpoints sit at the root).
     LITELLM_BASE_URL: z.string().optional(),
+    // CAIRO_GATEWAY_TRACES_PROJECT_ID (CHG-2026-126, ADR-0023 §3.6): the id of
+    // the project the gateway's own traces go to. When set, the application
+    // detail screen links each request to its gateway trace; unset, it shows
+    // the trace id only. Not secret: a project id.
+    CAIRO_GATEWAY_TRACES_PROJECT_ID: z.string().min(1).optional(),
     // LITELLM_MASTER_KEY: LiteLLM's admin credential. It can mint, change
     // and delete every virtual key. Read only inside acmeLitellmClient.ts;
     // never returned, logged, put in an error message or stored.
@@ -910,6 +915,8 @@ export const env = createEnv({
     CAIRO_LITELLM_MANAGEMENT_ENABLED:
       process.env.CAIRO_LITELLM_MANAGEMENT_ENABLED,
     LITELLM_BASE_URL: process.env.LITELLM_BASE_URL,
+    CAIRO_GATEWAY_TRACES_PROJECT_ID:
+      process.env.CAIRO_GATEWAY_TRACES_PROJECT_ID,
     LITELLM_MASTER_KEY: process.env.LITELLM_MASTER_KEY,
     RAYIN_LITELLM_WRITER_DATABASE_URL:
       process.env.RAYIN_LITELLM_WRITER_DATABASE_URL,

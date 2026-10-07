@@ -330,6 +330,24 @@ describe("application detail: access (CHG-2026-125)", () => {
     ).toBe(true);
   });
 
+  it("names the gateway-traces project only when the deployment sets it (CHG-2026-126)", async () => {
+    const before = envRecord.CAIRO_GATEWAY_TRACES_PROJECT_ID;
+    try {
+      envRecord.CAIRO_GATEWAY_TRACES_PROJECT_ID = undefined;
+      const unset = await enabledDetail("OWNER");
+      expect(unset.result.gatewayTracesProjectId).toBeNull();
+      envRecord.CAIRO_GATEWAY_TRACES_PROJECT_ID = "proj-gateway-traces";
+      const set = await enabledDetail("AUDITOR");
+      expect(set.result.gatewayTracesProjectId).toBe("proj-gateway-traces");
+      expect(
+        set.db.acmeLitellmRequestLog.findMany.mock.calls[0]![0].select
+          .otelTraceId,
+      ).toBe(true);
+    } finally {
+      envRecord.CAIRO_GATEWAY_TRACES_PROJECT_ID = before;
+    }
+  });
+
   it("selects no content column and no token hash, anywhere", async () => {
     const { db } = await enabledDetail("OWNER");
     const selects = [

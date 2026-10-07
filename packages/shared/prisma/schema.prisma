@@ -1316,6 +1316,11 @@ model AcmeLitellmRequestLog {
   orgId            String?                     @map("org_id")
   projectId        String?                     @map("project_id")
   cairoKeyId       String?                     @map("cairo_key_id")
+  // CHG-2026-126 (ADR-0023 §3.6): the request's OpenTelemetry trace id, 32
+  // lowercase hex characters, as the gateway reports it. Null when the
+  // gateway sent none or an invalid one. A CHECK constraint in the migration
+  // enforces the shape.
+  otelTraceId      String?                     @map("otel_trace_id")
 
   @@index([projectId, startTime])
   @@index([startTime])
@@ -1324,6 +1329,8 @@ model AcmeLitellmRequestLog {
   // CHG-2026-125 (ADR-0023 §3.5): one application's requests in a period,
   // by its key aliases (the Applications page and its detail screen).
   @@index([projectId, keyAlias, startTime])
+  // CHG-2026-126 (ADR-0023 §3.6): find a request from its trace.
+  @@index([otelTraceId])
   @@map("acme_litellm_request_logs")
 }
 

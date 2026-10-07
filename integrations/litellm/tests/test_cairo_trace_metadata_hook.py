@@ -284,6 +284,157 @@ class TestRequesterMetadataAllowlist(unittest.TestCase):
         self.assertEqual(m.REQUESTER_METADATA_ALLOWLIST, frozenset())
 
 
+class _SpanContext:
+    def __init__(self, trace_id):
+        self.trace_id = trace_id
+
+
+class _Span:
+    """Stands in for the proxy's per-request OpenTelemetry span."""
+
+    def __init__(self, trace_id):
+        self._context = _SpanContext(trace_id)
+
+    def get_span_context(self):
+        return self._context
+
+
+class _BrokenSpan:
+    def get_span_context(self):
+        raise RuntimeError("span closed")
+
+
+CALLER_TRACE = "7d3d2f1851f40750904d06da26885983"
+GATEWAY_TRACE_INT = 0x0123456789ABCDEF0123456789ABCDEF
+GATEWAY_TRACE = "0123456789abcdef0123456789abcdef"
+
+
+def _traceparent(trace_id):
+    return {"traceparent": f"00-{trace_id}-36e789462894339a-01"}
+
+
+class TestRecordTraceId(unittest.TestCase):
+    """CHG-2026-126 (ADR-0023 §3.6): the request log carries the request's trace id."""
+
+    def test_the_proxy_span_wins(self):
+        import cairo_trace_metadata_hook as m
+
+        data = {
+            "metadata": {"litellm_parent_otel_span": _Span(GATEWAY_TRACE_INT)},
+            "proxy_server_request": {"headers": _traceparent(CALLER_TRACE)},
+        }
+        m.record_trace_id(data)
+        self.assertEqual(
+            data["metadata"]["spend_logs_metadata"], {"eyeon_trace_id": GATEWAY_TRACE}
+        )
+
+    def test_traceparent_when_there_is_no_span(self):
+        import cairo_trace_metadata_hook as m
+
+        for span in (None, _Span(0), _BrokenSpan(), "not a span"):
+            data = {
+                "metadata": {"litellm_parent_otel_span": span},
+                "proxy_server_request": {"headers": _traceparent(CALLER_TRACE)},
+            }
+            m.record_trace_id(data)
+            self.assertEqual(
+                data["metadata"]["spend_logs_metadata"]["eyeon_trace_id"], CALLER_TRACE
+            )
+
+    def test_header_name_is_case_insensitive(self):
+        import cairo_trace_metadata_hook as m
+
+        data = {
+            "metadata": {},
+            "proxy_server_request": {
+                "headers": {"TraceParent": f"00-{CALLER_TRACE}-36e789462894339a-01"}
+            },
+        }
+        m.record_trace_id(data)
+        self.assertEqual(
+            data["metadata"]["spend_logs_metadata"]["eyeon_trace_id"], CALLER_TRACE
+        )
+
+    def test_malformed_traceparent_is_ignored(self):
+        import cairo_trace_metadata_hook as m
+
+        for bad in (
+            "00-" + "0" * 32 + "-36e789462894339a-01",
+            "00-" + CALLER_TRACE.upper() + "-36e789462894339a-01",
+            "00-" + CALLER_TRACE[:31] + "-36e789462894339a-01",
+            "garbage",
+            "",
+        ):
+            data = {"metadata": {}, "proxy_server_request": {"headers": {"traceparent": bad}}}
+            m.record_trace_id(data)
+            self.assertNotIn("spend_logs_metadata", data["metadata"], bad)
+
+    def test_caller_cannot_choose_the_trace_id(self):
+        import cairo_trace_metadata_hook as m
+
+        spoofed = {"eyeon_trace_id": "f" * 32, "cost_centre": "hr"}
+        data = {
+            "metadata": {
+                "litellm_parent_otel_span": _Span(GATEWAY_TRACE_INT),
+                "spend_logs_metadata": dict(spoofed),
+            }
+        }
+        m.record_trace_id(data)
+        self.assertEqual(
+            data["metadata"]["spend_logs_metadata"],
+            {"eyeon_trace_id": GATEWAY_TRACE, "cost_centre": "hr"},
+        )
+
+    def test_spoofed_id_removed_when_no_trace_id_is_known(self):
+        import cairo_trace_metadata_hook as m
+
+        data = {"metadata": {"spend_logs_metadata": {"eyeon_trace_id": "f" * 32}}}
+        m.record_trace_id(data)
+        self.assertEqual(data["metadata"]["spend_logs_metadata"], {})
+
+    def test_no_trace_id_no_spend_logs_metadata_added(self):
+        import cairo_trace_metadata_hook as m
+
+        data = {"metadata": {"user_api_key_alias": "app-key"}}
+        m.record_trace_id(data)
+        self.assertEqual(data, {"metadata": {"user_api_key_alias": "app-key"}})
+
+    def test_litellm_metadata_container(self):
+        import cairo_trace_metadata_hook as m
+
+        data = {"litellm_metadata": {"litellm_parent_otel_span": _Span(GATEWAY_TRACE_INT)}}
+        m.record_trace_id(data)
+        self.assertEqual(
+            data["litellm_metadata"]["spend_logs_metadata"]["eyeon_trace_id"],
+            GATEWAY_TRACE,
+        )
+
+    def test_never_raises_and_leaves_odd_input_alone(self):
+        import cairo_trace_metadata_hook as m
+
+        for odd in (None, "x", 3, [], {"metadata": "not a dict"}, {"metadata": None}):
+            self.assertIs(m.record_trace_id(odd), odd)
+
+    def test_hook_strips_then_records(self):
+        import asyncio
+
+        import cairo_trace_metadata_hook as m
+
+        data = {
+            "metadata": {
+                "trace_id": "caller-chosen",
+                "litellm_parent_otel_span": _Span(GATEWAY_TRACE_INT),
+            }
+        }
+        out = asyncio.run(
+            m.proxy_handler_instance.async_pre_call_hook(None, None, data, "completion")
+        )
+        self.assertNotIn("trace_id", out["metadata"])
+        self.assertEqual(
+            out["metadata"]["spend_logs_metadata"]["eyeon_trace_id"], GATEWAY_TRACE
+        )
+
+
 class TestRegistrationInstance(unittest.TestCase):
     def test_config_references_an_instance_not_the_class(self):
         import cairo_trace_metadata_hook as m

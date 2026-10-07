@@ -127,6 +127,8 @@ export function detailRequestSelect(canSeeSpend: boolean) {
     modelGroup: true,
     keyAlias: true,
     endUser: true,
+    // CHG-2026-126: the request's trace id, for the link to its trace.
+    otelTraceId: true,
     spend: canSeeSpend,
   } satisfies Prisma.AcmeLitellmRequestLogSelect;
 }
@@ -575,6 +577,9 @@ export const acmeApplicationsRouter = createTRPCRouter({
         mode,
         canSeeSpend,
         generatedAt: now.toISOString(),
+        // CHG-2026-126: where each request's gateway trace lives, if the
+        // deployment says (a project id, not secret).
+        gatewayTracesProjectId: env.CAIRO_GATEWAY_TRACES_PROJECT_ID ?? null,
         application: {
           ...app,
           calls: scoreInput.calls,

@@ -392,6 +392,8 @@ export type RequestRow = {
   modelGroup: string | null;
   keyAlias: string | null;
   endUser: string | null;
+  /** CHG-2026-126: the request's W3C trace id, when the gateway reported it. */
+  otelTraceId?: string | null;
   /** Read only when the viewer may see spend. */
   spend?: number | null;
 };
@@ -420,6 +422,9 @@ export function requestView(
       ? row.endTime.getTime() - row.startTime.getTime()
       : null,
     endUser: row.endUser,
+    // CHG-2026-126 (ADR-0023 §3.6): the trace id the gateway's own trace
+    // carries, shared with the application's trace when it sent one.
+    traceId: row.otelTraceId ?? null,
     ...(canSeeSpend ? { costUsd: row.spend ?? null } : {}),
     decisions,
   };
