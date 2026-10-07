@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   ACME_ACCENT_COLOR_PRESETS,
   ACME_DARK_ACCENT_KEYS,
@@ -91,5 +93,40 @@ describe("dark-mode accents (CHG-2026-127)", () => {
 
   it("defaults to lime in dark mode", () => {
     expect(ACME_THEME_DEFAULT.darkAccentColor).toBe("lime");
+  });
+});
+
+// CHG-2026-130 (ADR-0026 slice 0): the prototype's dark palette in
+// globals.css. Text must stay readable on its new surfaces.
+describe("dark-mode palette (CHG-2026-130)", () => {
+  const css = readFileSync(
+    join(process.cwd(), "src", "styles", "globals.css"),
+    "utf8",
+  );
+  const start = css.indexOf("  .dark {");
+  const darkBlock = css.slice(start, css.indexOf("\n  }", start));
+  const token = (name: string) => {
+    const m = new RegExp(String.raw`\n\s+${name}:\s*([^;]+);`).exec(darkBlock);
+    if (!m) throw new Error(`${name} not in the dark block`);
+    return m[1]!.trim();
+  };
+
+  it.each([
+    ["--foreground", "--background"],
+    ["--foreground", "--card"],
+    ["--muted-foreground", "--background"],
+    ["--muted-foreground", "--card"],
+    ["--secondary-foreground", "--secondary"],
+    ["--accent-foreground", "--accent"],
+    ["--sidebar-foreground", "--sidebar-background"],
+  ])("%s on %s meets WCAG AA", (text, surface) => {
+    expect(contrast(token(text), token(surface))).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("keeps the near-black surfaces in order: page, card, muted, popover", () => {
+    const lightness = (name: string) => parseFloat(token(name).split(" ")[2]!);
+    expect(lightness("--background")).toBeLessThan(lightness("--card"));
+    expect(lightness("--card")).toBeLessThan(lightness("--muted"));
+    expect(lightness("--muted")).toBeLessThan(lightness("--popover"));
   });
 });

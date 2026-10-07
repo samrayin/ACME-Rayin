@@ -114,7 +114,8 @@ export const ACME_DARK_ACCENT_PRESETS: Record<
     link: "72 100% 50%",
     linkHover: "72 100% 70%",
     ring: "72 100% 50%",
-    sidebarAccent: "72 45% 11%",
+    // CHG-2026-130: the prototype's active-item background.
+    sidebarAccent: "87 47% 7.5%",
   },
   cyan: {
     label: "Electric Cyan",
@@ -123,7 +124,7 @@ export const ACME_DARK_ACCENT_PRESETS: Record<
     link: "186 100% 55%",
     linkHover: "186 100% 72%",
     ring: "186 100% 50%",
-    sidebarAccent: "186 45% 11%",
+    sidebarAccent: "186 47% 7.5%",
   },
   pink: {
     // Bright magenta-pink rather than red, so a primary button never reads
@@ -134,7 +135,7 @@ export const ACME_DARK_ACCENT_PRESETS: Record<
     link: "330 100% 70%",
     linkHover: "330 100% 80%",
     ring: "330 100% 65%",
-    sidebarAccent: "330 40% 13%",
+    sidebarAccent: "330 45% 8%",
   },
 };
 
@@ -225,6 +226,7 @@ export function acmeThemeCss(theme: AcmeTheme): string {
 :root.dark {
   --primary: ${dark.primary};
   --primary-foreground: ${DARK_ACCENT_FOREGROUND};
+  --primary-accent: ${dark.primary};
   --link: ${dark.link};
   --link-hover: ${dark.linkHover};
   --ring: ${dark.ring};
