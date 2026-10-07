@@ -16,6 +16,7 @@ import {
   ingestPushBatch,
   isAuthorizedIngestRequest,
   MAX_RECORDS_PER_REQUEST,
+  otelTraceIdFrom,
   standardLoggingPayloadSchema,
   type IngestDeps,
   type KeyOwner,
@@ -246,6 +247,8 @@ describe("ingestPushBatch: the replayed sample", () => {
         "model",
         "modelGroup",
         "orgId",
+        // CHG-2026-126: the request's trace id (null when not reported).
+        "otelTraceId",
         "projectId",
         "promptTokens",
         "provider",
@@ -258,6 +261,71 @@ describe("ingestPushBatch: the replayed sample", () => {
         "totalTokens",
       ].sort(),
     );
+  });
+});
+
+// CHG-2026-126 (ADR-0023 §3.6): the gateway's hook reports each request's
+// trace id as spend_logs_metadata.eyeon_trace_id. Only that key is read, and a
+// bad value never costs the record.
+describe("ingestPushBatch: the request's trace id", () => {
+  const TRACE = "7d3d2f1851f40750904d06da26885983";
+
+  function withSpendLogsMetadata(value: unknown, id: string) {
+    const p = samplePayload({ id });
+    (p.metadata as Record<string, unknown>).spend_logs_metadata = value;
+    return p;
+  }
+
+  it("stores a well-formed trace id", async () => {
+    const { d, stored } = deps();
+    const result = await ingestPushBatch(
+      [withSpendLogsMetadata({ eyeon_trace_id: TRACE }, "gen-trace")],
+      d,
+    );
+    expect(result).toMatchObject({ inserted: 1, rejected: 0 });
+    expect([...stored.values()][0]!.otelTraceId).toBe(TRACE);
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["null", null],
+    ["not an object", "x"],
+    ["no key", { cost_centre: "hr" }],
+    ["uppercase", { eyeon_trace_id: TRACE.toUpperCase() }],
+    ["too short", { eyeon_trace_id: TRACE.slice(1) }],
+    ["all zeros", { eyeon_trace_id: "0".repeat(32) }],
+    ["not a string", { eyeon_trace_id: 42 }],
+  ])(
+    "stores null for a trace id that is %s, and keeps the record",
+    async (_, value) => {
+      const { d, stored } = deps();
+      const result = await ingestPushBatch(
+        [withSpendLogsMetadata(value, "gen-no-trace")],
+        d,
+      );
+      expect(result).toMatchObject({ inserted: 1, rejected: 0 });
+      expect([...stored.values()][0]!.otelTraceId).toBeNull();
+    },
+  );
+
+  it("reads nothing else from spend_logs_metadata", async () => {
+    const { d, stored } = deps();
+    await ingestPushBatch(
+      [
+        withSpendLogsMetadata(
+          { eyeon_trace_id: TRACE, cost_centre: "SECRET-ish note" },
+          "gen-extra",
+        ),
+      ],
+      d,
+    );
+    expect(JSON.stringify([...stored.values()][0])).not.toContain("SECRET");
+  });
+
+  it("otelTraceIdFrom accepts only 32 lowercase hex, not all zeros", () => {
+    expect(otelTraceIdFrom({ eyeon_trace_id: TRACE })).toBe(TRACE);
+    expect(otelTraceIdFrom({ eyeon_trace_id: `${TRACE} ` })).toBeNull();
+    expect(otelTraceIdFrom(undefined)).toBeNull();
   });
 });
 

@@ -87,10 +87,13 @@ One screen per application, reached from its card, reusing what exists: the guar
 - **indexes** on `acme_litellm_request_logs.key_alias` (or the derived CAIRO key id) and on `acme_litellm_events.resource_id`. That is a migration, so phase 2 is its own Tier 1 change;
 - an exact multi-alias filter on the guardrail log, so a rotated key's earlier decisions show too.
 
-### 3.6 Phase 3: one trace per request (feasibility)
-- LiteLLM 1.100.1 honours the W3C `traceparent` header, and EYEON's trace-metadata hook strips trace ids from request metadata but not that header. Stitching an application's own trace to its gateway call **looks feasible**.
-- It is **unconfirmed live**, and gateway spans currently land in the gateway-traces project, not the application's. LiteLLM supports per-key tracing credentials, but none are configured.
-- Before any build: a live check that the header survives, and an owner decision on which project gateway spans should land in.
+### 3.6 Phase 3: one trace per request (decided 2026-10-07; built under CHG-2026-126)
+- LiteLLM 1.100.1 honours the W3C `traceparent` header, and EYEON's trace-metadata hook strips trace ids from request metadata but not that header.
+- **Confirmed live on 2026-10-07:** one request sent through the gateway with a `traceparent` produced a trace with exactly that trace id in the gateway-traces project.
+- **Where gateway spans land (owner decision, 2026-10-07: Option A):** they stay in the gateway-traces project and carry the application's trace id; the console links the two. Sending them into each application's own project (Option B) was not chosen: the gateway exports traces through `langfuse_otel` with one set of credentials, so it would mean per-application credentials in the gateway and a different exporter.
+- **How each request learns its trace id:** the proxy starts a span for every request (`litellm_parent_otel_span`, created from `traceparent` when the caller sent one, otherwise a new trace). The trace-metadata hook reads that span's trace id after its strip step, falling back to a well-formed `traceparent` header, and writes it as `spend_logs_metadata.eyeon_trace_id`, overwriting any caller value. The console stores it on the request log (`otel_trace_id`), and the detail screen shows it with a link to the gateway trace.
+- **Order:** the console first (it accepts and stores the id; the column stays empty until the gateway sends it), then the gateway hook (a gateway configuration change and restart).
+- **Later (phase 3b):** a per-application "traces project" setting, so the detail screen also links to the application's own trace.
 
 ## 4. Impacted components
 | Component | Impact |
@@ -134,6 +137,6 @@ A new page, Governance Controls → Applications, for Owners, Admins and Auditor
 1. **Security Analyst access.** The design said the Auditor and the Security Analyst would see the page. As built, it needs `llmGateway:read` or `evidence:read`, so Owner, Admin and Auditor see it and the Security Analyst does not. Adding the Security Analyst is an access change and needs the owner's decision.
 2. **Per-deployment thresholds:** when, and who may change them.
 3. **Phase 2 go-ahead,** with its indexes as a separate Tier 1 change.
-4. **Phase 3:** the live `traceparent` check, and where gateway spans should land.
+4. **Phase 3:** decided and confirmed live on 2026-10-07 (Option A, §3.6); built under CHG-2026-126. Open: the per-application traces project (phase 3b).
 5. **Finer threat types:** a rayin-guardrails change to report which rule fired.
 6. **Key-only content observability:** not before deletion on request (P0-11) and a deliberate decision.

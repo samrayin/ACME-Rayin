@@ -56,6 +56,7 @@ terraform plan -var-file=<path to the operations repository>/envs/dev/deploy-azu
 | `guardrail_mode_max` | `CAIRO_GUARDRAIL_MODE_MAX`, the guardrail deployment ceiling | `record` |
 | `sso_enforced_domains` | `AUTH_DOMAINS_WITH_SSO_ENFORCEMENT` | not set: no domain is SSO-only |
 | `guardrail_admins` | `CAIRO_GUARDRAIL_ADMINS` | not set: nobody can change guardrail policy or mode |
+| `gateway_traces_project_id` | `CAIRO_GATEWAY_TRACES_PROJECT_ID`, the project the gateway's traces go to (CHG-2026-126) | not set: the Applications detail screen shows each request's trace id without a link |
 
 A plan without the file would therefore lower dev's ceiling to record, reopen
 password sign-in for users, and leave no guardrail administrator. Account

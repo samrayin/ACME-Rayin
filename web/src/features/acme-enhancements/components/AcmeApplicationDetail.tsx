@@ -114,9 +114,40 @@ function generationLabel(generation: number | null) {
   return generation === null ? "—" : `Key ${generation}`;
 }
 
+/**
+ * CHG-2026-126 (ADR-0023 §3.6): a request's trace id. The gateway's own trace
+ * carries it, and so does the application's trace when the application sent
+ * a W3C traceparent. Linked when the deployment names its gateway-traces
+ * project; otherwise shown for searching.
+ */
+function TraceCell({
+  traceId,
+  gatewayTracesProjectId,
+}: {
+  traceId: string | null;
+  gatewayTracesProjectId: string | null;
+}) {
+  if (!traceId) return <span className="text-muted-foreground">—</span>;
+  const short = traceId.slice(0, 8);
+  return gatewayTracesProjectId ? (
+    <Link
+      href={`/project/${gatewayTracesProjectId}/traces/${traceId}`}
+      className="font-mono text-xs underline"
+      title={`Gateway trace ${traceId}`}
+    >
+      {short}
+    </Link>
+  ) : (
+    <span className="font-mono text-xs select-all" title={traceId}>
+      {short}
+    </span>
+  );
+}
+
 function requestColumns(
   canSeeSpend: boolean,
   decisionsShown: boolean,
+  gatewayTracesProjectId: string | null,
 ): LangfuseColumnDef<RequestRow>[] {
   return [
     {
@@ -162,6 +193,20 @@ function requestColumns(
           } satisfies LangfuseColumnDef<RequestRow>,
         ]
       : []),
+    {
+      accessorKey: "traceId",
+      header: "Trace",
+      headerTooltip: {
+        description:
+          "The request's trace id. The gateway's trace carries it, and so does the application's own trace when the application sends a W3C traceparent header. Empty for requests made before trace ids were recorded.",
+      },
+      cell: ({ row }) => (
+        <TraceCell
+          traceId={row.original.traceId}
+          gatewayTracesProjectId={gatewayTracesProjectId}
+        />
+      ),
+    },
     {
       accessorKey: "endUser",
       header: "End user",
@@ -446,7 +491,11 @@ function Requests({ data }: { data: Detail }) {
             {data.application.calls.toLocaleString()} calls in the period
           </span>
         }
-        columns={requestColumns(data.canSeeSpend, data.decisionsShown)}
+        columns={requestColumns(
+          data.canSeeSpend,
+          data.decisionsShown,
+          data.gatewayTracesProjectId,
+        )}
         data={asyncTableData({
           isPending: false,
           isError: false,

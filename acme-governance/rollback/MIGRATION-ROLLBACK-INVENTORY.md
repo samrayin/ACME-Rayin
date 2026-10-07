@@ -75,3 +75,12 @@ path, all PASS (see its `ROLLBACK.md`).
 - Until CHG-2026-125 nothing here was *safely reversible*: every ACME migration either holds audit data or changes something Postgres cannot undo. CHG-2026-125's two indexes are the first that are.
 - Nothing is classed *backup-and-restore* on its own, but that is the only complete answer for 3, and the fallback for all of them. It depends on a restore that has actually been rehearsed; see the dev restore rehearsal plan.
 - Reverse order matters for the guardrail table: 4, then 3's columns, then 1.
+
+Added with CHG-2026-126: `20261007040000_acme_request_log_trace_id` adds a
+nullable `otel_trace_id` column to `acme_litellm_request_logs` (each request's
+W3C trace id, ADR-0023 §3.6), a CHECK on its shape and an index. **Reversible
+with data loss limited to the trace ids**: `down.sql` drops the index, the
+CHECK and the column; every row stays. The previous image does not read the
+column, so a release rollback does not need it. Rehearsed locally on Postgres
+16.4 with the Azure-like roles on 2026-10-07: up, four checks, down and up
+again, all PASS (see its `ROLLBACK.md`).

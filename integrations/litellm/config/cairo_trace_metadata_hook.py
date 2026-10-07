@@ -198,6 +198,113 @@ def strip_untrusted_trace_metadata(request_data: Any) -> Any:
     return request_data
 
 
+#: CHG-2026-126 (ADR-0023 §3.6): where the request's trace id is written for the
+#: console. ``spend_logs_metadata`` is LiteLLM's own channel for key/value pairs
+#: that ride along to the request log (``StandardLoggingMetadata``); the console
+#: reads only this key from it.
+SPEND_LOGS_METADATA_KEY = "spend_logs_metadata"
+TRACE_ID_KEY = "eyeon_trace_id"
+
+_HEX = frozenset("0123456789abcdef")
+_ZERO_TRACE_ID = "0" * 32
+
+
+def _valid_trace_id(value: Any) -> bool:
+    """A W3C trace id: 32 lowercase hex characters, not all zeros."""
+    return (
+        isinstance(value, str)
+        and len(value) == 32
+        and value != _ZERO_TRACE_ID
+        and all(ch in _HEX for ch in value)
+    )
+
+
+def _trace_id_from_span(span: Any) -> str | None:
+    """The trace id of the proxy's per-request OpenTelemetry span, if valid."""
+    get_span_context = getattr(span, "get_span_context", None)
+    if not callable(get_span_context):
+        return None
+    try:
+        context = get_span_context()
+    except Exception:  # noqa: BLE001 - a malformed span falls back to the header
+        return None
+    trace_id = getattr(context, "trace_id", None)
+    if not isinstance(trace_id, int) or trace_id <= 0:
+        return None
+    formatted = format(trace_id, "032x")
+    return formatted if _valid_trace_id(formatted) else None
+
+
+def _trace_id_from_traceparent(headers: Any) -> str | None:
+    """The trace id of a well-formed W3C ``traceparent`` header, if present."""
+    if not isinstance(headers, dict):
+        return None
+    value = None
+    for name, header in headers.items():
+        if isinstance(name, str) and name.lower() == "traceparent":
+            value = header
+            break
+    if not isinstance(value, str):
+        return None
+    parts = value.strip().split("-")
+    if len(parts) != 4 or len(parts[0]) != 2 or len(parts[2]) != 16:
+        return None
+    return parts[1] if _valid_trace_id(parts[1]) else None
+
+
+def record_trace_id(request_data: Any) -> Any:
+    """Record the request's trace id for the console's request log, in place.
+
+    CHG-2026-126 (ADR-0023 §3.6, Option A). The trace id is the one the gateway's
+    own trace in the "Gateway traces" project carries: the proxy starts a span for
+    every request (``litellm_parent_otel_span``), continuing the caller's trace
+    when it sent a W3C ``traceparent``. When that span is absent (tracing off),
+    a well-formed ``traceparent`` header is used instead.
+
+    Written as ``spend_logs_metadata.eyeon_trace_id``, overwriting any value the
+    caller sent there, so a caller cannot point a request at another trace. Other
+    caller keys in ``spend_logs_metadata`` are left as they were. With no trace
+    id, a caller-supplied ``eyeon_trace_id`` is removed. Never raises: on any
+    error the request is left as it was, because a trace id is never worth
+    failing a request for.
+    """
+    if not isinstance(request_data, dict):
+        return request_data
+    try:
+        target = None
+        trace_id = None
+        for container in _METADATA_CONTAINERS:
+            meta = request_data.get(container)
+            if not isinstance(meta, dict):
+                continue
+            if target is None:
+                target = meta
+            span_trace_id = _trace_id_from_span(meta.get("litellm_parent_otel_span"))
+            if span_trace_id is not None:
+                target, trace_id = meta, span_trace_id
+                break
+        if trace_id is None:
+            proxy_server_request = request_data.get("proxy_server_request")
+            if isinstance(proxy_server_request, dict):
+                trace_id = _trace_id_from_traceparent(
+                    proxy_server_request.get("headers")
+                )
+        if target is None:
+            return request_data
+
+        existing = target.get(SPEND_LOGS_METADATA_KEY)
+        spend_logs_metadata = dict(existing) if isinstance(existing, dict) else {}
+        if trace_id is not None:
+            spend_logs_metadata[TRACE_ID_KEY] = trace_id
+        else:
+            spend_logs_metadata.pop(TRACE_ID_KEY, None)
+        if spend_logs_metadata or isinstance(existing, dict):
+            target[SPEND_LOGS_METADATA_KEY] = spend_logs_metadata
+    except Exception:  # noqa: BLE001 - never fail a request over a trace id
+        pass
+    return request_data
+
+
 class CairoTraceMetadataAllowlistHook(_Base):  # type: ignore[misc,valid-type]
     """Gateway-side pre-call hook applying ``strip_untrusted_trace_metadata``.
 
@@ -215,7 +322,9 @@ class CairoTraceMetadataAllowlistHook(_Base):  # type: ignore[misc,valid-type]
         data: Dict[str, Any],
         call_type: Any,
     ) -> Dict[str, Any]:
-        return strip_untrusted_trace_metadata(data)
+        # Strip first, then record: the trace id is the gateway's, never a
+        # caller-supplied metadata value (CHG-2026-126).
+        return record_trace_id(strip_untrusted_trace_metadata(data))
 
 
 #: What ``litellm_settings.callbacks`` references (``cairo_trace_metadata_hook.proxy_handler_instance``).

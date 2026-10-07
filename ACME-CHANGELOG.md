@@ -6378,3 +6378,28 @@ The guardrail log also accepts an exact list of key names (`?agents=`), so the l
 **Why it matters:** the owner wanted the console clear and vivid in dark mode (2026-10-07).
 
 **Tests:** every dark accent meets WCAG AA contrast (4.5:1) against the dark page, against near-black text and on the active sidebar item; each accent applies only in its own mode; stored values are validated. Display only: no schema, access or data change. Rollback: revert the commit.
+
+## 2026-10-07 — Applications page, phase 3: each request's trace id (CHG-2026-126, ADR-0023)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-126 · owner: Anees Ur Rahman · Tier 1 |
+| **ADR** | [ADR-0023](acme-governance/adr/ADR-0023-applications-page.md) §3.6 |
+| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Dates** | Dev: not yet · Staging: not available; isolated migration and rollback rehearsal performed. (2026-10-07) · Prod: not yet |
+| **Impact** | Client-visible: a Trace column on the Applications detail screen. Gateway: the trace-metadata hook also records the trace id. No downtime |
+| **Schema change** | Migration `20261007040000_acme_request_log_trace_id`: one nullable column, a CHECK and an index; no backfill |
+| **Rollback** | [plan](acme-governance/rollback/20261007040000_acme_request_log_trace_id/ROLLBACK.md) — tested 2026-10-07 · data lost: the recorded trace ids only |
+| **Feature flag** | `CAIRO_GATEWAY_TRACES_PROJECT_ID`, optional: unset, the trace id shows without a link |
+
+**What:** each gateway request now carries its trace id to the console, and the application detail screen shows it.
+- **Gateway (`cairo_trace_metadata_hook.py`):** after its strip step, the hook reads the trace id of the span the proxy starts for every request. That span continues the application's trace when the application sends a W3C `traceparent`, and starts a new one otherwise. If the span is absent, the hook falls back to a well-formed `traceparent` header. It writes the id as `spend_logs_metadata.eyeon_trace_id`, overwriting any caller value, and never fails a request.
+- **Console:** the request-log intake reads only that key, stores a valid id in the new `otel_trace_id` column, and stores null (never rejecting the record) for anything else. The detail screen gains a Trace column. With `CAIRO_GATEWAY_TRACES_PROJECT_ID` set (declared in `deploy/azure` as `gateway_traces_project_id`), the id links to the gateway's trace.
+
+**Why it matters:** the owner chose Option A (2026-10-07). The gateway's trace stays in its own project and carries the application's trace id, so one id leads from a request to both traces. Confirmed live on 2026-10-07: a request sent with a `traceparent` produced a gateway trace with exactly that id.
+
+**Order:** release the console first (the column stays empty until the gateway sends ids), then deploy the hook (a gateway configuration change and restart), then set `CAIRO_GATEWAY_TRACES_PROJECT_ID`. Requests logged before the hook have no trace id.
+
+**Not included (phase 3b):** a per-application traces project, so the screen also links to the application's own trace. The reconcile path (requests the push missed) stores no trace id.
+
+**Tests:** 10 new gateway hook tests (span first, header fallback, case-insensitive header, malformed headers ignored, caller cannot choose the id, spoofed id removed, odd input left alone, strip then record); all 244 gateway tests pass. Console: 11 new intake tests (valid id stored; eight bad shapes stored as null with the record kept; no other key read) and 2 detail tests. Migration rehearsed locally: up, four checks, down, up again.
