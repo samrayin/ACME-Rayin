@@ -9,7 +9,7 @@
 | **Type** | Forward |
 | **Date** | 2026-10-07 |
 | **Author** | Claude (EYEON build session), for the owner |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Approval** | Owner, 2026-10-07: reviewed and merged #363; release approved. Not a production approval |
 | **Commits / tag** | To be added at merge · release tag to be added at release |
 
 ## 1. Purpose
