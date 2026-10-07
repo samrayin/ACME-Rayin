@@ -30,6 +30,11 @@ locals {
     length(var.guardrail_admins) > 0 ? [
       { name = "CAIRO_GUARDRAIL_ADMINS", value = join(",", var.guardrail_admins) },
     ] : [],
+    # CHG-2026-126: where the gateway's own traces go, for the Applications
+    # detail screen's trace links.
+    var.gateway_traces_project_id != "" ? [
+      { name = "CAIRO_GATEWAY_TRACES_PROJECT_ID", value = var.gateway_traces_project_id },
+    ] : [],
   )
 }
 

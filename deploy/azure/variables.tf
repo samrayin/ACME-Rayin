@@ -29,3 +29,9 @@ variable "guardrail_admins" {
   type        = list(string)
   default     = []
 }
+
+variable "gateway_traces_project_id" {
+  description = "The id of the project the gateway's own traces go to (CAIRO_GATEWAY_TRACES_PROJECT_ID, CHG-2026-126). When set, the Applications detail screen links each request to its gateway trace; empty means it shows the trace id only."
+  type        = string
+  default     = ""
+}

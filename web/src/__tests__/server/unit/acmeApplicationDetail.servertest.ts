@@ -396,6 +396,7 @@ describe("requests and their guardrail decisions", () => {
       errorClass: null,
       latencyMs: 1250,
       endUser: "user-7",
+      traceId: null,
       costUsd: 0.0042,
       decisions: [],
     });
@@ -415,6 +416,16 @@ describe("requests and their guardrail decisions", () => {
         false,
       ),
     ).toMatchObject({ latencyMs: null, succeeded: false, generation: null });
+  });
+
+  it("carries the request's trace id when the gateway reported it (CHG-2026-126)", () => {
+    const trace = "7d3d2f1851f40750904d06da26885983";
+    expect(
+      requestView(request({ otelTraceId: trace }), [], new Map(), false),
+    ).toMatchObject({ traceId: trace });
+    expect(
+      requestView(request({ otelTraceId: null }), [], new Map(), false),
+    ).toMatchObject({ traceId: null });
   });
 });
 

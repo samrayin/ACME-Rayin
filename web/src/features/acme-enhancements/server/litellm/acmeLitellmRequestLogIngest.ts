@@ -106,6 +106,8 @@ const metadataSchema = z
     user_api_key_team_alias: discarded,
     user_api_key_request_route: discarded,
     user_api_key_auth_metadata: discarded,
+    // CHG-2026-126: read only for its eyeon_trace_id (otelTraceIdFrom below);
+    // every other key in it is discarded.
     spend_logs_metadata: discarded,
     user_agent: discarded,
     requester_metadata: discarded,
@@ -222,7 +224,26 @@ type RequestLogFacts = {
   spend: number | null;
   cacheHit: boolean | null;
   errorClass: string | null;
+  otelTraceId: string | null;
 };
+
+const W3C_TRACE_ID = /^[0-9a-f]{32}$/;
+
+/**
+ * CHG-2026-126 (ADR-0023 §3.6): the request's trace id, which the gateway's
+ * trace-metadata hook writes as `spend_logs_metadata.eyeon_trace_id`. Lenient
+ * on purpose: a missing, malformed or all-zero id is stored as null and never
+ * rejects the record, because a request log matters more than its trace link.
+ */
+export function otelTraceIdFrom(spendLogsMetadata: unknown): string | null {
+  if (!spendLogsMetadata || typeof spendLogsMetadata !== "object") return null;
+  const id = (spendLogsMetadata as Record<string, unknown>).eyeon_trace_id;
+  return typeof id === "string" &&
+    W3C_TRACE_ID.test(id) &&
+    id !== "0".repeat(32)
+    ? id
+    : null;
+}
 
 /** The ONLY place a payload becomes persisted data: an explicit allow-list. */
 function factsFromPushPayload(p: StandardLoggingPayload): RequestLogFacts {
@@ -248,6 +269,7 @@ function factsFromPushPayload(p: StandardLoggingPayload): RequestLogFacts {
     spend: p.response_cost ?? null,
     cacheHit: p.cache_hit ?? null,
     errorClass: p.error_information?.error_class ?? null,
+    otelTraceId: otelTraceIdFrom(p.metadata.spend_logs_metadata),
   };
 }
 
