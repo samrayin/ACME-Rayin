@@ -43,6 +43,7 @@ import { AcmeContactSupportNavItem } from "@/src/components/nav/acme-contact-sup
 import { AcmeLitellmGatewayNavItem } from "@/src/components/nav/acme-litellm-gateway-nav-item";
 import { EyeonOverviewNavItem } from "@/src/components/nav/eyeon-overview-nav-item";
 import { EyeonGuardrailDecisionsNavItem } from "@/src/components/nav/eyeon-guardrail-decisions-nav-item";
+import { EyeonEnforcementNavItem } from "@/src/components/nav/eyeon-enforcement-nav-item";
 import { type ProductModule } from "@/src/ee/features/ui-customization/productModuleSchema";
 
 export enum RouteSection {
@@ -167,6 +168,18 @@ export const ROUTES: Route[] = [
     section: RouteSection.Main,
     group: RouteGroup.GovernanceControls,
     menuNode: <EyeonGuardrailDecisionsNavItem />,
+  },
+  {
+    // ACME (CHG-2026-138, ADR-0027): the EYEON Enforcement and policy page,
+    // after Guardrail decisions. Gated like that entry, on
+    // CAIRO_EYEON_ENFORCEMENT_ENABLED. Same scope as the Guardrails page,
+    // where the mode is changed.
+    title: "Enforcement & policy",
+    pathname: `/project/[projectId]/acme-enhancements/enforcement`,
+    projectRbacScopes: ["projectGuardrails:read"],
+    section: RouteSection.Main,
+    group: RouteGroup.GovernanceControls,
+    menuNode: <EyeonEnforcementNavItem />,
   },
   {
     // ACME addition: policy enforcement (PII redaction, jailbreak/topical

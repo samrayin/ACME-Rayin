@@ -80,8 +80,10 @@ const EXPECTED: Record<"SECURITY" | "ANALYST" | "AUDITOR", string[]> = {
   // CHG-2026-133: the EYEON Guardrail decisions page (projectGuardrails:read);
   // its entry renders nothing while CAIRO_EYEON_GUARDRAIL_DECISIONS_ENABLED
   // is off.
+  // CHG-2026-138: the EYEON Enforcement and policy page (projectGuardrails:read).
   SECURITY: [
     "Contact ACME Support",
+    "Enforcement & policy",
     "Go to...",
     "Guardrail decisions",
     "Guardrails",
@@ -108,9 +110,11 @@ const EXPECTED: Record<"SECURITY" | "ANALYST" | "AUDITOR", string[]> = {
   // CHG-2026-132: the EYEON overview, under the same scopes; its entry still
   // renders nothing while CAIRO_EYEON_OVERVIEW_ENABLED is off.
   // CHG-2026-133: the EYEON Guardrail decisions page (projectGuardrails:read).
+  // CHG-2026-138: the EYEON Enforcement and policy page, under the same scope.
   AUDITOR: [
     "Applications",
     "Contact ACME Support",
+    "Enforcement & policy",
     "Go to...",
     "Guardrail decisions",
     "Guardrails",
@@ -200,11 +204,7 @@ describe("sidebar sections (CHG-2026-073, CHG-2026-081)", () => {
     const governance = ROUTES.filter(
       (r) => r.group === RouteGroup.GovernanceControls,
     ).map((r) => r.title);
-    expect(governance.slice(0, 3)).toEqual([
-      "Overview",
-      "Guardrail decisions",
-      "Guardrails",
-    ]);
+    expect(governance.slice(0, 2)).toEqual(["Overview", "Guardrail decisions"]);
     const entry = ROUTES.find((r) => r.title === "Guardrail decisions");
     expect(entry?.projectRbacScopes).toEqual(["projectGuardrails:read"]);
     expect(entry?.menuNode).toBeDefined();
@@ -217,6 +217,28 @@ describe("sidebar sections (CHG-2026-073, CHG-2026-081)", () => {
       expect(visibleTitles(Role.ANALYST)).not.toContain("Guardrail decisions");
       expect(visibleTitles(Role.MEMBER)).not.toContain("Guardrail decisions");
       expect(visibleTitles(Role.VIEWER)).not.toContain("Guardrail decisions");
+    },
+  );
+
+  it("the EYEON Enforcement and policy page comes right after Guardrail decisions, before Guardrails (CHG-2026-138)", () => {
+    const governance = ROUTES.filter(
+      (r) => r.group === RouteGroup.GovernanceControls,
+    ).map((r) => r.title);
+    const at = governance.indexOf("Enforcement & policy");
+    expect(at).toBe(governance.indexOf("Guardrail decisions") + 1);
+    expect(governance[at + 1]).toBe("Guardrails");
+    expect(groupsOf("Enforcement & policy")).toEqual(["Governance Controls"]);
+    const entry = ROUTES.find((r) => r.title === "Enforcement & policy");
+    expect(entry?.projectRbacScopes).toEqual(["projectGuardrails:read"]);
+    expect(entry?.menuNode).toBeDefined();
+  });
+
+  it.each([Role.OWNER, Role.ADMIN])(
+    "%s sees the Enforcement & policy entry; Business and Prompt Analysts and Viewers do not (CHG-2026-138)",
+    (role) => {
+      expect(visibleTitles(role)).toContain("Enforcement & policy");
+      for (const other of [Role.ANALYST, Role.MEMBER, Role.VIEWER])
+        expect(visibleTitles(other)).not.toContain("Enforcement & policy");
     },
   );
 
