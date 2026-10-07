@@ -6404,6 +6404,10 @@ The guardrail log also accepts an exact list of key names (`?agents=`), so the l
 
 **Tests:** 10 new gateway hook tests (span first, header fallback, case-insensitive header, malformed headers ignored, caller cannot choose the id, spoofed id removed, odd input left alone, strip then record); all 244 gateway tests pass. Console: 11 new intake tests (valid id stored; eight bad shapes stored as null with the record kept; no other key read) and 2 detail tests. Migration rehearsed locally: up, four checks, down, up again.
 
+## 2026-10-07 — UI Customization scrolls (CHG-2026-124, follow-up)
+
+The UI Customization page did not scroll, and with the Add Logo card on top it is taller than most screens, so the theme options below it could not be reached (reported by the owner, 2026-10-07). The page now scrolls. Display only. Rollback: revert the commit.
+
 ## 2026-10-07 — Governance note: CHG-2026-125, -126 and -127 used before their claim merged
 
 Documentation only. The claim for CHG-2026-125, -126 and -127 (#349) was reported merged in the session at about 02:30 UTC, but it was still open; it merged at 06:08 UTC. In between, the three IDs were used in branches, commits and PRs (#351, #352 merged; #354 opened), and CHG-2026-125 and -127 went out in console `acme-v4.38.0.39` at 05:35 UTC. This breaks the register's rule 1 (claim before use). No other claim for these numbers existed at any point, so nothing collided and nothing is renumbered. Cause: the building session acted on the report without checking the PR's state; it now verifies a claim on `main` itself before using an ID. Rollback: none needed.
