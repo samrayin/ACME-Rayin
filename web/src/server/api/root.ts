@@ -53,6 +53,7 @@ import { acmePromptReviewRouter } from "@/src/features/acme-enhancements/server/
 import { acmePromptApprovalRouter } from "@/src/features/acme-enhancements/server/acmePromptApprovalRouter";
 import { acmeThemeRouter } from "@/src/features/acme-enhancements/server/acmeThemeRouter";
 import { acmeProjectAccessRouter } from "@/src/features/acme-enhancements/server/acmeProjectAccessRouter";
+import { eyeonOverviewRouter } from "@/src/features/acme-enhancements/server/eyeonOverviewRouter";
 import { tableRouter } from "@/src/features/table/server/tableRouter";
 import { batchActionRouter } from "@/src/features/batch-actions/server/batchActionRouter";
 import { cloudStatusRouter } from "@/src/features/cloud-status-notification/server/cloud-status-router";
@@ -136,6 +137,8 @@ export const appRouter = createTRPCRouter({
   acmeTheme: acmeThemeRouter,
   acmeCustomerLogo: acmeCustomerLogoRouter,
   acmeProjectAccess: acmeProjectAccessRouter,
+  // ACME (CHG-2026-132, ADR-0027): the EYEON overview.
+  eyeonOverview: eyeonOverviewRouter,
   table: tableRouter,
   batchAction: batchActionRouter,
   cloudStatus: cloudStatusRouter,

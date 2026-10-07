@@ -100,12 +100,17 @@ const EXPECTED: Record<"SECURITY" | "ANALYST" | "AUDITOR", string[]> = {
     "Support",
     "UI Customization",
   ],
+  // CHG-2026-122: Applications (evidence:read; the list had not caught up).
+  // CHG-2026-132: the EYEON overview, under the same scopes; its entry still
+  // renders nothing while CAIRO_EYEON_OVERVIEW_ENABLED is off.
   AUDITOR: [
+    "Applications",
     "Contact ACME Support",
     "Go to...",
     "Guardrails",
     "LLM Gateway",
     "Logs",
+    "Overview",
     "Projects",
     "Prompt Approvals",
     "Prompt Reviews",
@@ -163,6 +168,7 @@ describe("sidebar sections (CHG-2026-073, CHG-2026-081)", () => {
   });
 
   it("each route sits in its section", () => {
+    expect(groupsOf("Overview")).toEqual(["Governance Controls"]);
     expect(groupsOf("Guardrails")).toEqual(["Governance Controls"]);
     expect(groupsOf("LLM Gateway")).toEqual(["Governance Controls"]);
     // CHG-2026-083: the Assurance (Preview) demo is gone.
@@ -174,6 +180,13 @@ describe("sidebar sections (CHG-2026-073, CHG-2026-081)", () => {
     expect(groupsOf("Support")).toEqual(["Support"]);
     expect(groupsOf("Contact ACME Support")).toEqual(["Support"]);
     expect(groupsOf("Audit Logs")).toEqual([]);
+  });
+
+  it("the EYEON overview is first under Governance Controls (CHG-2026-132)", () => {
+    const governance = ROUTES.filter(
+      (r) => r.group === RouteGroup.GovernanceControls,
+    ).map((r) => r.title);
+    expect(governance[0]).toBe("Overview");
   });
 
   it("Settings and Support are no longer in the bottom (secondary) section", () => {

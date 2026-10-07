@@ -6450,3 +6450,39 @@ Both addresses answer, and both send sign-in back to the new one. Images are unc
 **Why it matters:** the owner approved adopting the prototype (2026-10-07), starting with its palette today; the larger slices follow under ADR-0026.
 
 **Tests:** 22 theme tests pass, including a check that reads the dark block from `globals.css` and holds seven text-on-surface pairs to WCAG AA (4.5:1). Display only: no schema, access or data change. Tier 2. Rollback: redeploy the previous console image.
+
+## 2026-10-07 — EYEON overview page and the shared EYEON UI kit (CHG-2026-132, ADR-0027)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-132 · owner: Anees Ur Rahman · Tier 1 |
+| **ADR** | [ADR-0027](acme-governance/adr/ADR-0027-eyeon-native-pages.md) (proposed); slice 2 of ADR-0026 |
+| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
+| **Impact** | Client-visible once the flag is on: an "Overview" page, first under Governance Controls, for Owners, Admins and Auditors. With the flag off (the default) nothing changes on screen, except that the Ctrl/Cmd K list names the entry and opening it says the page is switched off. No downtime |
+| **Schema change** | None |
+| **Rollback** | Flag off, or redeploy the previous image |
+| **Feature flag** | `CAIRO_EYEON_OVERVIEW_ENABLED`, server-only, default off |
+
+**What:** the first EYEON-native page, and the shared layer every later EYEON dashboard is built from.
+- **The overview** (Governance Controls › Overview), for the last 7 or 30 days:
+  - guardrail checks, prompts refused, answers withheld and redactions, each with a daily trend and split by the mode the gateway reported. A count names what it holds: "Prompts refused" when every refusal was applied, "Prompts that would be refused" when none was, "Prompts refused or would be" when the period mixes the two;
+  - the decisions by verdict, "Would block" kept apart from "Blocked", with a daily series and its table;
+  - the guardrail mode EYEON serves now with its ceiling, an enforce trial's switch-back time, the last change of mode (when and to what, not who), and the share of checks decided in enforce mode;
+  - the judge's no-verdict rate over 24 hours against the 1% alert;
+  - the applications by rating (Act now, Watch, On track, Not rated) and their top risks;
+  - for roles that may see spend, each application's spend against its key's budget.
+- **The EYEON UI kit** (`components/eyeon/`): a KPI tile, a card with a one-line subtitle and a link, mode, decision and rating chips, and small SVG charts ported from the prototype (sparkline, ring, bullet), each with an accessible name stating its figures and a table view. "Not recorded" and "Preview" are states of a figure, so an unmeasured figure cannot show as a number. Built on the console's own tokens and components, with no new dependency.
+- **One loader for the scorecards:** the Applications page's reads and scoring moved, unchanged, into one function that both pages call, so the overview rates applications exactly as the Applications page does.
+
+**Why it matters:** the owner approved adopting the prototype as a layered build (ADR-0026). This slice is the first EYEON page on real data, and ADR-0027 fixes the pattern the other dashboards follow: one read-only router per page, allow-list entries and per-role tests, a flag per page, honest labels, the shared kit.
+
+**Access:** as the Applications page: Owner and Admin (`llmGateway:read`), Auditor (`evidence:read`); spend only with `llmGatewaySpend:read`, so the Auditor sees no spend (the field is absent from the response). Security Analyst, Business Analyst, Prompt Analyst and Viewer are refused. The new queries `eyeonOverview.summary` and `eyeonOverview.status` are read-only and on the Auditor's content-free allow-list.
+
+**Metadata only:** counts of guardrail decisions by direction, verdict and reported mode, the guardrail settings' mode history, and the scorecards' metadata. No prompt or answer text, redacted text, personal-data findings, encrypted content or token hash is read; the tests check every select, grouping and SQL statement. At most ten reads per page view, however much data there is.
+
+**Not recorded** (the page says so rather than estimating): the guardrail's added latency; a monthly budget for the project (budgets are per gateway key); the personal-data types behind redactions (stored per event only, and the page reads no content); traffic that bypasses the gateway; model health over time. Approvals waiting, the live decision feed, evaluation scores, model health now and audit events stay on their own pages. Totals count every guardrail check in the project; the Applications page counts application keys only, so its totals can be lower, and the page says so.
+
+**Release:** web image only. To switch the page on, set `CAIRO_EYEON_OVERVIEW_ENABLED=true` on the console and restart it; `deploy/azure` does not declare the flag yet.
+
+**Tests:** 22 new tests of the overview's figures, wording and chart geometry; 20 new router tests (every role without the scopes, and the Security Analyst and Business Analyst, refused before any database read; flag off answers without a read; spend absent for the Auditor; no content column in any select, grouping or SQL; the same ten reads whatever the number of applications; the same applications, bands and top risks as the Applications page on the same data); 10 new kit tests ("Not recorded" never shows a number, "Preview" is tagged, chips name mode and decision in words, every chart has an accessible name and table view). The pinned sidebar list for the Auditor now includes Applications (missing since CHG-2026-122) and Overview, and a test pins Overview first under Governance Controls. Existing tests still pass: content-free roles (25, the Auditor's and Security Analyst's allow-lists name only existing queries), the application detail router (13), the scorecard (32), the application detail (19) and the guardrail settings (59). Fresh typecheck passed (the 2 tolerated Enterprise-file errors only); ESLint with no warnings and Prettier on every changed file.

@@ -172,6 +172,14 @@ export const env = createEnv({
     // hosts or "*.suffix" patterns. Unset = the built-in provider list
     // (acmeLitellmEndpointGuard.ts). Widening it is a deliberate config change.
     CAIRO_LITELLM_MODEL_ENDPOINT_ALLOWLIST: z.string().optional(),
+    // ACME addition (CHG-2026-132, ADR-0027): the EYEON overview page, the
+    // first EYEON-native page. SERVER-ONLY, no NEXT_PUBLIC_ form. Default
+    // off: the eyeonOverview router reads nothing and says so, the
+    // navigation entry is hidden, and the console looks as before.
+    CAIRO_EYEON_OVERVIEW_ENABLED: z
+      .enum(["true", "false"])
+      .optional()
+      .default("false"),
     NEXTAUTH_SECRET:
       process.env.NODE_ENV === "production"
         ? z.string().min(1)
@@ -927,6 +935,7 @@ export const env = createEnv({
       process.env.CAIRO_LITELLM_MODEL_MANAGEMENT_ENABLED,
     CAIRO_LITELLM_MODEL_ENDPOINT_ALLOWLIST:
       process.env.CAIRO_LITELLM_MODEL_ENDPOINT_ALLOWLIST,
+    CAIRO_EYEON_OVERVIEW_ENABLED: process.env.CAIRO_EYEON_OVERVIEW_ENABLED,
     SEED_SECRET_KEY: process.env.SEED_SECRET_KEY,
     NEXT_PUBLIC_DEMO_PROJECT_ID: process.env.NEXT_PUBLIC_DEMO_PROJECT_ID,
     NEXT_PUBLIC_DEMO_ORG_ID: process.env.NEXT_PUBLIC_DEMO_ORG_ID,

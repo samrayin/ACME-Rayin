@@ -83,6 +83,11 @@ const AUDITOR_ROLE_ALLOWED_PROCEDURES: ReadonlySet<string> = new Set([
   // CHG-2026-125: one application's detail screen. Metadata only, under the
   // same access rule as the scorecard: no token hash, no guardrail content.
   "acmeApplications.detail",
+  // CHG-2026-132 (ADR-0027): the EYEON overview and its navigation entry's
+  // on/off check. Metadata only, under the scorecard's access rule; spend
+  // only with llmGatewaySpend:read, which the Auditor does not hold.
+  "eyeonOverview.summary",
+  "eyeonOverview.status",
   "acmeLitellm.models",
   "acmeLitellm.catalogue",
   "acmePromptApproval.listPending",

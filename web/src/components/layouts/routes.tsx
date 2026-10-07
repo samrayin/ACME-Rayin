@@ -41,6 +41,7 @@ import { usePostHogClientCapture } from "@/src/features/posthog-analytics/usePos
 import { CloudStatusMenu } from "@/src/features/cloud-status-notification/components/CloudStatusMenu";
 import { AcmeContactSupportNavItem } from "@/src/components/nav/acme-contact-support-nav-item";
 import { AcmeLitellmGatewayNavItem } from "@/src/components/nav/acme-litellm-gateway-nav-item";
+import { EyeonOverviewNavItem } from "@/src/components/nav/eyeon-overview-nav-item";
 import { type ProductModule } from "@/src/ee/features/ui-customization/productModuleSchema";
 
 export enum RouteSection {
@@ -141,6 +142,18 @@ export const ROUTES: Route[] = [
     icon: LayoutDashboard,
     productModule: "dashboards",
     section: RouteSection.Main,
+  },
+  {
+    // ACME (CHG-2026-132, ADR-0027): the EYEON overview, first under
+    // Governance Controls. menuNode, not a plain link: the flag is
+    // server-only, so the item asks the server and renders nothing while
+    // CAIRO_EYEON_OVERVIEW_ENABLED is off. Same scopes as Applications.
+    title: "Overview",
+    pathname: `/project/[projectId]/acme-enhancements/overview`,
+    projectRbacScopes: ["llmGateway:read", "evidence:read"],
+    section: RouteSection.Main,
+    group: RouteGroup.GovernanceControls,
+    menuNode: <EyeonOverviewNavItem />,
   },
   {
     // ACME addition: policy enforcement (PII redaction, jailbreak/topical
