@@ -82,6 +82,58 @@ describe("guardrail history filter", () => {
   it("rejects oversized free-text filters", () => {
     expect(() => filter({ agent: "x".repeat(201) })).toThrow();
   });
+
+  // CHG-2026-125 (ADR-0023 §3.5): an application's keys, exactly.
+  it("matches the agent exactly against a list, beside the other filters", () => {
+    const from = new Date("2026-09-20T00:00:00Z");
+    expect(
+      buildHistoryWhere(
+        "p1",
+        filter({
+          from,
+          agents: [" cairo-hr-bot-1a2b3c4d ", "cairo-hr-bot-1a2b3c4d-r2"],
+          hideTestTraffic: true,
+        }),
+      ),
+    ).toEqual({
+      projectId: "p1",
+      AND: [
+        { eventTime: { gte: from } },
+        {
+          agentId: {
+            in: ["cairo-hr-bot-1a2b3c4d", "cairo-hr-bot-1a2b3c4d-r2"],
+          },
+        },
+        {
+          NOT: {
+            OR: TEST_TRAFFIC_AGENT_PREFIXES.map((prefix) => ({
+              agentId: { startsWith: prefix },
+            })),
+          },
+        },
+      ],
+    });
+  });
+
+  it("leaves every other filter as it was when no agent list is given", () => {
+    const parsed = filter({ agent: "gateway" });
+    expect(parsed.agents).toBeUndefined();
+    expect(buildHistoryWhere("p1", parsed).AND).toEqual([
+      { agentId: { contains: "gateway", mode: "insensitive" } },
+    ]);
+  });
+
+  it("caps the agent list and each agent's length, and refuses an empty one", () => {
+    expect(() => filter({ agents: [] })).toThrow();
+    expect(() => filter({ agents: ["  "] })).toThrow();
+    expect(() => filter({ agents: ["x".repeat(201)] })).toThrow();
+    expect(() =>
+      filter({ agents: Array.from({ length: 21 }, (_, i) => `a${i}`) }),
+    ).toThrow();
+    expect(
+      filter({ agents: Array.from({ length: 20 }, (_, i) => `a${i}`) }).agents,
+    ).toHaveLength(20);
+  });
 });
 
 describe("guardrail history counts (CHG-2026-116)", () => {

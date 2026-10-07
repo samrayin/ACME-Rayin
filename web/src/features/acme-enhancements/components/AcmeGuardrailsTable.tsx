@@ -985,6 +985,11 @@ type HistoryFilterForm = {
   action: "all" | "block" | "redact" | "allow" | "unavailable";
   direction: "all" | "input" | "output";
   agent: string;
+  /**
+   * CHG-2026-125 (ADR-0023 §3.5): exact agent ids, set only by a link (an
+   * application's keys, earlier generations included). Empty: no such filter.
+   */
+  agents: string[];
   user: string;
   hideTestTraffic: boolean;
 };
@@ -995,6 +1000,7 @@ const EMPTY_HISTORY_FILTER: HistoryFilterForm = {
   action: "all",
   direction: "all",
   agent: "",
+  agents: [],
   user: "",
   hideTestTraffic: false,
 };
@@ -1013,6 +1019,7 @@ function toHistoryFilter(form: HistoryFilterForm) {
     actions: form.action === "all" ? undefined : [form.action],
     direction: form.direction === "all" ? undefined : form.direction,
     agent: form.agent.trim() || undefined,
+    agents: form.agents.length > 0 ? form.agents : undefined,
     user: form.user.trim() || undefined,
     hideTestTraffic: form.hideTestTraffic,
   };
@@ -1096,9 +1103,10 @@ export function AcmeGuardrailEventsLog({
   projectId: string;
   /**
    * CHG-2026-122 (ADR-0023): filters preset by the link that opened the
-   * page, read once when the log is first shown.
+   * page, read once when the log is first shown. CHG-2026-125: `agents`,
+   * exact agent ids (an application's keys, from its detail screen).
    */
-  linkedFilter?: { agent: string; from: string };
+  linkedFilter?: { agent: string; from: string; agents?: string[] };
 }) {
   const [selectedEvent, setSelectedEvent] = useState<{
     id: string;
@@ -1110,6 +1118,7 @@ export function AcmeGuardrailEventsLog({
   const [initialFilter] = useState<HistoryFilterForm>(() => ({
     ...EMPTY_HISTORY_FILTER,
     ...linkedFilter,
+    agents: linkedFilter?.agents ?? [],
   }));
   const [draft, setDraft] = useState<HistoryFilterForm>(initialFilter);
   const [applied, setApplied] = useState<HistoryFilterForm>(initialFilter);
@@ -1343,8 +1352,25 @@ export function AcmeGuardrailEventsLog({
         }
         notice={
           history?.liveSync === "unavailable" ||
+          applied.agents.length > 0 ||
           (modeChanges.data && modeChanges.data.length > 0) ? (
             <div className="flex flex-col gap-1">
+              {applied.agents.length > 0 && (
+                <p className="text-muted-foreground flex flex-wrap items-center gap-2 text-xs">
+                  <span>
+                    Showing only the agents {applied.agents.join(", ")}, from an
+                    application&apos;s detail screen.
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => applyFilter({ ...applied, agents: [] })}
+                  >
+                    Show all agents
+                  </Button>
+                </p>
+              )}
               {history?.liveSync === "unavailable" && (
                 <p className="text-muted-foreground text-xs">
                   rayin-guardrails did not answer, so events whose push failed

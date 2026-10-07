@@ -80,6 +80,9 @@ const AUDITOR_ROLE_ALLOWED_PROCEDURES: ReadonlySet<string> = new Set([
   // llmGateway:read or evidence:read, and shows spend only with
   // llmGatewaySpend:read, which the Auditor does not hold.
   "acmeApplications.scorecards",
+  // CHG-2026-125: one application's detail screen. Metadata only, under the
+  // same access rule as the scorecard: no token hash, no guardrail content.
+  "acmeApplications.detail",
   "acmeLitellm.models",
   "acmeLitellm.catalogue",
   "acmePromptApproval.listPending",

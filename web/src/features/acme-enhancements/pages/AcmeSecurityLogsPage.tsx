@@ -12,6 +12,7 @@ import { EventsTab as AcmeGatewayChangeRecord } from "@/src/features/acme-enhanc
 import { AcmeLitellmRequestLogs } from "@/src/features/acme-enhancements/components/AcmeLitellmRequestLogs";
 import { useHasProjectAccess } from "@/src/features/rbac/utils/checkProjectAccess";
 import useProjectIdFromURL from "@/src/hooks/useProjectIdFromURL";
+import { parseAgentsParam } from "@/src/features/acme-enhancements/utils/guardrailAgentLink";
 import { api } from "@/src/utils/api";
 
 const headerProps = {
@@ -87,6 +88,9 @@ function AcmeSecurityLogs({ projectId }: { projectId: string }) {
       /^\d{4}-\d{2}-\d{2}$/.test(router.query.from)
         ? router.query.from
         : "",
+    // CHG-2026-125 (ADR-0023 §3.5): ?agents=<alias>,<alias>, an exact
+    // match on any of an application's keys, from its detail screen.
+    agents: parseAgentsParam(router.query.agents),
   };
   const current =
     requested && TABS.includes(requested) && visible.includes(requested)

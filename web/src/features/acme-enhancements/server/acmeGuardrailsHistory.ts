@@ -10,6 +10,10 @@ import {
   AcmeGuardrailEventDirection,
   type Prisma,
 } from "@langfuse/shared/src/db";
+import {
+  GUARDRAIL_AGENT_MAX_LENGTH,
+  GUARDRAIL_AGENTS_MAX,
+} from "@/src/features/acme-enhancements/utils/guardrailAgentLink";
 
 /**
  * Agent names used by CAIRO's own guardrail test runs (the promptfoo suites
@@ -34,6 +38,16 @@ export const GuardrailHistoryFilterSchema = z.object({
   direction: z.enum(["input", "output"]).optional(),
   /** Case-insensitive substring of the agent id. */
   agent: z.string().trim().max(200).optional(),
+  /**
+   * ACME (CHG-2026-125, ADR-0023 §3.5): the agent id is exactly one of
+   * these, so a link can show every key of one application, a rotated key's
+   * earlier generations included. Combined with the other filters like them.
+   */
+  agents: z
+    .array(z.string().trim().min(1).max(GUARDRAIL_AGENT_MAX_LENGTH))
+    .min(1)
+    .max(GUARDRAIL_AGENTS_MAX)
+    .optional(),
   /** Case-insensitive substring of the user id. */
   user: z.string().trim().max(200).optional(),
   hideTestTraffic: z.boolean().default(false),
@@ -87,6 +101,9 @@ function filterConditions(
     conditions.push({
       agentId: { contains: filter.agent, mode: "insensitive" },
     });
+  }
+  if (filter.agents) {
+    conditions.push({ agentId: { in: filter.agents } });
   }
   if (filter.user) {
     conditions.push({ userId: { contains: filter.user, mode: "insensitive" } });

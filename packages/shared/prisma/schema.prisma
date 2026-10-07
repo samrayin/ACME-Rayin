@@ -1258,6 +1258,8 @@ model AcmeLitellmEvent {
 
   @@index([projectId, eventTime])
   @@index([correlationId])
+  // CHG-2026-125 (ADR-0023 §3.5): one key's change record, every generation.
+  @@index([resourceId])
   @@map("acme_litellm_events")
 }
 
@@ -1319,6 +1321,9 @@ model AcmeLitellmRequestLog {
   @@index([startTime])
   @@index([litellmCallId])
   @@index([apiKeyHash])
+  // CHG-2026-125 (ADR-0023 §3.5): one application's requests in a period,
+  // by its key aliases (the Applications page and its detail screen).
+  @@index([projectId, keyAlias, startTime])
   @@map("acme_litellm_request_logs")
 }
 
