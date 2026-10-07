@@ -59,7 +59,19 @@ release rollback does not need it. Rehearsed locally on Postgres 16.4 with the
 Azure-like roles on 2026-10-06: up, six constraint checks, down and up again,
 all PASS (see its `ROLLBACK.md`).
 
+Added with CHG-2026-125: `20261006230000_acme_application_detail_indexes` adds
+two indexes for the application detail screen (ADR-0023 §3.5):
+`acme_litellm_request_logs (project_id, key_alias, start_time)` and
+`acme_litellm_events (resource_id)`. **Safely reversible**: `down.sql` drops
+both indexes and loses no data. Plain `CREATE INDEX IF NOT EXISTS`, which
+blocks writes to the table while it builds; acceptable at dev sizes, and on a
+large table the index is built concurrently by hand first, which the
+migration then leaves alone. Rehearsed locally on Postgres 16.4 with the
+Azure-like roles on 2026-10-06: up, the detail query against seeded rows,
+index use at volume, down, status, up again, and the hand-built concurrent
+path, all PASS (see its `ROLLBACK.md`).
+
 ## Reading this
-- Nothing here is *safely reversible*: every ACME migration either holds audit data or changes something Postgres cannot undo.
+- Until CHG-2026-125 nothing here was *safely reversible*: every ACME migration either holds audit data or changes something Postgres cannot undo. CHG-2026-125's two indexes are the first that are.
 - Nothing is classed *backup-and-restore* on its own, but that is the only complete answer for 3, and the fallback for all of them. It depends on a restore that has actually been rehearsed; see the dev restore rehearsal plan.
 - Reverse order matters for the guardrail table: 4, then 3's columns, then 1.

@@ -6330,3 +6330,39 @@ free and closes a live exposure.
 ## 2026-10-07 — ADR-0023 written: the Applications page (CHG-2026-115)
 
 Documentation only (Tier 2). ADR-0023, claimed on 2026-10-05 and put on hold, is written: an application is a key lineage; how its guardrail decisions, request log and change record are joined; the scorecard as built under CHG-2026-122 (#340, #346); a detail screen (phase 2, needs indexes) and one trace per request (phase 3, feasibility) as proposals; risks and the owner decisions still open. It was written after phase 1 shipped, which the ADR records. The register marks CHG-2026-115 and CHG-2026-122 merged. Rollback: revert the commit.
+
+## 2026-10-07 — Applications page, phase 2: one screen per application (CHG-2026-125, ADR-0023)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-125 · owner: Anees Ur Rahman · Tier 1 |
+| **ADR** | [ADR-0023](acme-governance/adr/ADR-0023-applications-page.md) §3.5 |
+| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Dates** | Dev: not yet · Staging: not available; isolated migration and rollback rehearsal performed. (2026-10-06) · Prod: not yet |
+| **Impact** | Client-visible: a detail screen per application, reached from its scorecard card. No downtime |
+| **Schema change** | Migration `20261006230000_acme_application_detail_indexes`: two indexes, no backfill |
+| **Rollback** | [plan](acme-governance/rollback/20261006230000_acme_application_detail_indexes/ROLLBACK.md) — tested 2026-10-06 · data lost: none |
+| **Feature flag** | None |
+
+**What:** each application on the Applications page now has its own screen, opened from its card:
+- **its scorecard** (the same numbers as the card: the scorecard query and the detail screen share one aggregation);
+- **its key's generations** across rotations, with status, dates, models, limits, budget and expiry;
+- **its daily calls**, and its daily spend for roles allowed to see spend;
+- **its latest gateway requests, each with its guardrail decisions beside it**, joined by the gateway call id: direction, decision, policy label and gateway mode only;
+- **its key's change record** for every generation, with only an allow-list of settings shown and never a token hash.
+
+The guardrail log also accepts an exact list of key names (`?agents=`), so the link from an application shows every generation's decisions, including a rotated key's earlier ones.
+
+**Why it matters:** the evidence for one application was spread over four pages (ADR-0023 §1). Now it is one screen.
+
+**Metadata only:** no prompt or answer text, redacted text, personal-data findings or encrypted content is read; the tests assert on the columns each query selects.
+
+**Database:** two indexes, for an application's requests in a period (`acme_litellm_request_logs (project_id, key_alias, start_time)`) and a key's change record (`acme_litellm_events (resource_id)`). Plain `CREATE INDEX IF NOT EXISTS`, which takes well under a second at today's sizes; for a large table, build them concurrently by hand first and the migration becomes a no-op (rehearsed).
+
+**Access:** as the scorecard: Owner and Admin (`llmGateway:read`), Auditor (`evidence:read`); spend only with `llmGatewaySpend:read`. The new query `acmeApplications.detail` is read-only and on the Auditor's content-free allow-list.
+
+**Not included:** links from a request to its trace, which come with one trace per request (phase 3, CHG-2026-126).
+
+**Release:** web image, with the migration applied on start.
+
+**Tests:** 18 detail and 12 router tests (access refused before any database read, spend hidden without its scope, no content column selected, no token hash returned), 10 guardrail-log filter tests, the 32 scorecard tests and the content-free role tests. Migration rehearsed on a throwaway local database: up, the detail query on seeded rows, index use at 50,000 rows, down, up again.
