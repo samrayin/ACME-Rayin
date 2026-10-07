@@ -6437,3 +6437,16 @@ On pages outside any organization (the Organizations list), the sidebar showed E
 Both addresses answer, and both send sign-in back to the new one. Images are unchanged. The ops repository's deployment record has the steps and checks; the environment's host names stay there.
 
 **Known gap:** `deploy/azure` still declares the earlier development domain, from which the module derives `NEXTAUTH_URL`. Nothing is applied there today, but a `terraform apply` or Helm upgrade would set sign-in back. Settle how the address is declared before any apply. The old addresses retire after about two weeks, on the owner's approval.
+
+## 2026-10-07 — Dark mode takes the EYEON prototype's palette (CHG-2026-130, ADR-0026 slice 0)
+
+**What:** dark mode now uses the EYEON prototype's colours. Light mode is unchanged.
+- **Surfaces:** near-black with a faint teal cast, ordered page, card, muted, popover; borders and inputs to match.
+- **Text:** the prototype's ink greys for body, muted and secondary text.
+- **Status colours:** allow green, redact amber, block red-pink and info periwinkle, kept apart from the brand accents.
+- **Charts:** lime, cyan and magenta lead, whatever accent is chosen.
+- **Navigation:** the active sidebar item uses the prototype's darker shade of the accent; the accent itself (primary, links, rings, the wordmark's "ON") still follows the chosen dark accent (CHG-2026-127), lime by default.
+
+**Why it matters:** the owner approved adopting the prototype (2026-10-07), starting with its palette today; the larger slices follow under ADR-0026.
+
+**Tests:** 22 theme tests pass, including a check that reads the dark block from `globals.css` and holds seven text-on-surface pairs to WCAG AA (4.5:1). Display only: no schema, access or data change. Tier 2. Rollback: redeploy the previous console image.
