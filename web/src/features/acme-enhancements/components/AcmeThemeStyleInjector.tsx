@@ -1,5 +1,5 @@
 import { api } from "@/src/utils/api";
-import { ACME_ACCENT_COLOR_PRESETS } from "@/src/features/acme-enhancements/theme/acmeThemePresets";
+import { acmeThemeCss } from "@/src/features/acme-enhancements/theme/acmeThemePresets";
 import {
   effectiveTheme,
   usePersonalTheme,
@@ -14,6 +14,9 @@ import {
  *
  * No risk of CSS injection: the stored value is one of four fixed preset
  * keys (validated server-side against an enum), never free-form user text.
+ *
+ * CHG-2026-127: the light accent applies only in light mode, and a separate
+ * bright accent in dark mode (see acmeThemeCss).
  */
 export function AcmeThemeStyleInjector({ projectId }: { projectId: string }) {
   const theme = api.acmeTheme.get.useQuery(
@@ -33,18 +36,7 @@ export function AcmeThemeStyleInjector({ projectId }: { projectId: string }) {
   // eslint-disable-next-line @repo/no-null-render
   if (!effective) return null;
 
-  const preset = ACME_ACCENT_COLOR_PRESETS[effective.accentColor];
-
   return (
-    <style
-      dangerouslySetInnerHTML={{
-        __html: `:root {
-  --primary: ${preset.primary};
-  --link: ${preset.link};
-  --link-hover: ${preset.linkHover};
-  --ring: ${preset.ring};
-}`,
-      }}
-    />
+    <style dangerouslySetInnerHTML={{ __html: acmeThemeCss(effective) }} />
   );
 }
