@@ -8,10 +8,8 @@ import {
 import { TextChip } from "@/src/components/TextChip";
 import BreadcrumbComponent from "@/src/components/layouts/breadcrumb";
 import { PageHeaderControlsSlotTarget } from "@/src/components/layouts/page-header-controls-slot";
-import { InAppAiAgentButton } from "@/src/components/nav/in-app-ai-agent-button";
 import { TopbarBrand } from "@/src/components/nav/topbar-brand";
 import { useHasAppSidebar } from "@/src/components/nav/sidebar-presence";
-import { useIsInAppAgentLauncherVisible } from "@/src/features/in-app-agent/components/InAppAiAgentProvider";
 import DocPopup from "@/src/components/layouts/doc-popup";
 import { SidebarTrigger } from "@/src/components/ui/sidebar";
 import {
@@ -31,10 +29,8 @@ import {
   APP_SHELL_CHROME_ROW_TEST_ID,
 } from "@/src/components/layouts/app-shell-chrome";
 import { useAcmeHeaderBackgroundClassName } from "@/src/features/acme-enhancements/theme/useAcmeHeaderBackgroundClassName";
-import {
-  AcmeChatLauncher,
-  useIsAcmeChatLauncherVisible,
-} from "@/src/features/acme-enhancements/components/AcmeChatLauncher";
+import { useEyeonUserMenu } from "@/src/features/acme-enhancements/components/eyeon/shell/EyeonUserMenuContext";
+import { EyeonTopbarUserMenu } from "@/src/features/acme-enhancements/components/eyeon/shell/EyeonTopbarUserMenu";
 
 const containerLayoutClassName =
   "lg:mx-auto lg:w-full lg:max-w-screen-lg lg:px-8 xl:max-w-screen-xl 2xl:max-w-[1400px]";
@@ -88,8 +84,8 @@ const PageHeader = ({
   const hasAppSidebar = useHasAppSidebar();
   const envLabel = useEnvLabel();
   const acmeHeaderBackgroundClassName = useAcmeHeaderBackgroundClassName();
-  const isInAppAgentLauncherVisible = useIsInAppAgentLauncherVisible();
-  const isAcmeChatLauncherVisible = useIsAcmeChatLauncherVisible();
+  // ACME (CHG-2026-134): the user menu, from the authenticated layout.
+  const eyeonUserMenu = useEyeonUserMenu();
   // The sidebar trigger + brand mark only make sense where a real AppSidebar
   // exists to toggle/mirror. On the sidebar-less MinimalLayout (public/shared
   // trace and session views) show the page's own leadingControl instead — no
@@ -160,9 +156,10 @@ const PageHeader = ({
                 Empty on pages that don't use it. */}
             <div className="flex flex-wrap items-center gap-2">
               <PageHeaderControlsSlotTarget />
-              {isInAppAgentLauncherVisible && <InAppAiAgentButton />}
-              {/* ACME (ADR-0015): the ACME AI launcher. */}
-              {isAcmeChatLauncherVisible && <AcmeChatLauncher />}
+              {/* ACME (CHG-2026-134): the user menu at the right edge, where
+                  the ACME AI and assistant launchers were; both are removed
+                  from EYEON. */}
+              {eyeonUserMenu && <EyeonTopbarUserMenu {...eyeonUserMenu} />}
             </div>
           </div>
         </div>

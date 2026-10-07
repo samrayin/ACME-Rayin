@@ -44,7 +44,11 @@
  *      "can view traces" implicitly.
  */
 import { z } from "zod";
-import { createTRPCRouter, protectedProjectProcedure } from "@/src/server/api/trpc";
+import { TRPCError } from "@trpc/server";
+import {
+  createTRPCRouter,
+  protectedProjectProcedure,
+} from "@/src/server/api/trpc";
 import { throwIfNoProjectAccess } from "@/src/features/rbac/utils/checkProjectAccess";
 import {
   getTracesTable,
@@ -58,6 +62,18 @@ import { normalizeOrderByForTable } from "@langfuse/shared";
 import { env } from "@/src/env.mjs";
 import { ACME_KNOWLEDGE_BASE } from "@/src/features/acme-enhancements/server/acmeKnowledgeBase";
 import { pickChatPromptVariant } from "@/src/features/acme-enhancements/server/acmePromptVariant";
+
+/**
+ * ACME (CHG-2026-134): ACME AI is removed from EYEON on the owner's decision
+ * (2026-10-07: "Remove ACME AI completely from EYEON. we will plan for it
+ * sometime later"). Its launcher and panel are gone from the console, and
+ * this, its only procedure, refuses every caller first: before the access
+ * check, the gateway settings, the prompt, any project data or the gateway
+ * itself. The code stays for that later plan, which turns it back on here.
+ */
+function acmeAiEnabled(): boolean {
+  return false;
+}
 
 function wrapUntrusted(text: string, toolName: string): string {
   return `<untrusted_data source="langfuse_project_data:${toolName}">\n${text}\n</untrusted_data>`;
@@ -140,12 +156,13 @@ async function runTool(
   if (name === "get_trace_detail") {
     const traceId = String(input.traceId ?? "");
     const [trace, observations, scores] = await Promise.all([
+      // CHG-2026-113: upstream prefers getTraceByIdFromEventsTable for new
+      // use-cases. Swapping it here changes WHERE the AI chat reads trace
+      // detail from, which is a behaviour change, not a lint fix, and nothing
+      // covers this path with a test. Migrating it to silence a warning would
+      // be the wrong trade. Tracked as its own change; see the CHG-2026-113
+      // PR. (CHG-2026-134: the directive now sits on the line it applies to.)
       // eslint-disable-next-line @typescript-eslint/no-deprecated -- CHG-2026-113.
-      // Upstream prefers getTraceByIdFromEventsTable for new use-cases. Swapping
-      // it here changes WHERE the AI chat reads trace detail from, which is a
-      // behaviour change, not a lint fix, and nothing covers this path with a
-      // test. Migrating it to silence a warning would be the wrong trade.
-      // Tracked as its own change; see the CHG-2026-113 PR.
       getTraceById({ traceId, projectId }),
       getObservationsForTrace({ traceId, projectId, includeIO: false }),
       getScoresForTraces({
@@ -158,7 +175,10 @@ async function runTool(
       }),
     ]);
     if (!trace) {
-      return wrapUntrusted(`No trace found with id ${traceId} in this project.`, name);
+      return wrapUntrusted(
+        `No trace found with id ${traceId} in this project.`,
+        name,
+      );
     }
     const summary = {
       id: trace.id,
@@ -249,7 +269,9 @@ async function callGateway(messages: ChatCompletionMessage[]) {
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new Error(`LiteLLM chat completion failed (${res.status}): ${detail}`);
+    throw new Error(
+      `LiteLLM chat completion failed (${res.status}): ${detail}`,
+    );
   }
   return res.json() as Promise<{
     choices: Array<{
@@ -281,13 +303,24 @@ export const acmeChatRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      if (!acmeAiEnabled()) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "ACME AI is switched off in EYEON.",
+        });
+      }
+
       throwIfNoProjectAccess({
         session: ctx.session,
         projectId: input.projectId,
         scope: "projectAiAssistant:use",
       });
 
-      if (!env.RAYIN_CHAT_LLM_BASE_URL || !env.RAYIN_CHAT_LLM_API_KEY || !env.RAYIN_CHAT_LLM_MODEL) {
+      if (
+        !env.RAYIN_CHAT_LLM_BASE_URL ||
+        !env.RAYIN_CHAT_LLM_API_KEY ||
+        !env.RAYIN_CHAT_LLM_MODEL
+      ) {
         return {
           reply:
             "ACME AI is not configured on this deployment — RAYIN_CHAT_LLM_BASE_URL, " +
@@ -307,7 +340,10 @@ export const acmeChatRouter = createTRPCRouter({
 
       const messages: ChatCompletionMessage[] = [
         { role: "system", content: systemPrompt },
-        ...input.history.map((m) => ({ role: m.role, content: m.content }) as ChatCompletionMessage),
+        ...input.history.map(
+          (m) =>
+            ({ role: m.role, content: m.content }) as ChatCompletionMessage,
+        ),
         { role: "user" as const, content: input.message },
       ];
 
@@ -320,7 +356,12 @@ export const acmeChatRouter = createTRPCRouter({
         userId: ctx.session.user.id,
         metadata: { variant: variant.variant, promptLabel: variant.label },
         ...(variant.promptName && variant.promptVersion !== null
-          ? { prompt: { name: variant.promptName, version: variant.promptVersion } }
+          ? {
+              prompt: {
+                name: variant.promptName,
+                version: variant.promptVersion,
+              },
+            }
           : {}),
       });
       const trace = handler.langfuse.trace({
@@ -336,7 +377,10 @@ export const acmeChatRouter = createTRPCRouter({
         model: env.RAYIN_CHAT_LLM_MODEL,
         input: messages,
         ...(variant.promptName && variant.promptVersion !== null
-          ? { promptName: variant.promptName, promptVersion: variant.promptVersion }
+          ? {
+              promptName: variant.promptName,
+              promptVersion: variant.promptVersion,
+            }
           : {}),
       });
 
@@ -388,7 +432,10 @@ async function runChatLoop(
         tool_call_id: call.id,
         content: await runTool(
           call.function.name,
-          JSON.parse(call.function.arguments || "{}") as Record<string, unknown>,
+          JSON.parse(call.function.arguments || "{}") as Record<
+            string,
+            unknown
+          >,
           projectId,
         ),
       })),

@@ -6,14 +6,10 @@ import { useSidebar } from "@/src/components/ui/sidebar";
 import { TopbarBrand } from "@/src/components/nav/topbar-brand";
 import { useHasAppSidebar } from "@/src/components/nav/sidebar-presence";
 import { TopbarAccount } from "@/src/components/nav/topbar-account";
-import { InAppAiAgentButton } from "@/src/components/nav/in-app-ai-agent-button";
 import { EnvLabelBadge } from "@/src/components/EnvLabelBadge";
 import { useEnvLabel } from "@/src/hooks/useEnvLabel";
-import { useIsInAppAgentLauncherVisible } from "@/src/features/in-app-agent/components/InAppAiAgentProvider";
-import {
-  AcmeChatLauncher,
-  useIsAcmeChatLauncherVisible,
-} from "@/src/features/acme-enhancements/components/AcmeChatLauncher";
+import { useEyeonUserMenu } from "@/src/features/acme-enhancements/components/eyeon/shell/EyeonUserMenuContext";
+import { EyeonTopbarUserMenu } from "@/src/features/acme-enhancements/components/eyeon/shell/EyeonTopbarUserMenu";
 
 /**
  * Slim mobile top chrome for the minimal-chrome shell: hamburger · centered
@@ -36,8 +32,8 @@ export const MobileTopBar = ({
   const session = useSession();
   const hasAppSidebar = useHasAppSidebar();
   const envLabel = useEnvLabel();
-  const isInAppAgentLauncherVisible = useIsInAppAgentLauncherVisible();
-  const isAcmeChatLauncherVisible = useIsAcmeChatLauncherVisible();
+  // ACME (CHG-2026-134): the user menu, from the authenticated layout.
+  const eyeonUserMenu = useEyeonUserMenu();
   const showHamburger = showSidebarTrigger && hasAppSidebar;
 
   return (
@@ -66,14 +62,17 @@ export const MobileTopBar = ({
       {/* Center: the Langfuse wordmark. */}
       {hasAppSidebar && <TopbarBrand variant="wordmark" />}
 
-      {/* Right: the assistant launcher (prominent, gradient-bordered so it
-          reads as a real entry point here) + account. Balances the left slot
-          so the brand stays centered. */}
+      {/* Right: the account. Balances the left slot so the brand stays
+          centered. ACME (CHG-2026-134): the ACME AI and assistant launchers
+          are removed from EYEON; the full user menu (every item the sidebar
+          footer had) replaces the short account menu wherever the
+          authenticated layout provides it. */}
       <div className="flex min-w-0 flex-1 items-center justify-end gap-1">
-        {isInAppAgentLauncherVisible && <InAppAiAgentButton prominent />}
-        {/* ACME (ADR-0015): the ACME AI launcher, icon only. */}
-        {isAcmeChatLauncherVisible && <AcmeChatLauncher compact />}
-        {session.data?.user && <TopbarAccount user={session.data.user} />}
+        {eyeonUserMenu ? (
+          <EyeonTopbarUserMenu {...eyeonUserMenu} compact />
+        ) : (
+          session.data?.user && <TopbarAccount user={session.data.user} />
+        )}
       </div>
     </div>
   );
