@@ -6574,3 +6574,32 @@ Both addresses answer, and both send sign-in back to the new one. Images are unc
 **Tests:** 7 new server tests (Owner, Admin, Prompt Analyst and Viewer refused by `acmeChat.sendMessage` before any database read or gateway call; Security Analyst, Business Analyst and Auditor still refused); 3 new tests that upstream's in-app agent is off on a self-hosted deployment unless switched on and refuses before reading anything; 8 new top-bar tests (no ACME AI or assistant launcher and no Ctrl/Cmd+I on desktop or mobile, even with the assistant available; no top bar or layout mounts either launcher or the panel; the user menu is the last control in the top bar, opens with the layout's items and runs them; no user block in the sidebar footer; the full menu on the mobile top bar; the short account menu outside the layout); 3 new user-menu tests (the person and every item, actions run, the compact trigger). Existing tests still pass: the app shell (4) and the ACME AI component (4, its code kept). ESLint with no warnings and Prettier on every changed file.
 
 **Also:** the `no-deprecated` lint directive in `acmeChatRouter.ts` sat one line above the call it covers (since CHG-2026-113), so ESLint reported it once the file changed; it now sits on that line, and the file is formatted. No behaviour change.
+
+## 2026-10-07 — The EYEON navigation rail (CHG-2026-135)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-135 · owner: Anees Ur Rahman · Tier 1 |
+| **ADR** | [ADR-0026](acme-governance/adr/ADR-0026-adopting-the-eyeon-prototype.md) §12.2 (addendum); reverses CHG-2026-131's "the rail waits for the upstream sync" on the owner's decision |
+| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
+| **Impact** | Client-visible once the flag is on, on desktop inside a project: a category rail at the far left, and the sidebar lists the chosen category. With the flag off (the default) the sidebar is unchanged. No downtime |
+| **Schema change** | None |
+| **Rollback** | Flag off, or redeploy the previous image |
+| **Feature flag** | `CAIRO_EYEON_RAIL_ENABLED`, server-only, default off |
+
+**What:** the owner's instruction of 2026-10-07: "set the Category UI as per attached sample".
+- **The rail:** Home, Governance Controls, Observability, Evaluation, Prompt Management, Reports, Logs, then a gap and Settings and Support, each an icon in a circle with its name under it. The active category's circle and name take the primary accent (in dark mode the chosen dark accent: lime, cyan or pink).
+- **Choosing a category** shows its own list in the sidebar beside the rail; Home goes to the project home. After a navigation the rail follows the page's category.
+- **Placement** follows the prototype: "Reports / Logs" becomes Logs (the Logs page) and Reports (no page yet, so not shown); Home and Dashboards under Home; gateway health under Observability; the other sections one to one.
+- **Access is not duplicated:** the rail sorts the sidebar's own items, as `routes.tsx` defines them and the existing filters pass them for the person. A category shows only when the person can see one of its items; an entry switched off behind its own flag never makes its category appear; a route added later lands in its group's category.
+- **Phones and the collapsed sidebar:** the rail is desktop only; the phone's navigation sheet is unchanged; the collapsed sidebar still works beside the rail. Outside a project the classic sidebar stays.
+- **Accessibility:** a navigation landmark, every icon with its name, keyboard-operable buttons with a visible focus ring, and `aria-current` on the active category.
+
+**Why it matters:** the owner wants the prototype's category navigation now rather than after the upstream sync.
+
+**Upstream sync (CHG-2026-100):** `routes.tsx` and `AppSidebar.tsx` are untouched. `AuthenticatedLayout.tsx` gets a few lines, `root.ts` one router, `env.mjs` one flag. The sync must check the sidebar's groups (a new group fails the type check), the navigation's shape and `sidebar.tsx`'s structure, which a test guards.
+
+**Release:** web image only. To switch the rail on, set `CAIRO_EYEON_RAIL_ENABLED=true` on the console and restart it; `deploy/azure` does not declare the flag yet.
+
+**Tests:** 23 new model tests (the Security Analyst's, Business Analyst's, Auditor's and Owner's categories pinned, from the same filtered navigation the sidebar-per-role test pins; for all seven roles every sidebar item lands in exactly one category or above every list, none added; no content surface in a content-free role's categories; a category holding only switched-off entries hidden; Reports and Logs separate; Home, Dashboards and gateway health placed as in the prototype; a route added later lands in its group's category; the active category follows the page, the person's choice and falls back to Home); 10 new rail tests (the categories in order; `aria-current` on the current page's category with only its items in the sidebar; choosing a category switches the list; Home links to the project home; an entry that renders nothing never shows; keyboard-operable buttons with a focus ring; the sidebar structure the rail shifts; with the flag off no rail and the navigation handed over unchanged; no rail outside a project); 10 new router tests (off unless set to true; every role, the content-free ones included, told when it is on, without a database read; refused when not signed in). The sidebar-per-role test (15) passes unchanged. ESLint with no warnings and Prettier on every changed file. Fresh typecheck passed over both changes (the 2 tolerated Enterprise-file errors only).
