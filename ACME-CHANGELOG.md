@@ -6521,7 +6521,7 @@ Both addresses answer, and both send sign-in back to the new one. Images are unc
 |---|---|
 | **Change ID** | CHG-2026-133 · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | [ADR-0027](acme-governance/adr/ADR-0027-eyeon-native-pages.md) (the EYEON-native page pattern; no new ADR); slice 4 of ADR-0026 |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Approval** | Owner, 2026-10-07: reviewed and merged #367 and approved its release ("yes, release"; console `acme-v4.38.0.44`). The page stays off until `CAIRO_EYEON_GUARDRAIL_DECISIONS_ENABLED` is set, a separate yes. No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
 | **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
 | **Impact** | Client-visible once the flag is on: a "Guardrail decisions" page under Governance Controls, after Overview, for Owners, Admins, Security Analysts and Auditors. With the flag off (the default) nothing changes on screen, except that the Ctrl/Cmd K list names the entry and opening it says the page is switched off. No downtime |
 | **Schema change** | None |
