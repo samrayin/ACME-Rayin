@@ -6403,3 +6403,7 @@ The guardrail log also accepts an exact list of key names (`?agents=`), so the l
 **Not included (phase 3b):** a per-application traces project, so the screen also links to the application's own trace. The reconcile path (requests the push missed) stores no trace id.
 
 **Tests:** 10 new gateway hook tests (span first, header fallback, case-insensitive header, malformed headers ignored, caller cannot choose the id, spoofed id removed, odd input left alone, strip then record); all 244 gateway tests pass. Console: 11 new intake tests (valid id stored; eight bad shapes stored as null with the record kept; no other key read) and 2 detail tests. Migration rehearsed locally: up, four checks, down, up again.
+
+## 2026-10-07 — UI Customization scrolls (CHG-2026-124, follow-up)
+
+The UI Customization page did not scroll, and with the Add Logo card on top it is taller than most screens, so the theme options below it could not be reached (reported by the owner, 2026-10-07). The page now scrolls. Display only. Rollback: revert the commit.
