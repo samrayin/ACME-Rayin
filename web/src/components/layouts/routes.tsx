@@ -42,6 +42,7 @@ import { CloudStatusMenu } from "@/src/features/cloud-status-notification/compon
 import { AcmeContactSupportNavItem } from "@/src/components/nav/acme-contact-support-nav-item";
 import { AcmeLitellmGatewayNavItem } from "@/src/components/nav/acme-litellm-gateway-nav-item";
 import { EyeonOverviewNavItem } from "@/src/components/nav/eyeon-overview-nav-item";
+import { EyeonGuardrailDecisionsNavItem } from "@/src/components/nav/eyeon-guardrail-decisions-nav-item";
 import { type ProductModule } from "@/src/ee/features/ui-customization/productModuleSchema";
 
 export enum RouteSection {
@@ -154,6 +155,18 @@ export const ROUTES: Route[] = [
     section: RouteSection.Main,
     group: RouteGroup.GovernanceControls,
     menuNode: <EyeonOverviewNavItem />,
+  },
+  {
+    // ACME (CHG-2026-133, ADR-0027): the EYEON Guardrail decisions page,
+    // after the overview. Gated like the overview's entry, on
+    // CAIRO_EYEON_GUARDRAIL_DECISIONS_ENABLED. Same scope as the guardrail
+    // decision log.
+    title: "Guardrail decisions",
+    pathname: `/project/[projectId]/acme-enhancements/guardrail-decisions`,
+    projectRbacScopes: ["projectGuardrails:read"],
+    section: RouteSection.Main,
+    group: RouteGroup.GovernanceControls,
+    menuNode: <EyeonGuardrailDecisionsNavItem />,
   },
   {
     // ACME addition: policy enforcement (PII redaction, jailbreak/topical

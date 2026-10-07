@@ -100,3 +100,27 @@ export function bulletScale(
   const at = (n: number) => Math.min(width, (n * width) / max);
   return { max, valueX: at(v), targetX: at(t) };
 }
+
+/**
+ * ACME (CHG-2026-133, ADR-0027): a stack of values as segments along a bar
+ * `length` long, each from where the previous one ends, on a scale where
+ * `max` fills the bar. Negative and non-finite values count as zero; with no
+ * positive `max` every segment is empty. The stack never runs past the bar.
+ * Used by the stacked bars (upwards from the baseline) and the bar list
+ * (rightwards from the start).
+ */
+export function stackSegments(
+  values: readonly number[],
+  max: number,
+  length: number,
+): { start: number; size: number }[] {
+  const scale = Number.isFinite(max) && max > 0 ? length / max : 0;
+  let start = 0;
+  return values.map((v) => {
+    const value = Number.isFinite(v) ? Math.max(0, v) : 0;
+    const size = Math.max(0, Math.min(length - start, value * scale));
+    const segment = { start, size };
+    start += size;
+    return segment;
+  });
+}

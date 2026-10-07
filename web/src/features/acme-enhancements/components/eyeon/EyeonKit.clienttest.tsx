@@ -7,10 +7,12 @@ import {
   ratingFromBand,
 } from "@/src/features/acme-enhancements/components/eyeon/EyeonChips";
 import {
+  EyeonBarList,
   EyeonBullet,
   EyeonChartTable,
   EyeonRing,
   EyeonSparkline,
+  EyeonStackedBars,
 } from "@/src/features/acme-enhancements/components/eyeon/EyeonCharts";
 import { EyeonCard } from "@/src/features/acme-enhancements/components/eyeon/EyeonCard";
 
@@ -184,5 +186,122 @@ describe("EyeonCard", () => {
       screen.getByRole("link", { name: "Open Guardrails" }),
     ).toHaveAttribute("href", "/project/p/acme-enhancements/guardrails");
     expect(screen.getByText("Gateway traffic only")).toBeInTheDocument();
+  });
+});
+
+// CHG-2026-133 (ADR-0027): the stacked bars and the bar list, for the
+// Guardrail decisions page. Every colour comes with words: a legend with
+// totals, or the value written beside the bar; "Would block" is named apart
+// from "Blocked"; every chart has an accessible name that states its figures.
+
+describe("EyeonStackedBars", () => {
+  const series = [
+    { name: "Blocked", tone: "block" as const },
+    { name: "Would block", tone: "block" as const, muted: true },
+    { name: "No verdict", tone: "neutral" as const },
+  ];
+
+  it("names its figures, draws one segment per non-zero value, and titles each bar", () => {
+    const { container } = render(
+      <EyeonStackedBars
+        label="Interventions per UTC day"
+        series={series}
+        points={[
+          { label: "2026-10-01", values: [2, 1, 0] },
+          { label: "2026-10-02", values: [0, 3, 1] },
+        ]}
+      />,
+    );
+    const chart = screen.getByRole("img");
+    expect(chart).toHaveAttribute(
+      "aria-label",
+      "Interventions per UTC day, 2 bars from 2026-10-01 to 2026-10-02: Blocked 2, Would block 4, No verdict 1; at most 4 in one bar.",
+    );
+    const filled = chart.querySelectorAll('rect[fill="currentColor"]');
+    expect(filled).toHaveLength(4);
+    const muted = [...filled].filter(
+      (r) => r.getAttribute("fill-opacity") === "0.4",
+    );
+    expect(muted).toHaveLength(2);
+    expect(
+      [...container.querySelectorAll("title")].map((t) => t.textContent),
+    ).toEqual([
+      "2026-10-01: Blocked 2, Would block 1, No verdict 0",
+      "2026-10-02: Blocked 0, Would block 3, No verdict 1",
+    ]);
+  });
+
+  it("has a legend that names every series with its total", () => {
+    render(
+      <EyeonStackedBars
+        label="Interventions per UTC day"
+        series={series}
+        points={[{ label: "2026-10-01", values: [2, 5, 0] }]}
+      />,
+    );
+    const legend = screen.getByRole("list", { name: "Legend" });
+    expect(legend.textContent).toBe("Blocked2Would block5No verdict0");
+  });
+
+  it("says when there is no data", () => {
+    render(
+      <EyeonStackedBars label="Interventions" series={series} points={[]} />,
+    );
+    expect(screen.getByRole("img")).toHaveAttribute(
+      "aria-label",
+      "Interventions: no data.",
+    );
+  });
+});
+
+describe("EyeonBarList", () => {
+  it("writes each item's figures beside a named bar, on one scale", () => {
+    const { container } = render(
+      <EyeonBarList
+        label="Refusals by policy label"
+        items={[
+          {
+            key: "jailbreak",
+            name: "Jailbreak or misuse",
+            title: "Jailbreak or misuse",
+            valueText: "6 · 4 blocked, 2 would block",
+            segments: [
+              { name: "Blocked", value: 4, tone: "block" },
+              { name: "Would block", value: 2, tone: "block", muted: true },
+            ],
+            note: <span>6 prompts refused</span>,
+          },
+          {
+            key: "other",
+            name: <a href="/x">Other</a>,
+            title: "Other",
+            valueText: "3 · 3 would block",
+            segments: [
+              { name: "Blocked", value: 0, tone: "block" },
+              { name: "Would block", value: 3, tone: "block", muted: true },
+            ],
+          },
+        ]}
+      />,
+    );
+    const list = screen.getByRole("list", { name: "Refusals by policy label" });
+    expect(list.querySelectorAll("li")).toHaveLength(2);
+    expect(
+      screen.getAllByRole("img").map((el) => el.getAttribute("aria-label")),
+    ).toEqual([
+      "Jailbreak or misuse: Blocked 4, Would block 2.",
+      "Other: Blocked 0, Would block 3.",
+    ]);
+    expect(
+      screen.getByText("6 · 4 blocked, 2 would block"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("6 prompts refused")).toBeInTheDocument();
+    expect(screen.getByTitle("Jailbreak or misuse")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Other" })).toBeInTheDocument();
+    // The larger item fills its row; the smaller one half of it.
+    const widths = [
+      ...container.querySelectorAll('rect[fill="currentColor"]'),
+    ].map((r) => Number(r.getAttribute("width")));
+    expect(widths.map((w) => Math.round(w))).toEqual([133, 67, 100]);
   });
 });

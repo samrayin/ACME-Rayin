@@ -77,9 +77,13 @@ const CONTENT_ROUTES = [
 const EXPECTED: Record<"SECURITY" | "ANALYST" | "AUDITOR", string[]> = {
   // CHG-2026-073: the gateway logs moved to Security > Logs, so Security
   // Analyst no longer sees the LLM Gateway page (it held only the logs).
+  // CHG-2026-133: the EYEON Guardrail decisions page (projectGuardrails:read);
+  // its entry renders nothing while CAIRO_EYEON_GUARDRAIL_DECISIONS_ENABLED
+  // is off.
   SECURITY: [
     "Contact ACME Support",
     "Go to...",
+    "Guardrail decisions",
     "Guardrails",
     "Logs",
     "Projects",
@@ -103,10 +107,12 @@ const EXPECTED: Record<"SECURITY" | "ANALYST" | "AUDITOR", string[]> = {
   // CHG-2026-122: Applications (evidence:read; the list had not caught up).
   // CHG-2026-132: the EYEON overview, under the same scopes; its entry still
   // renders nothing while CAIRO_EYEON_OVERVIEW_ENABLED is off.
+  // CHG-2026-133: the EYEON Guardrail decisions page (projectGuardrails:read).
   AUDITOR: [
     "Applications",
     "Contact ACME Support",
     "Go to...",
+    "Guardrail decisions",
     "Guardrails",
     "LLM Gateway",
     "Logs",
@@ -169,6 +175,7 @@ describe("sidebar sections (CHG-2026-073, CHG-2026-081)", () => {
 
   it("each route sits in its section", () => {
     expect(groupsOf("Overview")).toEqual(["Governance Controls"]);
+    expect(groupsOf("Guardrail decisions")).toEqual(["Governance Controls"]);
     expect(groupsOf("Guardrails")).toEqual(["Governance Controls"]);
     expect(groupsOf("LLM Gateway")).toEqual(["Governance Controls"]);
     // CHG-2026-083: the Assurance (Preview) demo is gone.
@@ -188,6 +195,30 @@ describe("sidebar sections (CHG-2026-073, CHG-2026-081)", () => {
     ).map((r) => r.title);
     expect(governance[0]).toBe("Overview");
   });
+
+  it("the EYEON Guardrail decisions page comes right after the overview (CHG-2026-133)", () => {
+    const governance = ROUTES.filter(
+      (r) => r.group === RouteGroup.GovernanceControls,
+    ).map((r) => r.title);
+    expect(governance.slice(0, 3)).toEqual([
+      "Overview",
+      "Guardrail decisions",
+      "Guardrails",
+    ]);
+    const entry = ROUTES.find((r) => r.title === "Guardrail decisions");
+    expect(entry?.projectRbacScopes).toEqual(["projectGuardrails:read"]);
+    expect(entry?.menuNode).toBeDefined();
+  });
+
+  it.each([Role.OWNER, Role.ADMIN])(
+    "%s sees the Guardrail decisions entry; Business and Prompt Analysts do not (CHG-2026-133)",
+    (role) => {
+      expect(visibleTitles(role)).toContain("Guardrail decisions");
+      expect(visibleTitles(Role.ANALYST)).not.toContain("Guardrail decisions");
+      expect(visibleTitles(Role.MEMBER)).not.toContain("Guardrail decisions");
+      expect(visibleTitles(Role.VIEWER)).not.toContain("Guardrail decisions");
+    },
+  );
 
   it("Settings and Support are no longer in the bottom (secondary) section", () => {
     for (const title of ["Settings", "Support"]) {
