@@ -6385,7 +6385,7 @@ The guardrail log also accepts an exact list of key names (`?agents=`), so the l
 |---|---|
 | **Change ID** | CHG-2026-126 · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | [ADR-0023](acme-governance/adr/ADR-0023-applications-page.md) §3.6 |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Approval** | Owner, 2026-10-07: reviewed and merged #354 ("349 & 354 merged"). Release not yet approved: the console, the gateway hook and the setting each need the owner's yes. No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
 | **Dates** | Dev: not yet · Staging: not available; isolated migration and rollback rehearsal performed. (2026-10-07) · Prod: not yet |
 | **Impact** | Client-visible: a Trace column on the Applications detail screen. Gateway: the trace-metadata hook also records the trace id. No downtime |
 | **Schema change** | Migration `20261007040000_acme_request_log_trace_id`: one nullable column, a CHECK and an index; no backfill |
@@ -6403,3 +6403,7 @@ The guardrail log also accepts an exact list of key names (`?agents=`), so the l
 **Not included (phase 3b):** a per-application traces project, so the screen also links to the application's own trace. The reconcile path (requests the push missed) stores no trace id.
 
 **Tests:** 10 new gateway hook tests (span first, header fallback, case-insensitive header, malformed headers ignored, caller cannot choose the id, spoofed id removed, odd input left alone, strip then record); all 244 gateway tests pass. Console: 11 new intake tests (valid id stored; eight bad shapes stored as null with the record kept; no other key read) and 2 detail tests. Migration rehearsed locally: up, four checks, down, up again.
+
+## 2026-10-07 — Governance note: CHG-2026-125, -126 and -127 used before their claim merged
+
+Documentation only. The claim for CHG-2026-125, -126 and -127 (#349) was reported merged in the session at about 02:30 UTC, but it was still open; it merged at 06:08 UTC. In between, the three IDs were used in branches, commits and PRs (#351, #352 merged; #354 opened), and CHG-2026-125 and -127 went out in console `acme-v4.38.0.39` at 05:35 UTC. This breaks the register's rule 1 (claim before use). No other claim for these numbers existed at any point, so nothing collided and nothing is renumbered. Cause: the building session acted on the report without checking the PR's state; it now verifies a claim on `main` itself before using an ID. Rollback: none needed.
