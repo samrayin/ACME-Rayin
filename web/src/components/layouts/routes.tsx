@@ -44,6 +44,7 @@ import { AcmeLitellmGatewayNavItem } from "@/src/components/nav/acme-litellm-gat
 import { EyeonOverviewNavItem } from "@/src/components/nav/eyeon-overview-nav-item";
 import { EyeonGuardrailDecisionsNavItem } from "@/src/components/nav/eyeon-guardrail-decisions-nav-item";
 import { EyeonEnforcementNavItem } from "@/src/components/nav/eyeon-enforcement-nav-item";
+import { EyeonGatewayHealthNavItem } from "@/src/components/nav/eyeon-gateway-health-nav-item";
 import { type ProductModule } from "@/src/ee/features/ui-customization/productModuleSchema";
 
 export enum RouteSection {
@@ -241,6 +242,18 @@ export const ROUTES: Route[] = [
     ],
     section: RouteSection.Main,
     group: RouteGroup.ReportsLogs,
+  },
+  {
+    // ACME (CHG-2026-139, ADR-0027): the EYEON Gateway health page, first
+    // under Observability, as in the prototype. Gated like the other EYEON
+    // entries, on CAIRO_EYEON_GATEWAY_HEALTH_ENABLED. The LLM Gateway page's
+    // read scopes for models and keys (Owner, Admin, Auditor).
+    title: "Gateway health",
+    pathname: `/project/[projectId]/acme-enhancements/gateway-health`,
+    projectRbacScopes: ["llmGateway:read", "evidence:read"],
+    section: RouteSection.Main,
+    group: RouteGroup.Observability,
+    menuNode: <EyeonGatewayHealthNavItem />,
   },
   {
     title: "Tracing",

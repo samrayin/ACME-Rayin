@@ -113,8 +113,14 @@ const BAND_ORDER: Record<Band, number> = {
   red: 3,
 };
 
-/** Higher-is-worse metric against amber and red thresholds. */
-function bandAbove(value: number, t: { amber: number; red: number }): Band {
+/**
+ * Higher-is-worse metric against amber and red thresholds. ACME (CHG-2026-139):
+ * exported so Gateway health rates a model's failed calls as this page does.
+ */
+export function bandAbove(
+  value: number,
+  t: { amber: number; red: number },
+): Band {
   if (value > t.red) return "red";
   if (value >= t.amber) return "amber";
   return "green";

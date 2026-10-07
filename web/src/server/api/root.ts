@@ -56,6 +56,7 @@ import { acmeProjectAccessRouter } from "@/src/features/acme-enhancements/server
 import { eyeonOverviewRouter } from "@/src/features/acme-enhancements/server/eyeonOverviewRouter";
 import { eyeonGuardrailDecisionsRouter } from "@/src/features/acme-enhancements/server/eyeonGuardrailDecisionsRouter";
 import { eyeonEnforcementRouter } from "@/src/features/acme-enhancements/server/eyeonEnforcementRouter";
+import { eyeonGatewayHealthRouter } from "@/src/features/acme-enhancements/server/eyeonGatewayHealthRouter";
 import { tableRouter } from "@/src/features/table/server/tableRouter";
 import { batchActionRouter } from "@/src/features/batch-actions/server/batchActionRouter";
 import { cloudStatusRouter } from "@/src/features/cloud-status-notification/server/cloud-status-router";
@@ -145,6 +146,8 @@ export const appRouter = createTRPCRouter({
   eyeonGuardrailDecisions: eyeonGuardrailDecisionsRouter,
   // ACME (CHG-2026-138, ADR-0027): the EYEON Enforcement and policy page.
   eyeonEnforcement: eyeonEnforcementRouter,
+  // ACME (CHG-2026-139, ADR-0027): the EYEON Gateway health page.
+  eyeonGatewayHealth: eyeonGatewayHealthRouter,
   table: tableRouter,
   batchAction: batchActionRouter,
   cloudStatus: cloudStatusRouter,
