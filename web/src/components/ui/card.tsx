@@ -30,13 +30,20 @@ const CardHeader = React.forwardRef<
 ));
 CardHeader.displayName = "CardHeader";
 
+/* ACME (CHG-2026-131, ADR-0026): text-card-title is currentColor in light
+   mode, so a title inherits its colour exactly as before, and the EYEON
+   prototype's ink-1 in dark mode. A colour passed in className replaces it
+   (tailwind-merge), so callers that colour their titles are unaffected. */
 const CardTitle = React.forwardRef<
   HTMLParagraphElement,
   React.HTMLAttributes<HTMLHeadingElement>
 >(({ className, ...props }, ref) => (
   <h3
     ref={ref}
-    className={cn("text-2xl leading-none font-bold tracking-tight", className)}
+    className={cn(
+      "text-card-title text-2xl leading-none font-bold tracking-tight",
+      className,
+    )}
     {...props}
   />
 ));

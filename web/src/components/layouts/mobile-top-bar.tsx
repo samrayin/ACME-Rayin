@@ -41,7 +41,8 @@ export const MobileTopBar = ({
   const showHamburger = showSidebarTrigger && hasAppSidebar;
 
   return (
-    <div className="bg-background flex h-12 items-center gap-2 border-b px-2">
+    // ACME (CHG-2026-131, ADR-0026): the chrome surface in dark mode.
+    <div className="bg-background dark:bg-header flex h-12 items-center gap-2 border-b px-2">
       {/* Left: hamburger (opens the nav sheet) or the page's leading control. */}
       <div className="flex min-w-0 flex-1 items-center gap-2">
         {showHamburger ? (

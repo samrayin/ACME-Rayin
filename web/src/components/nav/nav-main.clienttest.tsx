@@ -71,12 +71,37 @@ describe("sidebar sections collapse and expand (CHG-2026-081)", () => {
     expect(section("Reports / Logs")).toHaveAttribute("type", "button");
   });
 
-  it("section names are white, not the sidebar's grey (CHG-2026-081 b, c)", () => {
+  // CHG-2026-081 b, c: white, not the sidebar's grey. CHG-2026-131: through
+  // the sidebar-label token, white in light mode (checked against globals.css
+  // in acmeThemePresets.clienttest.ts) and the prototype's uppercase ink grey
+  // in dark mode.
+  it("section names use the section-label colour, not the sidebar's grey", () => {
     renderNav();
     const label = section("Governance Controls");
-    expect(label).toHaveClass("text-white");
+    expect(label).toHaveClass("text-sidebar-label");
     expect(label).not.toHaveClass("text-sidebar-foreground/70");
     expect(label).not.toHaveClass("text-sidebar-foreground");
+    expect(label).toHaveClass("dark:uppercase", "dark:tracking-caps");
+  });
+
+  // CHG-2026-131: hover has its own shade; the active item keeps the accent.
+  it("hover uses the hover shade, and the active item keeps the accent", () => {
+    renderNav();
+    for (const name of ["Logs", "Guardrails"]) {
+      const link = screen.getByRole("link", { name });
+      expect(link).toHaveClass(
+        "hover:bg-sidebar-hover",
+        "hover:text-sidebar-hover-foreground",
+        "data-[active=true]:bg-sidebar-accent",
+        "data-[active=true]:text-sidebar-accent-foreground",
+      );
+      expect(link).not.toHaveClass("hover:bg-sidebar-accent");
+      expect(link).not.toHaveClass("hover:text-sidebar-accent-foreground");
+    }
+    expect(screen.getByRole("link", { name: "Logs" })).toHaveAttribute(
+      "data-active",
+      "true",
+    );
   });
 
   it("arriving on a page opens its section, even if it was left collapsed", () => {

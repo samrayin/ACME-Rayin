@@ -143,6 +143,16 @@
   --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
   --color-sidebar-border: hsl(var(--sidebar-border));
   --color-sidebar-ring: hsl(var(--sidebar-ring));
+  /* ACME (CHG-2026-131, ADR-0026 slice 1): the sidebar's hover shade and its
+     text, apart from the active item's sidebar-accent pair, and the section
+     label colour. */
+  --color-sidebar-hover: hsl(var(--sidebar-hover));
+  --color-sidebar-hover-foreground: hsl(var(--sidebar-hover-foreground));
+  --color-sidebar-label: hsl(var(--sidebar-label));
+  /* ACME (CHG-2026-131): card titles. Holds a complete colour, not an hsl
+     triplet, so do not wrap it in hsl(): light is currentColor (a title keeps
+     inheriting its colour exactly as before), dark is the prototype's ink-1. */
+  --color-card-title: var(--card-title);
 
   --color-find-match-background: hsl(var(--find-match-background));
   --color-find-match-selected-background: hsl(
@@ -176,6 +186,12 @@
   --text-2xl--font-weight: var(--font-weight-regular);
   --text-3xl: 1.5rem;
   --text-3xl--font-weight: var(--font-weight-regular);
+
+  /* ACME (CHG-2026-131, ADR-0026 slice 1): the EYEON prototype's
+     letter-spacing for uppercase section labels and for headings. Used only
+     behind `dark:`, so light mode is unchanged. */
+  --tracking-caps: 0.08em;
+  --tracking-heading: -0.01em;
 
   --animate-rainbow: rainbow var(--speed, 2s) infinite linear;
   --animate-accordion-down: accordion-down 0.2s ease-out;
@@ -326,6 +342,10 @@
 
     --card: 0 0% 100%;
     --card-foreground: var(--foreground);
+    /* ACME (CHG-2026-131): `color: currentColor` computes to the parent's
+       colour, so in light mode a card title inherits exactly as it did before
+       it had a colour class. */
+    --card-title: currentColor;
 
     /* Blocking overlay surfaces (Dialog/AlertDialog/Sheet/Drawer/peek).
        Light themes keep the alternating white model (Carbon: light layers
@@ -453,6 +473,14 @@
     --sidebar-accent-foreground: 173 85% 60%;
     --sidebar-border: 210 40% 24%;
     --sidebar-ring: 173 80% 40%;
+    /* ACME (CHG-2026-131, ADR-0026 slice 1): hover has its own pair so dark
+       mode can tell it apart from the active item. In light mode, hover was
+       sidebar-accent with sidebar-accent-foreground; these are the same
+       values, so light hover looks as before. Section labels stay white
+       (CHG-2026-081 c; they were text-white). */
+    --sidebar-hover: 210 45% 23%;
+    --sidebar-hover-foreground: 173 85% 60%;
+    --sidebar-label: 0 0% 100%;
 
     --find-match-background: 60 60% 85%;
     --find-match-selected-background: 60 100% 50%;
@@ -531,6 +559,9 @@
 
     --card: 197 30% 4.5%;
     --card-foreground: var(--foreground);
+    /* ACME (CHG-2026-131): card titles in the prototype's ink-1, a step
+       brighter than body text. A complete colour (see @theme inline). */
+    --card-title: hsl(192 22% 95.5%);
 
     --modal: 197 30% 4.5%;
     --modal-foreground: var(--foreground);
@@ -649,6 +680,13 @@
     --sidebar-accent-foreground: 72 100% 50%;
     --sidebar-border: 194 20% 12.7%;
     --sidebar-ring: 72 100% 50%;
+    /* ACME (CHG-2026-131, ADR-0026 slice 1): the prototype's navigation
+       hover, #0C1316 with ink-1 text, so a hovered row no longer looks
+       active (the active row keeps sidebar-accent and the accent text). It
+       does not follow the dark accent. Section labels in ink-3. */
+    --sidebar-hover: 198 29% 6.7%;
+    --sidebar-hover-foreground: 192 22% 95.5%;
+    --sidebar-label: 197 8% 57.6%;
 
     --find-match-background: 60 100% 20%;
     --find-match-selected-background: 60 100% 50%;

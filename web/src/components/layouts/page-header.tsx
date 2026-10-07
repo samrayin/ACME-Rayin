@@ -98,7 +98,8 @@ const PageHeader = ({
   return (
     <div
       className={cn([
-        "top-banner-offset sticky z-30 w-full border-b shadow-xs",
+        // ACME (CHG-2026-131, ADR-0026): in dark mode a hairline, no shadow.
+        "top-banner-offset sticky z-30 w-full border-b shadow-xs dark:shadow-none",
         acmeHeaderBackgroundClassName,
         className,
       ])}
@@ -187,8 +188,10 @@ const PageHeader = ({
                       text-sidebar-foreground (60% grey in dark) on the whole
                       app, so unstyled text here would inherit the dimmed
                       sidebar tint. text-primary is the emphasis tier —
-                      brighter than body text-foreground in dark. */}
-                  <h2 className="text-primary line-clamp-1 text-lg leading-7 font-bold">
+                      brighter than body text-foreground in dark.
+                      ACME (CHG-2026-131): the prototype's heading
+                      letter-spacing in dark mode. */}
+                  <h2 className="text-primary dark:tracking-heading line-clamp-1 text-lg leading-7 font-bold">
                     {titleContent ? (
                       titleContent
                     ) : titleTooltip ? (
