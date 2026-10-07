@@ -6337,8 +6337,8 @@ Documentation only (Tier 2). ADR-0023, claimed on 2026-10-05 and put on hold, is
 |---|---|
 | **Change ID** | CHG-2026-125 · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | [ADR-0023](acme-governance/adr/ADR-0023-applications-page.md) §3.5 |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
-| **Dates** | Dev: not yet · Staging: not available; isolated migration and rollback rehearsal performed. (2026-10-06) · Prod: not yet |
+| **Approval** | Owner, 2026-10-07: reviewed and merged #352, and approved its release ("Yes, release .38 now"; released as `acme-v4.38.0.39`). No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
+| **Dates** | Dev: 2026-10-07 (`acme-v4.38.0.39`) · Staging: not available; isolated migration and rollback rehearsal performed. (2026-10-06) · Prod: not yet |
 | **Impact** | Client-visible: a detail screen per application, reached from its scorecard card. No downtime |
 | **Schema change** | Migration `20261006230000_acme_application_detail_indexes`: two indexes, no backfill |
 | **Rollback** | [plan](acme-governance/rollback/20261006230000_acme_application_detail_indexes/ROLLBACK.md) — tested 2026-10-06 · data lost: none |
