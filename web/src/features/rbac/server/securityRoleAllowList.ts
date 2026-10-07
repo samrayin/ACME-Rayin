@@ -43,6 +43,14 @@ const SECURITY_ROLE_ALLOWED_PROCEDURES: ReadonlySet<string> = new Set([
   // Business Analyst holds neither the scope nor these entries.
   "eyeonGuardrailDecisions.summary",
   "eyeonGuardrailDecisions.status",
+  // CHG-2026-138 (ADR-0027): the EYEON Enforcement and policy page and its
+  // navigation entry's on/off check. Display only and metadata only, under
+  // the Guardrails page's scope (projectGuardrails:read); the switch,
+  // acmeGuardrails.setMode, stays off every list. The Auditor's list
+  // includes this one; the Business Analyst holds neither the scope nor
+  // these entries.
+  "eyeonEnforcement.summary",
+  "eyeonEnforcement.status",
   // Project audit log.
   "acmeAuditLogs.all",
   // Append-only record of LiteLLM gateway management actions (ADR-0003).
