@@ -14,10 +14,16 @@
  * Second iteration: refusals by type (from the guardrail's policy label
  * only), the share of checks decided in enforce mode, the top risks, and a
  * daily trend. Still metadata only: no content column is read.
+ *
+ * ACME (CHG-2026-125, ADR-0023 §3.5): `detail`, one application's screen.
+ * The same access rule and the same scorecard, plus its generations, daily
+ * activity, latest requests with their guardrail decisions beside them, and
+ * its key's change record. The shaping is in acmeApplicationDetail.ts.
  */
 import { z } from "zod";
 import { type Session } from "next-auth";
 import { type ProjectScope } from "@langfuse/shared";
+import { TRPCError } from "@trpc/server";
 import {
   createTRPCRouter,
   protectedProjectProcedure,
@@ -27,28 +33,34 @@ import {
   throwIfNoProjectAccess,
 } from "@/src/features/rbac/utils/checkProjectAccess";
 import { env } from "@/src/env.mjs";
-import {
-  AcmeGuardrailEventAction,
-  AcmeGuardrailEventDirection,
-  AcmeLitellmKeyStatus,
-  prisma,
-} from "@langfuse/shared/src/db";
-import { gatewayModeFromDb } from "@/src/features/acme-enhancements/utils/guardrailVerdictLabel";
+import { AcmeLitellmKeyStatus, Prisma, prisma } from "@langfuse/shared/src/db";
 import {
   getCurrentSettings,
   parseModeCeiling,
   servedMode,
 } from "@/src/features/acme-enhancements/server/acmeGuardrailSettings";
 import {
-  type GuardrailCounts,
-  type ScorecardInput,
-  dailyTrend,
   rankTopRisks,
-  scoreApplication,
   summarise,
-  threatTypeBreakdown,
   trendStart,
 } from "@/src/features/acme-enhancements/server/acmeApplicationScorecard";
+import {
+  type AliasDayCount,
+  DECISION_LOOKBACK_MS,
+  DETAIL_CHANGES_SHOWN,
+  DETAIL_REQUESTS_SHOWN,
+  buildApplicationScorecard,
+  callCountsByAlias,
+  changeView,
+  currentGeneration,
+  dailyActivity,
+  decisionsByRequest,
+  generationView,
+  guardrailCountsByAlias,
+  requestCallIds,
+  requestView,
+  trendRowsByAlias,
+} from "@/src/features/acme-enhancements/server/acmeApplicationDetail";
 
 const WINDOW_DAYS = [7, 30] as const;
 
@@ -56,12 +68,17 @@ const WINDOW_DAYS = [7, 30] as const;
 const TOP_RISKS_SHOWN = 5;
 
 /** Statuses whose key is, or was, in use; failed and pending ones never were. */
-const USED_STATUSES = [
+const USED_STATUSES: AcmeLitellmKeyStatus[] = [
   AcmeLitellmKeyStatus.ACTIVE,
   AcmeLitellmKeyStatus.ROTATED,
   AcmeLitellmKeyStatus.ROTATION_PARTIAL,
   AcmeLitellmKeyStatus.REVOKED,
 ];
+
+const windowDaysInput = z
+  .number()
+  .refine((d) => (WINDOW_DAYS as readonly number[]).includes(d))
+  .default(30);
 
 function throwIfNoneOf(
   session: Session,
@@ -73,27 +90,81 @@ function throwIfNoneOf(
   throwIfNoProjectAccess({ session, projectId, scope: scopes[0]! });
 }
 
-function emptyCounts(): GuardrailCounts {
+// ACME (CHG-2026-125): what the detail screen reads, column by column. No
+// token hash, and none of the guardrail event's content columns (redacted
+// text, personal-data findings, encrypted content), are ever selected; the
+// tests assert on these selects.
+
+/** A generation's settings and dates. */
+export const DETAIL_GENERATION_SELECT = {
+  id: true,
+  lineageId: true,
+  generation: true,
+  displayName: true,
+  litellmKeyAlias: true,
+  status: true,
+  models: true,
+  rpmLimit: true,
+  tpmLimit: true,
+  maxBudget: true,
+  budgetDuration: true,
+  expiresAt: true,
+  createdAt: true,
+  revokedAt: true,
+} satisfies Prisma.AcmeLitellmKeySelect;
+
+/** A gateway request; its cost only for a viewer who may see spend. */
+export function detailRequestSelect(canSeeSpend: boolean) {
   return {
-    promptChecks: 0,
-    answerChecks: 0,
-    promptBlocks: 0,
-    answerBlocks: 0,
-    redactions: 0,
-    noVerdict: 0,
-    enforcedChecks: 0,
-  };
+    id: true,
+    requestId: true,
+    litellmCallId: true,
+    startTime: true,
+    endTime: true,
+    status: true,
+    errorClass: true,
+    model: true,
+    modelGroup: true,
+    keyAlias: true,
+    endUser: true,
+    spend: canSeeSpend,
+  } satisfies Prisma.AcmeLitellmRequestLogSelect;
 }
+
+/** A guardrail decision: direction, verdict, policy label and mode only. */
+export const DETAIL_DECISION_SELECT = {
+  traceId: true,
+  eventTime: true,
+  direction: true,
+  action: true,
+  policyTriggered: true,
+  gatewayMode: true,
+} satisfies Prisma.AcmeGuardrailEventSelect;
+
+/**
+ * A change-record row. Its before and after are read so the changed settings
+ * can be listed through an allow-list; they are never returned.
+ */
+export const DETAIL_CHANGE_SELECT = {
+  id: true,
+  eventTime: true,
+  phase: true,
+  outcome: true,
+  action: true,
+  resourceId: true,
+  actorUserId: true,
+  actorOrgRole: true,
+  actorProjectRole: true,
+  before: true,
+  after: true,
+} satisfies Prisma.AcmeLitellmEventSelect;
 
 export const acmeApplicationsRouter = createTRPCRouter({
   scorecards: protectedProjectProcedure
     .input(
       z.object({
         projectId: z.string(),
-        windowDays: z
-          .number()
-          .refine((d) => (WINDOW_DAYS as readonly number[]).includes(d))
-          .default(30),
+        windowDays: windowDaysInput,
       }),
     )
     .query(async ({ ctx, input }) => {
@@ -141,9 +212,7 @@ export const acmeApplicationsRouter = createTRPCRouter({
       }
       const apps = [...lineages.values()]
         .map((generations) => ({
-          current: [...generations]
-            .reverse()
-            .find((g) => g.status === AcmeLitellmKeyStatus.ACTIVE),
+          current: currentGeneration(generations),
           aliases: generations.map((g) => g.litellmKeyAlias),
         }))
         .filter(
@@ -195,7 +264,7 @@ export const acmeApplicationsRouter = createTRPCRouter({
           // Timestamps are stored as UTC without a zone, so the bound is
           // passed as UTC text and cast the same way.
           allAliases.length
-            ? prisma.$queryRaw<{ alias: string; day: string; n: number }[]>`
+            ? prisma.$queryRaw<AliasDayCount[]>`
                 SELECT key_alias AS alias,
                        to_char(date_trunc('day', start_time), 'YYYY-MM-DD') AS day,
                        COUNT(*)::int AS n
@@ -206,7 +275,7 @@ export const acmeApplicationsRouter = createTRPCRouter({
                 GROUP BY 1, 2`
             : Promise.resolve([]),
           allAliases.length
-            ? prisma.$queryRaw<{ alias: string; day: string; n: number }[]>`
+            ? prisma.$queryRaw<AliasDayCount[]>`
                 SELECT agent_id AS alias,
                        to_char(date_trunc('day', event_time), 'YYYY-MM-DD') AS day,
                        COUNT(*)::int AS n
@@ -228,113 +297,26 @@ export const acmeApplicationsRouter = createTRPCRouter({
           )
         : "record";
 
-      const guardByAlias = new Map<string, GuardrailCounts>();
-      // Refused prompts and withheld answers by the guardrail's policy label.
-      const refusalsByAlias = new Map<
-        string,
-        { policyTriggered: string | null; count: number }[]
-      >();
-      for (const e of events) {
-        const c = guardByAlias.get(e.agentId) ?? emptyCounts();
-        const n = e._count._all;
-        const isPrompt = e.direction === AcmeGuardrailEventDirection.INPUT;
-        if (isPrompt) c.promptChecks += n;
-        else c.answerChecks += n;
-        if (e.action === AcmeGuardrailEventAction.BLOCK) {
-          if (isPrompt) c.promptBlocks += n;
-          else c.answerBlocks += n;
-          const refusals = refusalsByAlias.get(e.agentId) ?? [];
-          refusals.push({ policyTriggered: e.policyTriggered, count: n });
-          refusalsByAlias.set(e.agentId, refusals);
-        }
-        if (e.action === AcmeGuardrailEventAction.REDACT) c.redactions += n;
-        if (e.action === AcmeGuardrailEventAction.UNAVAILABLE) c.noVerdict += n;
-        if (gatewayModeFromDb(e.gatewayMode) === "enforce")
-          c.enforcedChecks += n;
-        guardByAlias.set(e.agentId, c);
-      }
-      const trendRowsByAlias = new Map<
-        string,
-        { day: string; calls: number; refused: number }[]
-      >();
-      for (const r of [
-        ...dailyCalls.map((d) => ({ ...d, calls: d.n, refused: 0 })),
-        ...dailyRefused.map((d) => ({ ...d, calls: 0, refused: d.n })),
-      ]) {
-        const list = trendRowsByAlias.get(r.alias) ?? [];
-        list.push({ day: r.day, calls: r.calls, refused: r.refused });
-        trendRowsByAlias.set(r.alias, list);
-      }
-      const callsByAlias = new Map<
-        string,
-        { calls: number; failed: number; spend: number }
-      >();
-      for (const r of calls) {
-        if (!r.keyAlias) continue;
-        const c = callsByAlias.get(r.keyAlias) ?? {
-          calls: 0,
-          failed: 0,
-          spend: 0,
-        };
-        c.calls += r._count._all;
-        if (r.status !== "success") c.failed += r._count._all;
-        c.spend += r._sum.spend ?? 0;
-        callsByAlias.set(r.keyAlias, c);
-      }
+      // CHG-2026-125: the aggregation moved to acmeApplicationDetail.ts, so
+      // the detail screen scores an application exactly as its card does.
+      const guard = guardrailCountsByAlias(events);
+      const callsByAlias = callCountsByAlias(calls);
+      const trendRows = trendRowsByAlias(dailyCalls, dailyRefused);
 
-      const scored = apps.map(({ current, aliases }) => {
-        const guard = emptyCounts();
-        let callCount = 0;
-        let failed = 0;
-        let spend = 0;
-        for (const alias of aliases) {
-          const g = guardByAlias.get(alias);
-          if (g) {
-            for (const k of Object.keys(guard) as (keyof GuardrailCounts)[])
-              guard[k] += g[k];
-          }
-          const c = callsByAlias.get(alias);
-          if (c) {
-            callCount += c.calls;
-            failed += c.failed;
-            spend += c.spend;
-          }
-        }
-        const scoreInput: ScorecardInput = {
-          key: {
-            models: current.models,
-            rpmLimit: current.rpmLimit,
-            maxBudget: current.maxBudget,
-            expiresAt: current.expiresAt,
-            issuedAt: current.createdAt,
-          },
-          calls: callCount,
-          failedCalls: failed,
-          spendUsd: canSeeSpend ? spend : null,
+      const scored = apps.map(({ current, aliases }) =>
+        buildApplicationScorecard({
+          current,
+          aliases,
           guard,
+          calls: callsByAlias,
+          trendRows,
           mode,
           now,
-        };
-        return {
-          input: scoreInput,
-          score: scoreApplication(scoreInput),
-          app: {
-            name: current.displayName,
-            alias: current.litellmKeyAlias,
-            generation: current.generation,
-            models: current.models,
-            budgetDuration: current.budgetDuration,
-            threatTypes: threatTypeBreakdown(
-              aliases.flatMap((alias) => refusalsByAlias.get(alias) ?? []),
-            ),
-            trend: dailyTrend(
-              trendFrom,
-              input.windowDays,
-              aliases.flatMap((alias) => trendRowsByAlias.get(alias) ?? []),
-            ),
-          },
-        };
-      });
+          canSeeSpend,
+          trendFrom,
+          windowDays: input.windowDays,
+        }),
+      );
 
       const order = { red: 0, amber: 1, green: 2, none: 3 } as const;
       scored.sort(
@@ -367,6 +349,267 @@ export const acmeApplicationsRouter = createTRPCRouter({
           dimensions: score.dimensions,
           hygiene: score.hygiene,
         })),
+      };
+    }),
+
+  /**
+   * ACME (CHG-2026-125, ADR-0023 §3.5): one application, by its key
+   * lineage. Same access rule and scorecard as `scorecards`. Each part of
+   * the evidence also needs the scope of the log it comes from, which every
+   * role that sees the page holds today: the requests and the change record
+   * llmGatewayLogs:read, the guardrail decisions beside the requests
+   * projectGuardrails:read. Spend and cost only with llmGatewaySpend:read.
+   * Every read goes through ctx.prisma and is scoped to the project.
+   */
+  detail: protectedProjectProcedure
+    .input(
+      z.object({
+        projectId: z.string(),
+        lineageId: z.string().min(1).max(100),
+        windowDays: windowDaysInput,
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      throwIfNoneOf(ctx.session, input.projectId, [
+        "llmGateway:read",
+        "evidence:read",
+      ]);
+      if (env.CAIRO_LITELLM_MANAGEMENT_ENABLED !== "true") {
+        return { enabled: false as const };
+      }
+      const can = (scope: ProjectScope) =>
+        hasProjectAccess({
+          session: ctx.session,
+          projectId: input.projectId,
+          scope,
+        });
+      const canSeeSpend = can("llmGatewaySpend:read");
+      const canSeeLogs = can("llmGatewayLogs:read");
+      const canSeeDecisions = can("projectGuardrails:read");
+      const now = new Date();
+      const since = new Date(now.getTime() - input.windowDays * 86_400_000);
+      const trendFrom = trendStart(now, input.windowDays);
+
+      const generations = await ctx.prisma.acmeLitellmKey.findMany({
+        where: { projectId: input.projectId, lineageId: input.lineageId },
+        select: DETAIL_GENERATION_SELECT,
+        orderBy: { generation: "asc" },
+      });
+      // As on the Applications page: a lineage with no active key is not an
+      // application. Another project's lineage does not resolve either.
+      const current = currentGeneration(generations);
+      if (!current) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "No application with this id in this project.",
+        });
+      }
+      const aliases = generations
+        .filter((g) => USED_STATUSES.includes(g.status))
+        .map((g) => g.litellmKeyAlias);
+      const generationByAlias = new Map(
+        generations.map((g) => [g.litellmKeyAlias, g.generation]),
+      );
+      const generationByKeyId = new Map(
+        generations.map((g) => [g.id, g.generation]),
+      );
+
+      const [
+        settings,
+        events,
+        calls,
+        dailyCalls,
+        dailyRefused,
+        requests,
+        changes,
+      ] = await Promise.all([
+        getCurrentSettings(ctx.prisma),
+        ctx.prisma.acmeGuardrailEvent.groupBy({
+          by: [
+            "agentId",
+            "direction",
+            "action",
+            "policyTriggered",
+            "gatewayMode",
+          ],
+          where: {
+            projectId: input.projectId,
+            eventTime: { gte: since },
+            agentId: { in: aliases },
+          },
+          _count: { _all: true },
+        }),
+        ctx.prisma.acmeLitellmRequestLog.groupBy({
+          by: ["keyAlias", "status"],
+          where: {
+            projectId: input.projectId,
+            startTime: { gte: since },
+            keyAlias: { in: aliases },
+          },
+          _count: { _all: true },
+          _sum: { spend: true },
+        }),
+        // Daily calls and failures, and spend only for a viewer who may see
+        // it: without the scope the column is not even read. Bound
+        // parameters only, scoped like the scorecards' trend.
+        ctx.prisma.$queryRaw<
+          {
+            alias: string;
+            day: string;
+            calls: number;
+            failed: number;
+            spend?: number;
+          }[]
+        >(Prisma.sql`
+          SELECT key_alias AS alias,
+                 to_char(date_trunc('day', start_time), 'YYYY-MM-DD') AS day,
+                 COUNT(*)::int AS calls,
+                 (COUNT(*) FILTER (WHERE status <> 'success'))::int AS failed
+                 ${canSeeSpend ? Prisma.sql`, COALESCE(SUM(spend), 0)::float8 AS spend` : Prisma.empty}
+          FROM acme_litellm_request_logs
+          WHERE project_id = ${input.projectId}
+            AND start_time >= ${trendFrom.toISOString()}::timestamp
+            AND key_alias = ANY(${aliases}::text[])
+          GROUP BY 1, 2`),
+        ctx.prisma.$queryRaw<AliasDayCount[]>(Prisma.sql`
+          SELECT agent_id AS alias,
+                 to_char(date_trunc('day', event_time), 'YYYY-MM-DD') AS day,
+                 COUNT(*)::int AS n
+          FROM acme_guardrail_events
+          WHERE project_id = ${input.projectId}
+            AND event_time >= ${trendFrom.toISOString()}::timestamp
+            AND agent_id = ANY(${aliases}::text[])
+            AND direction = 'input'
+            AND action = 'block'
+          GROUP BY 1, 2`),
+        canSeeLogs
+          ? ctx.prisma.acmeLitellmRequestLog.findMany({
+              where: {
+                projectId: input.projectId,
+                startTime: { gte: since },
+                keyAlias: { in: aliases },
+              },
+              orderBy: [{ startTime: "desc" }, { id: "desc" }],
+              take: DETAIL_REQUESTS_SHOWN,
+              select: detailRequestSelect(canSeeSpend),
+            })
+          : Promise.resolve(null),
+        canSeeLogs
+          ? ctx.prisma.acmeLitellmEvent.findMany({
+              where: {
+                projectId: input.projectId,
+                resourceType: "litellmKey",
+                resourceId: { in: generations.map((g) => g.id) },
+              },
+              orderBy: [{ eventTime: "desc" }, { id: "desc" }],
+              take: DETAIL_CHANGES_SHOWN,
+              select: DETAIL_CHANGE_SELECT,
+            })
+          : Promise.resolve(null),
+      ]);
+
+      // The guardrail decisions of the listed requests, linked one to one by
+      // the gateway call id (CHG-2026-071), from this application's aliases
+      // only, and no earlier than shortly before the oldest listed request.
+      const oldest = requests?.[requests.length - 1]?.startTime;
+      const decisions =
+        canSeeDecisions && requests && requests.length > 0 && oldest
+          ? await ctx.prisma.acmeGuardrailEvent.findMany({
+              where: {
+                projectId: input.projectId,
+                agentId: { in: aliases },
+                traceId: { in: requestCallIds(requests) },
+                eventTime: {
+                  gte: new Date(oldest.getTime() - DECISION_LOOKBACK_MS),
+                },
+              },
+              orderBy: [{ eventTime: "asc" }, { id: "asc" }],
+              select: DETAIL_DECISION_SELECT,
+            })
+          : [];
+      const actorIds = [...new Set((changes ?? []).map((c) => c.actorUserId))];
+      const actors = actorIds.length
+        ? await ctx.prisma.user.findMany({
+            where: { id: { in: actorIds } },
+            select: { id: true, name: true, email: true },
+          })
+        : [];
+      const actorById = new Map(
+        actors.map((u) => [u.id, u.name ?? u.email ?? "Unknown user"]),
+      );
+
+      const mode = settings
+        ? servedMode(
+            settings,
+            now,
+            parseModeCeiling(env.CAIRO_GUARDRAIL_MODE_MAX),
+          )
+        : "record";
+      const {
+        app,
+        score,
+        input: scoreInput,
+      } = buildApplicationScorecard({
+        current,
+        aliases,
+        guard: guardrailCountsByAlias(events),
+        calls: callCountsByAlias(calls),
+        trendRows: trendRowsByAlias(
+          dailyCalls.map((d) => ({ alias: d.alias, day: d.day, n: d.calls })),
+          dailyRefused,
+        ),
+        mode,
+        now,
+        canSeeSpend,
+        trendFrom,
+        windowDays: input.windowDays,
+      });
+      const decisionsByRequestId = decisionsByRequest(
+        requests ?? [],
+        decisions,
+      );
+
+      return {
+        enabled: true as const,
+        windowDays: input.windowDays,
+        mode,
+        canSeeSpend,
+        generatedAt: now.toISOString(),
+        application: {
+          ...app,
+          calls: scoreInput.calls,
+          overall: score.overall,
+          dimensions: score.dimensions,
+          hygiene: score.hygiene,
+        },
+        /** Every alias the application has used, for the evidence link. */
+        aliases,
+        generations: [...generations]
+          .reverse()
+          .map((g) => generationView(g, current.id)),
+        daily: dailyActivity(
+          trendFrom,
+          input.windowDays,
+          dailyCalls,
+          dailyRefused,
+          canSeeSpend,
+        ),
+        requests: requests
+          ? requests.map((r) =>
+              requestView(
+                r,
+                canSeeDecisions ? (decisionsByRequestId.get(r.id) ?? []) : [],
+                generationByAlias,
+                canSeeSpend,
+              ),
+            )
+          : null,
+        decisionsShown: canSeeDecisions,
+        requestsLimit: DETAIL_REQUESTS_SHOWN,
+        changes: changes
+          ? changes.map((c) => changeView(c, generationByKeyId, actorById))
+          : null,
+        changesLimit: DETAIL_CHANGES_SHOWN,
       };
     }),
 });

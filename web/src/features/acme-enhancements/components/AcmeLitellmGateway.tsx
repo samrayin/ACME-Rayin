@@ -120,7 +120,7 @@ function when(iso: string | null | undefined) {
   return iso ? new Date(iso).toLocaleString() : "—";
 }
 
-function KeyStatusBadge({ status }: { status: string }) {
+export function KeyStatusBadge({ status }: { status: string }) {
   switch (status) {
     case "ACTIVE":
       return <Badge variant="success">Active</Badge>;

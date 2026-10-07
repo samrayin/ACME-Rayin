@@ -15,11 +15,14 @@ import {
   SelectValue,
 } from "@/src/components/ui/select";
 import { api, type RouterOutputs } from "@/src/utils/api";
+import { formatAgentsParam } from "@/src/features/acme-enhancements/utils/guardrailAgentLink";
 
 // ACME (CHG-2026-122, ADR-0023): one scorecard per connected application (a
 // gateway key lineage), plus a summary for the whole project. Metadata only.
 // Second iteration: top risks and enforced traffic in the summary; refusals
 // by type, a daily trend and a filtered evidence link on each card.
+// CHG-2026-125 (ADR-0023 §3.5): each card links to its application's detail
+// screen, which shows the same card (AcmeApplicationDetail.tsx).
 
 type Scorecards = Extract<
   RouterOutputs["acmeApplications"]["scorecards"],
@@ -28,6 +31,11 @@ type Scorecards = Extract<
 type Application = Scorecards["applications"][number];
 type Band = Application["overall"];
 type Dimension = Application["dimensions"][number]["dimension"];
+
+/** CHG-2026-125: an application's detail screen. */
+export function applicationDetailHref(projectId: string, lineageId: string) {
+  return `/project/${projectId}/acme-enhancements/applications/${encodeURIComponent(lineageId)}`;
+}
 
 /** How many refusal types a card names on its threat row. */
 const THREAT_TYPES_SHOWN = 3;
@@ -207,7 +215,7 @@ function TopRisks({ data }: { data: Scorecards }) {
  * Hover a day for its count; the label carries the peak, and the accessible
  * name the total, for readers who cannot see the line.
  */
-function Sparkline({
+export function Sparkline({
   label,
   unit,
   points,
@@ -264,20 +272,30 @@ function Sparkline({
 }
 
 /** yyyy-mm-dd in the viewer's time zone, as a date input expects. */
-function localDateInput(d: Date): string {
+export function localDateInput(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function ApplicationCard({
+export function ApplicationCard({
   app,
   projectId,
   periodFrom,
+  showDetailLink = true,
+  evidenceAgents,
 }: {
   app: Application;
   projectId: string;
   /** The period's first day, yyyy-mm-dd, for the evidence link. */
   periodFrom: string;
+  /** CHG-2026-125: link to the application's detail screen. */
+  showDetailLink?: boolean;
+  /**
+   * CHG-2026-125: every key alias the application has used, for an exact
+   * evidence link that includes a rotated key's earlier generations. Without
+   * it the link filters on the key in use now, as before.
+   */
+  evidenceAgents?: { agents: string[]; omitted: number };
 }) {
   const threatTypes = app.threatTypes.slice(0, THREAT_TYPES_SHOWN);
   return (
@@ -340,20 +358,40 @@ function ApplicationCard({
             {app.calls.toLocaleString()} calls ·{" "}
             {app.models.length ? app.models.join(", ") : "all models"}
           </span>
-          <Link
-            href={{
-              pathname: `/project/${projectId}/acme-enhancements/security-logs`,
-              query: { tab: "guardrails", agent: app.alias, from: periodFrom },
-            }}
-            className="underline"
-            title={
-              app.generation > 1
-                ? "Shows the key in use now. Earlier keys of this application are listed under their own names."
-                : undefined
-            }
-          >
-            Guardrail decisions
-          </Link>
+          <span className="flex flex-wrap items-center gap-3">
+            {showDetailLink ? (
+              <Link
+                href={applicationDetailHref(projectId, app.lineageId)}
+                className="underline"
+              >
+                Details
+              </Link>
+            ) : null}
+            <Link
+              href={{
+                pathname: `/project/${projectId}/acme-enhancements/security-logs`,
+                query: evidenceAgents
+                  ? {
+                      tab: "guardrails",
+                      agents: formatAgentsParam(evidenceAgents.agents),
+                      from: periodFrom,
+                    }
+                  : { tab: "guardrails", agent: app.alias, from: periodFrom },
+              }}
+              className="underline"
+              title={
+                evidenceAgents
+                  ? evidenceAgents.omitted > 0
+                    ? `Shows the newest ${evidenceAgents.agents.length} keys of this application; ${evidenceAgents.omitted} older ones are listed under their own names.`
+                    : "Shows every key this application has used."
+                  : app.generation > 1
+                    ? "Shows the key in use now. Earlier keys of this application are listed under their own names."
+                    : undefined
+              }
+            >
+              Guardrail decisions
+            </Link>
+          </span>
         </div>
       </CardContent>
     </Card>
