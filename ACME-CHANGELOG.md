@@ -6457,7 +6457,7 @@ Both addresses answer, and both send sign-in back to the new one. Images are unc
 |---|---|
 | **Change ID** | CHG-2026-132 · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | [ADR-0027](acme-governance/adr/ADR-0027-eyeon-native-pages.md) (proposed); slice 2 of ADR-0026 |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Approval** | Owner, 2026-10-07: reviewed and merged #363 and approved its release ("merged.. yes for release"; console `acme-v4.38.0.43`). The page stays off until `CAIRO_EYEON_OVERVIEW_ENABLED` is set, a separate yes. No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
 | **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
 | **Impact** | Client-visible once the flag is on: an "Overview" page, first under Governance Controls, for Owners, Admins and Auditors. With the flag off (the default) nothing changes on screen, except that the Ctrl/Cmd K list names the entry and opening it says the page is switched off. No downtime |
 | **Schema change** | None |
@@ -6493,7 +6493,7 @@ Both addresses answer, and both send sign-in back to the new one. Images are unc
 |---|---|
 | **Change ID** | CHG-2026-131 · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | [ADR-0026](acme-governance/adr/ADR-0026-adopting-the-eyeon-prototype.md) §11 (slice 1 addendum) |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Approval** | Owner, 2026-10-07: reviewed and merged #364 and approved its release ("merged.. yes for release"; console `acme-v4.38.0.43`). No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
 | **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
 | **Impact** | Client-visible, dark mode only: sidebar hover, section labels, top bar, page header and card titles. Light mode unchanged. No downtime |
 | **Schema change** | None |

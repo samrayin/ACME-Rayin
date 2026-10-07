@@ -9,7 +9,7 @@
 | **Type** | Forward |
 | **Date** | 2026-10-07 |
 | **Author** | Claude (EYEON build session), for the owner |
-| **Approval** | Pending. The owner reviews and merges; not a production approval |
+| **Approval** | Owner, 2026-10-07: reviewed and merged #362 (slice 0) and #364 (slice 1); release approved. Not a production approval |
 | **Commits / tag** | to be added per slice |
 
 ## 1. Purpose
