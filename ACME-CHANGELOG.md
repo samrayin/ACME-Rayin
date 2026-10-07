@@ -6415,3 +6415,25 @@ Documentation only. The claim for CHG-2026-125, -126 and -127 (#349) was reporte
 ## 2026-10-07 — The customer logo outside an organization (CHG-2026-124, follow-up)
 
 On pages outside any organization (the Organizations list), the sidebar showed EYEON without the uploaded logo, because the logo belongs to an organization and none was selected (owner, 2026-10-07: "ACME logo has been added and it does not appear at this page.. but appears later"). Now a person who belongs to exactly one organization sees that organization's logo there too; with several, there is no single right logo, so the sidebar shows EYEON alone. Display only. Rollback: revert the commit.
+
+## 2026-10-07 — The dev console's web address is the EYEON one (CHG-2026-129)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-129 · owner: Anees Ur Rahman · Tier 1 (sign-in and identity) |
+| **ADR** | None: an address change following CHG-2026-061's recorded pattern |
+| **Approval** | Owner, 2026-10-07: "we need to immediately update teh URL link … needs to go asap"; the owner ran the cluster and Entra steps. Not a production approval |
+| **Dates** | Dev: 2026-10-07 · Prod: not yet |
+| **Impact** | Client-visible: the console's address and its sign-in callbacks. The old address keeps serving. Pods restarted once (about a minute) |
+| **Schema change** | None |
+| **Rollback** | Set `NEXTAUTH_URL` back on the console and worker; the old ingress, certificate and Entra URI are untouched (the deployment record has the commands) |
+| **Feature flag** | None |
+
+**What:** the dev console moved to its EYEON web address, which CHG-2026-121 had deliberately kept on the CAIRO name until the DNS record existed. Following CHG-2026-061:
+- a separate ingress for the new host, with its own Let's Encrypt certificate (the existing ingress is untouched);
+- the Azure AD app's redirect URI for the new host, with the old URIs kept;
+- `NEXTAUTH_URL` on the console and worker.
+
+Both addresses answer, and both send sign-in back to the new one. Images are unchanged. The ops repository's deployment record has the steps and checks; the environment's host names stay there.
+
+**Known gap:** `deploy/azure` still declares the earlier development domain, from which the module derives `NEXTAUTH_URL`. Nothing is applied there today, but a `terraform apply` or Helm upgrade would set sign-in back. Settle how the address is declared before any apply. The old addresses retire after about two weeks, on the owner's approval.
