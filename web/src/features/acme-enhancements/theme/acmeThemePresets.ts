@@ -175,18 +175,23 @@ export const ACME_HEADER_BACKGROUND_PRESETS: Record<
  * translucent one let the rows of a long page (the Logs tabs) show through it
  * as they scrolled underneath. The tint is now an image layered over the
  * solid page background: it looks the same, and nothing shows through.
+ *
+ * ACME (CHG-2026-131, ADR-0026 slice 1): in dark mode the header is the
+ * EYEON prototype's top bar: the chrome surface (`dark:bg-header`) with no
+ * tint (`dark:bg-none`), as the prototype tints only its light top bar. The
+ * light classes are unchanged.
  */
 export function acmeHeaderBackgroundClass(
   key: AcmeHeaderBackgroundKey | undefined,
 ): string {
   switch (key) {
     case "tinted":
-      return "bg-background bg-[image:linear-gradient(hsl(var(--primary)/0.06),hsl(var(--primary)/0.06))]";
+      return "bg-background bg-[image:linear-gradient(hsl(var(--primary)/0.06),hsl(var(--primary)/0.06))] dark:bg-header dark:bg-none";
     case "gradient":
-      return "bg-background bg-[image:linear-gradient(to_bottom,hsl(var(--primary)/0.12),transparent)]";
+      return "bg-background bg-[image:linear-gradient(to_bottom,hsl(var(--primary)/0.12),transparent)] dark:bg-header dark:bg-none";
     case "plain":
     default:
-      return "bg-background";
+      return "bg-background dark:bg-header";
   }
 }
 

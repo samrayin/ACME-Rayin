@@ -6486,3 +6486,31 @@ Both addresses answer, and both send sign-in back to the new one. Images are unc
 **Release:** web image only. To switch the page on, set `CAIRO_EYEON_OVERVIEW_ENABLED=true` on the console and restart it; `deploy/azure` does not declare the flag yet.
 
 **Tests:** 22 new tests of the overview's figures, wording and chart geometry; 20 new router tests (every role without the scopes, and the Security Analyst and Business Analyst, refused before any database read; flag off answers without a read; spend absent for the Auditor; no content column in any select, grouping or SQL; the same ten reads whatever the number of applications; the same applications, bands and top risks as the Applications page on the same data); 10 new kit tests ("Not recorded" never shows a number, "Preview" is tagged, chips name mode and decision in words, every chart has an accessible name and table view). The pinned sidebar list for the Auditor now includes Applications (missing since CHG-2026-122) and Overview, and a test pins Overview first under Governance Controls. Existing tests still pass: content-free roles (25, the Auditor's and Security Analyst's allow-lists name only existing queries), the application detail router (13), the scorecard (32), the application detail (19) and the guardrail settings (59). Fresh typecheck passed (the 2 tolerated Enterprise-file errors only); ESLint with no warnings and Prettier on every changed file.
+
+## 2026-10-07 — The shell and navigation take the EYEON prototype's look in dark mode (CHG-2026-131, ADR-0026 slice 1)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-131 · owner: Anees Ur Rahman · Tier 1 |
+| **ADR** | [ADR-0026](acme-governance/adr/ADR-0026-adopting-the-eyeon-prototype.md) §11 (slice 1 addendum) |
+| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
+| **Impact** | Client-visible, dark mode only: sidebar hover, section labels, top bar, page header and card titles. Light mode unchanged. No downtime |
+| **Schema change** | None |
+| **Rollback** | Redeploy the previous image |
+| **Feature flag** | None (ADR-0026 §3.3) |
+
+**What:** in dark mode, the console's shell follows the EYEON prototype. The single sidebar stays; the navigation rail waits for the upstream sync.
+- **Sidebar hover:** a hovered row now has its own shade (the prototype's, with near-white text), so it no longer looks like the active row. The active row keeps the accent shade and accent text, also while hovered. The hover shade is the same whatever dark accent is chosen.
+- **Section labels:** the prototype's grey, uppercase, with wider letter-spacing.
+- **Top bar:** the page header is the chrome surface with a hairline and no shadow; the tinted and gradient header presets apply in light mode only, as in the prototype. The mobile top bar takes the chrome surface too.
+- **Page header:** the title keeps the accent colour and its size, with the prototype's heading letter-spacing.
+- **Card titles:** a step brighter than body text (the prototype's ink-1). Titles a page colours itself keep their colour.
+
+**Why it matters:** the owner approved adopting the prototype on 2026-10-07; this is the second slice under ADR-0026, after the dark palette (CHG-2026-130). It also fixes a confusing cue: before, hover and the selected item looked the same.
+
+**Light mode unchanged:** every new light value is the one light mode already showed: hover keeps the shade and text it had (the same values as the active item), section labels stay white, and card titles keep inheriting their colour. Everything else is a dark-mode-only class. Type sizes are unchanged in both modes.
+
+**Release:** web image only; no migration, setting or flag. Display only: no access, data or schema change.
+
+**Tests:** 38 theme tests (20 new): the hover shade differs visibly from the sidebar and from the active shade of every dark accent (CIELAB ΔE*ab of at least 3); sidebar text and hover text on the hover shade, section labels on the sidebar and card titles on cards meet WCAG AA (4.5:1); each new light value equals today's, and the header presets keep their light classes. Navigation tests (7, 1 new) check that hover uses the hover shade and the active item keeps the accent; the app-shell test (4, 1 new) checks the dark top bar, and now provides the theme it needs, so its 3 earlier tests, which failed without it, run again.

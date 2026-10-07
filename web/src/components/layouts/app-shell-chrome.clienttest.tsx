@@ -56,6 +56,21 @@ vi.mock("@/src/components/nav/topbar-brand", () => ({
   TopbarBrand: () => null,
 }));
 
+// ACME (CHG-2026-131): the header-background hook reads the theme over tRPC,
+// which this render has no provider for (every test here failed on that).
+// Without a stored theme the hook returns the plain preset, as here.
+vi.mock(
+  "@/src/features/acme-enhancements/theme/useAcmeHeaderBackgroundClassName",
+  async () => {
+    const { acmeHeaderBackgroundClass } =
+      await import("@/src/features/acme-enhancements/theme/acmeThemePresets");
+    return {
+      useAcmeHeaderBackgroundClassName: () =>
+        acmeHeaderBackgroundClass(undefined),
+    };
+  },
+);
+
 const sidebarArgs = {
   navItems: {
     ungrouped: [{ title: "Home", url: "/", icon: Home, isActive: true }],
@@ -124,6 +139,21 @@ describe("app shell chrome row", () => {
 
     expect(desktopToggle?.getAttribute("class")).toContain("size-5");
     expect(desktopToggle?.getAttribute("class")).not.toContain("size-4");
+  });
+
+  // CHG-2026-131 (ADR-0026): in dark mode the page header is the prototype's
+  // top bar (chrome surface, hairline, no shadow); light keeps its classes.
+  it("gives the page header the prototype's top bar in dark mode only", () => {
+    render(<Shell />);
+
+    const header = document.getElementById("page-header");
+    expect(header).toHaveClass("bg-background", "border-b", "shadow-xs");
+    expect(header).toHaveClass("dark:bg-header", "dark:shadow-none");
+    expect(screen.getByRole("heading", { name: "Tracing" })).toHaveClass(
+      "text-primary",
+      "text-lg",
+      "dark:tracking-heading",
+    );
   });
 
   it("keeps the page-header chrome divider full-width on container pages", () => {

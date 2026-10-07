@@ -138,10 +138,12 @@ export function NavMain({
                       section names in white, as the owner asked. The sidebar
                       text colour (part b) is a light slate grey, not white;
                       the sidebar is dark in both themes, as for the
-                      wordmark. */}
+                      wordmark. ACME (CHG-2026-131, ADR-0026): the colour is
+                      the sidebar-label token, white in light mode as before
+                      and the prototype's ink grey in dark mode. */}
                   <SidebarGroupLabel
                     asChild
-                    className="w-full cursor-pointer text-white"
+                    className="text-sidebar-label w-full cursor-pointer"
                   >
                     <button type="button">
                       {group}
