@@ -1166,8 +1166,8 @@ function EntityTypesCard({
   const types = data.entityTypes;
   const redactions = total(data.totals.redactions);
   const otherVerdict = filters.verdict && filters.verdict !== "redact";
-  const previewReason =
-    "EYEON counts the stored findings' entity types per redaction; the prototype marks this card Preview, and the owner decides when it drops the tag.";
+  // The owner dropped the prototype's Preview tag on 2026-10-07: these are
+  // real counts from the stored findings (CHG-2026-137).
   return (
     <EyeonCard
       title="Personal-data types"
@@ -1175,16 +1175,10 @@ function EntityTypesCard({
       link={{ href, label: "Open the decision log" }}
       footnote="A redaction can find more than one type. Findings are stored only with redactions captured by the audit push. Redacted text stays in the decision log."
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="outline" title={previewReason}>
-          Preview
-          <span className="sr-only">: {previewReason}</span>
-        </Badge>
-        <span className="text-muted-foreground text-xs">
-          Counted in the database: only the type and how many redactions found
-          it reach this page.
-        </span>
-      </div>
+      <p className="text-muted-foreground text-xs">
+        Counted in the database: only the type and how many redactions found it
+        reach this page.
+      </p>
       {otherVerdict ? (
         <p className="text-muted-foreground text-sm">
           Entity types come from redactions only. Choose All decisions or a

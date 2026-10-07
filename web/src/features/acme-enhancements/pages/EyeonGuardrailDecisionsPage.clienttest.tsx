@@ -10,7 +10,7 @@ import EyeonGuardrailDecisionsPage from "@/src/features/acme-enhancements/pages/
 // CHG-2026-137: the period and filters come from the URL and go back to it;
 // the decision flow filters the page; decisions over time switch measure;
 // policy type by direction gives rates per 100 checks; the personal-data
-// types show names and counts only, tagged Preview.
+// types show names and counts only, with no Preview tag (owner, 2026-10-07).
 
 const h = vi.hoisted(() => ({
   result: {} as unknown,
@@ -391,7 +391,7 @@ describe("EYEON Guardrail decisions page (CHG-2026-133, CHG-2026-137)", () => {
     expect(document.body.textContent).not.toMatch(/Detection|Topical Rail/);
   });
 
-  it("shows the personal-data types by name and count only, tagged Preview", () => {
+  it("shows the personal-data types by name and count only, without a Preview tag", () => {
     render(<EyeonGuardrailDecisionsPage />);
     const list = screen.getByRole("list", {
       name: "Redactions per personal-data type, last 7 days",
@@ -399,7 +399,8 @@ describe("EYEON Guardrail decisions page (CHG-2026-133, CHG-2026-137)", () => {
     expect(list.textContent).toBe(
       "Email7 redactionsBahrain CPR number2 redactionsOther or unknown type1 redaction",
     );
-    expect(screen.getAllByText("Preview").length).toBeGreaterThan(0);
+    // The owner dropped the tag on 2026-10-07 (CHG-2026-137).
+    expect(screen.queryByText("Preview")).toBeNull();
   });
 
   it("says the types come from redactions only while another verdict is chosen", () => {
