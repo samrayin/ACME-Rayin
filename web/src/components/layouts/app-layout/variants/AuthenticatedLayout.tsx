@@ -374,11 +374,19 @@ function ConnectedAppSidebar({
   const { organization, project } = useQueryProjectOrOrganization();
   // ACME (CHG-2026-124, ADR-0025): the organization's own logo, if one was
   // uploaded under UI Customization. Changes rarely, so it is not refetched
-  // on focus; an upload invalidates it.
+  // on focus; an upload invalidates it. On a page outside any organization
+  // (the Organizations list), a person who belongs to exactly one sees that
+  // one's logo; with several there is no single right logo, so none.
+  const sessionOrganizations = session.data?.user?.organizations ?? [];
+  const logoOrgId =
+    organization?.id ??
+    (sessionOrganizations.length === 1
+      ? sessionOrganizations[0]?.id
+      : undefined);
   const customerLogo = api.acmeCustomerLogo.get.useQuery(
-    { orgId: organization?.id ?? "" },
+    { orgId: logoOrgId ?? "" },
     {
-      enabled: Boolean(organization?.id),
+      enabled: Boolean(logoOrgId),
       staleTime: 5 * 60 * 1000,
       refetchOnWindowFocus: false,
     },
