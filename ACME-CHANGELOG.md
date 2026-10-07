@@ -6411,3 +6411,7 @@ The UI Customization page did not scroll, and with the Add Logo card on top it i
 ## 2026-10-07 — Governance note: CHG-2026-125, -126 and -127 used before their claim merged
 
 Documentation only. The claim for CHG-2026-125, -126 and -127 (#349) was reported merged in the session at about 02:30 UTC, but it was still open; it merged at 06:08 UTC. In between, the three IDs were used in branches, commits and PRs (#351, #352 merged; #354 opened), and CHG-2026-125 and -127 went out in console `acme-v4.38.0.39` at 05:35 UTC. This breaks the register's rule 1 (claim before use). No other claim for these numbers existed at any point, so nothing collided and nothing is renumbered. Cause: the building session acted on the report without checking the PR's state; it now verifies a claim on `main` itself before using an ID. Rollback: none needed.
+
+## 2026-10-07 — The customer logo outside an organization (CHG-2026-124, follow-up)
+
+On pages outside any organization (the Organizations list), the sidebar showed EYEON without the uploaded logo, because the logo belongs to an organization and none was selected (owner, 2026-10-07: "ACME logo has been added and it does not appear at this page.. but appears later"). Now a person who belongs to exactly one organization sees that organization's logo there too; with several, there is no single right logo, so the sidebar shows EYEON alone. Display only. Rollback: revert the commit.
