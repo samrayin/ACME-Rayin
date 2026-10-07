@@ -83,6 +83,12 @@ const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
 // upstream's behaviour.
 const ACME_SHOW_UPSTREAM_NOTIFICATIONS = false;
 
+// ACME (CHG-2026-134): the user menu (avatar, name, email and its items) moved
+// from this footer to the top bar (EyeonTopbarUserMenu), where the ACME AI
+// launcher was. Kept as a guard, as above, so upstream changes to NavUser still
+// merge cleanly. Flip to true to show it here again.
+const ACME_SHOW_SIDEBAR_USER_MENU = false;
+
 type SelfHostedPlan = Extract<Plan, "oss" | `self-hosted:${string}`>;
 
 type SidebarVersionState =
@@ -270,9 +276,11 @@ export function AppSidebar({
         )}
         <NavMain items={secondaryNavItems} />
       </SidebarContent>
-      <SidebarFooter>
-        <NavUser user={user} items={userMenuItems} isMobile={isMobile} />
-      </SidebarFooter>
+      {ACME_SHOW_SIDEBAR_USER_MENU && (
+        <SidebarFooter>
+          <NavUser user={user} items={userMenuItems} isMobile={isMobile} />
+        </SidebarFooter>
+      )}
       <SidebarRail />
     </Sidebar>
   );

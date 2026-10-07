@@ -52,7 +52,7 @@ import { usePostHogClientCapture } from "@/src/features/posthog-analytics/usePos
 import { useSession } from "next-auth/react";
 import { useQueryProjectOrOrganization } from "@/src/features/projects/hooks";
 import { useHasOrganizationAccess } from "@/src/features/rbac/utils/checkOrganizationAccess";
-import { AcmeChatWidget } from "@/src/features/acme-enhancements/components/AcmeChatWidget";
+import { EyeonUserMenuProvider } from "@/src/features/acme-enhancements/components/eyeon/shell/EyeonUserMenuContext";
 import { AcmeThemeStyleInjector } from "@/src/features/acme-enhancements/components/AcmeThemeStyleInjector";
 import {
   PaymentBannerView,
@@ -312,7 +312,14 @@ export function AuthenticatedLayout({
                     sizes the inset to that space. */}
               <SidebarInset className="h-screen-with-banner max-w-full min-w-0">
                 <AppContentWithRightDrawer>
-                  {children}
+                  {/* ACME (CHG-2026-134): the user menu moved from the
+                      sidebar footer to the top bar, which pages render. */}
+                  <EyeonUserMenuProvider
+                    user={sidebarUser}
+                    items={userMenuItems}
+                  >
+                    {children}
+                  </EyeonUserMenuProvider>
                 </AppContentWithRightDrawer>
                 {/* Toasts render in the `toast` overlay layer — the last layer
                       in LAYER_ORDER — so they paint above every overlay (incl. a
@@ -327,13 +334,10 @@ export function AuthenticatedLayout({
                       its launcher button) so the open window and its geometry
                       survive route changes. */}
                 <InAppAgentWindowHost />
+                {/* ACME (CHG-2026-134): the ACME AI panel is removed from
+                    EYEON; its code stays for a later plan. */}
                 {typeof router.query.projectId === "string" ? (
-                  <>
-                    <AcmeChatWidget projectId={router.query.projectId} />
-                    <AcmeThemeStyleInjector
-                      projectId={router.query.projectId}
-                    />
-                  </>
+                  <AcmeThemeStyleInjector projectId={router.query.projectId} />
                 ) : null}
               </SidebarInset>
             </div>

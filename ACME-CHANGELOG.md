@@ -6548,3 +6548,29 @@ Both addresses answer, and both send sign-in back to the new one. Images are unc
 **Release:** web image only. To switch the page on, set `CAIRO_EYEON_GUARDRAIL_DECISIONS_ENABLED=true` on the console and restart it; `deploy/azure` does not declare the flag yet.
 
 **Tests:** 25 new router tests (every role without `projectGuardrails:read`, the Business Analyst included, refused before any database read on both queries; flag off answers without a read; the keys read only for roles that can open Applications and while gateway management is on; no content column in any select, grouping or SQL; the same seven reads with few or many events and keys; only a reported enforce counts as applied, in the groupings and in the SQL; the caller-set policy label never returned; who set the mode never returned); 14 new tests of the figures, wording and stacking geometry; 4 new kit tests (the stacked bars' and bar list's accessible names, hover titles, legend and scale); 5 new page tests ("Would block" in record mode, "Not recorded" never as a number, application links only where resolved, the switched-off page links to the decision log). The pinned sidebar lists for the Security Analyst and the Auditor now include Guardrail decisions, and a test pins it after Overview. The two raw SQL statements were also run against a throwaway local Postgres 16. Existing tests still pass: content-free roles (25), the allow-list (36), the overview (22 and 20), the application detail router (13), the scorecard (32) and the application detail (19). Fresh typecheck passed (the 2 tolerated Enterprise-file errors only); ESLint with no warnings and Prettier on every changed file.
+
+## 2026-10-07 — ACME AI removed; the user menu moves to the top bar (CHG-2026-134)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-134 · owner: Anees Ur Rahman · Tier 1 |
+| **ADR** | [ADR-0026](acme-governance/adr/ADR-0026-adopting-the-eyeon-prototype.md) §12.1 (addendum) |
+| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
+| **Impact** | Client-visible on every console page: the "ACME AI" button and its panel are gone; the user menu (avatar, name, email and its items) sits at the right edge of the top bar instead of the sidebar footer. No downtime |
+| **Schema change** | None |
+| **Rollback** | Redeploy the previous image |
+| **Feature flag** | None (removal, on the owner's decision) |
+
+**What:** the owner's instruction of 2026-10-07: "Remove ACME AI completely from EYEON. we will plan for it sometime later. in that place put the user settings".
+- **ACME AI** (ACME's own chat, ADR-0015) is gone from the console: no launcher in the desktop or mobile top bar, no panel. Its code stays for the later plan. Its one server procedure, `acmeChat.sendMessage`, now refuses every caller before reading any setting, prompt or project data and before calling the gateway.
+- **Upstream's assistant** (Ctrl/Cmd+I) stays off through its own switch, `LANGFUSE_IN_APP_AGENT_ENABLED`, which is off on a self-hosted deployment unless set; its launcher and shortcut are also removed from both top bars.
+- **The user menu** moves from the sidebar footer to the top bar's right edge, with every item it had: account settings, v4 migration where offered, theme, feature preview where offered, instances where configured, sign out. On a phone the mobile top bar has the same full menu behind the avatar.
+
+**Why it matters:** the owner wants ACME AI out of EYEON until it is planned again, and the user's own settings where it was.
+
+**Release:** web image only; no migration, setting or flag. Do not set `LANGFUSE_IN_APP_AGENT_ENABLED` on EYEON deployments.
+
+**Tests:** 7 new server tests (Owner, Admin, Prompt Analyst and Viewer refused by `acmeChat.sendMessage` before any database read or gateway call; Security Analyst, Business Analyst and Auditor still refused); 3 new tests that upstream's in-app agent is off on a self-hosted deployment unless switched on and refuses before reading anything; 8 new top-bar tests (no ACME AI or assistant launcher and no Ctrl/Cmd+I on desktop or mobile, even with the assistant available; no top bar or layout mounts either launcher or the panel; the user menu is the last control in the top bar, opens with the layout's items and runs them; no user block in the sidebar footer; the full menu on the mobile top bar; the short account menu outside the layout); 3 new user-menu tests (the person and every item, actions run, the compact trigger). Existing tests still pass: the app shell (4) and the ACME AI component (4, its code kept). ESLint with no warnings and Prettier on every changed file.
+
+**Also:** the `no-deprecated` lint directive in `acmeChatRouter.ts` sat one line above the call it covers (since CHG-2026-113), so ESLint reported it once the file changed; it now sits on that line, and the file is formatted. No behaviour change.
