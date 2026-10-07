@@ -6330,3 +6330,15 @@ free and closes a live exposure.
 ## 2026-10-07 — ADR-0023 written: the Applications page (CHG-2026-115)
 
 Documentation only (Tier 2). ADR-0023, claimed on 2026-10-05 and put on hold, is written: an application is a key lineage; how its guardrail decisions, request log and change record are joined; the scorecard as built under CHG-2026-122 (#340, #346); a detail screen (phase 2, needs indexes) and one trace per request (phase 3, feasibility) as proposals; risks and the owner decisions still open. It was written after phase 1 shipped, which the ADR records. The register marks CHG-2026-115 and CHG-2026-122 merged. Rollback: revert the commit.
+
+## 2026-10-07 — Bright accents in dark mode; "ON" follows the theme (CHG-2026-127)
+
+**What:** dark mode has its own accent, chosen in UI Customization under "Accent color in dark mode": **Lime** (the default, after the owner's reference), **Electric Cyan** or **Hot Pink**. Buttons, links, focus rings, the active sidebar item and the "ON" in the EYEON wordmark take it, with near-black text on anything it fills. Light mode keeps its presets and looks as before.
+
+- The project default and each person's own theme both carry the dark accent; a theme saved before this change gets Lime.
+- Pages outside a project use Lime in dark mode (the static default in `globals.css`).
+- Each light accent applies only in light mode now; before, it also applied in dark mode, where the deep colours were hard to see.
+
+**Why it matters:** the owner wanted the console clear and vivid in dark mode (2026-10-07).
+
+**Tests:** every dark accent meets WCAG AA contrast (4.5:1) against the dark page, against near-black text and on the active sidebar item; each accent applies only in its own mode; stored values are validated. Display only: no schema, access or data change. Rollback: revert the commit.

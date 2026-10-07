@@ -13,6 +13,7 @@ import {
 import { throwIfNoProjectAccess } from "@/src/features/rbac/utils/checkProjectAccess";
 import {
   ACME_ACCENT_COLOR_KEYS,
+  ACME_DARK_ACCENT_KEYS,
   ACME_HEADER_BACKGROUND_KEYS,
   ACME_THEME_DEFAULT,
   type AcmeTheme,
@@ -21,6 +22,11 @@ import {
 const acmeThemeSchema = z.object({
   accentColor: z.enum(ACME_ACCENT_COLOR_KEYS),
   headerBackground: z.enum(ACME_HEADER_BACKGROUND_KEYS),
+  // CHG-2026-127: optional, so a theme stored before dark-mode accents
+  // existed still parses; it then gets the default (lime).
+  darkAccentColor: z
+    .enum(ACME_DARK_ACCENT_KEYS)
+    .default(ACME_THEME_DEFAULT.darkAccentColor),
 });
 
 function parseAcmeTheme(metadata: unknown): AcmeTheme {
@@ -50,7 +56,11 @@ export const acmeThemeRouter = createTRPCRouter({
 
   update: protectedProjectProcedure
     .input(
-      z.object({ projectId: z.string() }).extend(acmeThemeSchema.shape),
+      z.object({ projectId: z.string() }).extend({
+        ...acmeThemeSchema.shape,
+        // Omitted (an older client): the stored dark accent is kept.
+        darkAccentColor: z.enum(ACME_DARK_ACCENT_KEYS).optional(),
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       throwIfNoProjectAccess({
@@ -71,6 +81,9 @@ export const acmeThemeRouter = createTRPCRouter({
       const theme: AcmeTheme = {
         accentColor: input.accentColor,
         headerBackground: input.headerBackground,
+        darkAccentColor:
+          input.darkAccentColor ??
+          parseAcmeTheme(project.metadata).darkAccentColor,
       };
 
       await ctx.prisma.project.update({

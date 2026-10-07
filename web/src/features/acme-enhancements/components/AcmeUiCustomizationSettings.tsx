@@ -17,10 +17,13 @@ import {
 import {
   ACME_ACCENT_COLOR_KEYS,
   ACME_ACCENT_COLOR_PRESETS,
+  ACME_DARK_ACCENT_KEYS,
+  ACME_DARK_ACCENT_PRESETS,
   ACME_HEADER_BACKGROUND_KEYS,
   ACME_HEADER_BACKGROUND_PRESETS,
   ACME_THEME_DEFAULT,
   type AcmeAccentColorKey,
+  type AcmeDarkAccentKey,
   type AcmeHeaderBackgroundKey,
   type AcmeTheme,
 } from "@/src/features/acme-enhancements/theme/acmeThemePresets";
@@ -33,11 +36,13 @@ function ThemeOptions({
   value,
   disabled,
   onAccentColor,
+  onDarkAccentColor,
   onHeaderBackground,
 }: {
   value: AcmeTheme;
   disabled: boolean;
   onAccentColor: (key: AcmeAccentColorKey) => void;
+  onDarkAccentColor: (key: AcmeDarkAccentKey) => void;
   onHeaderBackground: (key: AcmeHeaderBackgroundKey) => void;
 }) {
   return (
@@ -45,7 +50,8 @@ function ThemeOptions({
       <div className="flex flex-col gap-2">
         <p className="text-sm font-bold">Accent color</p>
         <p className="text-muted-foreground text-xs">
-          Used for buttons, links, and active navigation across the app.
+          Used for buttons, links, and active navigation across the app, in
+          light mode.
         </p>
         <div className="flex flex-wrap gap-3">
           {ACME_ACCENT_COLOR_KEYS.map((key) => {
@@ -71,6 +77,47 @@ function ThemeOptions({
                 >
                   {isSelected && (
                     <Check className="h-4 w-4 text-white" strokeWidth={3} />
+                  )}
+                </span>
+                {preset.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      {/* ACME (CHG-2026-127): bright accents for dark mode, shown on a
+          dark tile so the choice looks as it will. */}
+      <div className="flex flex-col gap-2">
+        <p className="text-sm font-bold">Accent color in dark mode</p>
+        <p className="text-muted-foreground text-xs">
+          A bright accent for dark mode: buttons, links, active navigation and
+          the &quot;ON&quot; in EYEON.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          {ACME_DARK_ACCENT_KEYS.map((key) => {
+            const preset = ACME_DARK_ACCENT_PRESETS[key];
+            const isSelected = value.darkAccentColor === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                disabled={disabled}
+                onClick={() => onDarkAccentColor(key)}
+                aria-pressed={isSelected}
+                className={cn(
+                  "flex w-28 flex-col items-center gap-2 rounded-md border bg-black p-3 text-xs text-white transition-colors",
+                  isSelected
+                    ? "border-primary ring-primary ring-1"
+                    : "border-border hover:border-primary/50",
+                  disabled && "cursor-not-allowed opacity-60",
+                )}
+              >
+                <span
+                  className="flex h-8 w-8 items-center justify-center rounded-full"
+                  style={{ backgroundColor: preset.swatch }}
+                >
+                  {isSelected && (
+                    <Check className="h-4 w-4 text-black" strokeWidth={3} />
                   )}
                 </span>
                 {preset.label}
@@ -191,6 +238,9 @@ export function AcmeUiCustomizationSettings({
             onAccentColor={(accentColor) =>
               setPersonal({ ...personal, accentColor })
             }
+            onDarkAccentColor={(darkAccentColor) =>
+              setPersonal({ ...personal, darkAccentColor })
+            }
             onHeaderBackground={(headerBackground) =>
               setPersonal({ ...personal, headerBackground })
             }
@@ -222,18 +272,13 @@ export function AcmeUiCustomizationSettings({
             value={projectTheme}
             disabled={!canEdit || update.isPending}
             onAccentColor={(accentColor) =>
-              update.mutate({
-                projectId,
-                accentColor,
-                headerBackground: projectTheme.headerBackground,
-              })
+              update.mutate({ ...projectTheme, projectId, accentColor })
+            }
+            onDarkAccentColor={(darkAccentColor) =>
+              update.mutate({ ...projectTheme, projectId, darkAccentColor })
             }
             onHeaderBackground={(headerBackground) =>
-              update.mutate({
-                projectId,
-                accentColor: projectTheme.accentColor,
-                headerBackground,
-              })
+              update.mutate({ ...projectTheme, projectId, headerBackground })
             }
           />
         </CardContent>

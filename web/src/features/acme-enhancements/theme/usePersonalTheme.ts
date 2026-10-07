@@ -1,6 +1,7 @@
 import useLocalStorage from "@/src/components/useLocalStorage";
 import {
   ACME_ACCENT_COLOR_KEYS,
+  ACME_DARK_ACCENT_KEYS,
   ACME_HEADER_BACKGROUND_KEYS,
   ACME_THEME_DEFAULT,
   type AcmeTheme,
@@ -34,6 +35,11 @@ export function sanitizePersonalTheme(value: unknown): PersonalTheme {
     )
   )
     out.headerBackground = v.headerBackground as AcmeTheme["headerBackground"];
+  if (
+    typeof v.darkAccentColor === "string" &&
+    (ACME_DARK_ACCENT_KEYS as readonly string[]).includes(v.darkAccentColor)
+  )
+    out.darkAccentColor = v.darkAccentColor as AcmeTheme["darkAccentColor"];
   return out;
 }
 
@@ -46,12 +52,18 @@ export function effectiveTheme(
   project: AcmeTheme | undefined,
   personal: PersonalTheme,
 ): AcmeTheme | undefined {
-  if (!project && !personal.accentColor && !personal.headerBackground)
+  if (
+    !project &&
+    !personal.accentColor &&
+    !personal.headerBackground &&
+    !personal.darkAccentColor
+  )
     return undefined;
   const base = project ?? ACME_THEME_DEFAULT;
   return {
     accentColor: personal.accentColor ?? base.accentColor,
     headerBackground: personal.headerBackground ?? base.headerBackground,
+    darkAccentColor: personal.darkAccentColor ?? base.darkAccentColor,
   };
 }
 
@@ -63,7 +75,11 @@ export function usePersonalTheme() {
   const personal = sanitizePersonalTheme(stored);
   return {
     personal,
-    hasPersonal: Boolean(personal.accentColor || personal.headerBackground),
+    hasPersonal: Boolean(
+      personal.accentColor ||
+      personal.headerBackground ||
+      personal.darkAccentColor,
+    ),
     setPersonal: (next: PersonalTheme) =>
       setStored(sanitizePersonalTheme(next)),
     clearPersonal: clear,
