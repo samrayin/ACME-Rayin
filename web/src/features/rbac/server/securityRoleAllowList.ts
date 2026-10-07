@@ -103,6 +103,9 @@ const AUDITOR_ROLE_ALLOWED_PROCEDURES: ReadonlySet<string> = new Set([
   // only with llmGatewaySpend:read, which the Auditor does not hold.
   "eyeonOverview.summary",
   "eyeonOverview.status",
+  // CHG-2026-136 (ADR-0028): whether Home shows the overview. A flag only,
+  // under the overview's access rule; no data.
+  "eyeonOverview.homeStatus",
   "acmeLitellm.models",
   "acmeLitellm.catalogue",
   "acmePromptApproval.listPending",
