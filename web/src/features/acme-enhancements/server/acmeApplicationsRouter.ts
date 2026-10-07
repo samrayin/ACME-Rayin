@@ -19,6 +19,12 @@
  * The same access rule and the same scorecard, plus its generations, daily
  * activity, latest requests with their guardrail decisions beside them, and
  * its key's change record. The shaping is in acmeApplicationDetail.ts.
+ *
+ * ACME (CHG-2026-132, ADR-0027): the scorecards' reads and scoring moved
+ * into `loadApplicationScorecards`, unchanged, so the EYEON overview rates
+ * applications exactly as this page does, under the same access rule. The
+ * query now reads through ctx.prisma, as `detail` does (the same client),
+ * so tests can stand in for the database.
  */
 import { z } from "zod";
 import { type Session } from "next-auth";
@@ -33,7 +39,11 @@ import {
   throwIfNoProjectAccess,
 } from "@/src/features/rbac/utils/checkProjectAccess";
 import { env } from "@/src/env.mjs";
-import { AcmeLitellmKeyStatus, Prisma, prisma } from "@langfuse/shared/src/db";
+import {
+  AcmeLitellmKeyStatus,
+  Prisma,
+  type PrismaClient,
+} from "@langfuse/shared/src/db";
 import {
   getCurrentSettings,
   parseModeCeiling,
@@ -80,7 +90,16 @@ const windowDaysInput = z
   .refine((d) => (WINDOW_DAYS as readonly number[]).includes(d))
   .default(30);
 
-function throwIfNoneOf(
+/**
+ * Who may read the scorecards: Owner and Admin (llmGateway:read) or Auditor
+ * (evidence:read). CHG-2026-132: the EYEON overview uses the same rule.
+ */
+export const APPLICATIONS_READ_SCOPES: ProjectScope[] = [
+  "llmGateway:read",
+  "evidence:read",
+];
+
+export function throwIfNoneOf(
   session: Session,
   projectId: string,
   scopes: ProjectScope[],
@@ -161,6 +180,194 @@ export const DETAIL_CHANGE_SELECT = {
   after: true,
 } satisfies Prisma.AcmeLitellmEventSelect;
 
+/** What the scorecards read: Prisma's client, or a test double of it. */
+type ScorecardsDb = Pick<
+  PrismaClient,
+  | "acmeLitellmKey"
+  | "acmeGuardrailEvent"
+  | "acmeLitellmRequestLog"
+  | "acmeGuardrailSettings"
+  | "$queryRaw"
+>;
+
+/**
+ * ACME (CHG-2026-132, ADR-0027): the scorecards' reads and scoring, shared by
+ * the `scorecards` query and the EYEON overview. The caller checks access
+ * and the feature flag first. Metadata only: no content column is read.
+ */
+export async function loadApplicationScorecards(
+  db: ScorecardsDb,
+  {
+    projectId,
+    windowDays,
+    canSeeSpend,
+    now,
+  }: {
+    projectId: string;
+    windowDays: number;
+    canSeeSpend: boolean;
+    now: Date;
+  },
+) {
+  const since = new Date(now.getTime() - windowDays * 86_400_000);
+
+  const keys = await db.acmeLitellmKey.findMany({
+    where: { projectId, status: { in: USED_STATUSES } },
+    select: {
+      lineageId: true,
+      generation: true,
+      displayName: true,
+      litellmKeyAlias: true,
+      status: true,
+      models: true,
+      rpmLimit: true,
+      maxBudget: true,
+      budgetDuration: true,
+      expiresAt: true,
+      createdAt: true,
+    },
+    orderBy: [{ lineageId: "asc" }, { generation: "asc" }],
+  });
+
+  // One application per lineage that still has a key in use. Its
+  // settings are the newest active generation's; its traffic is every
+  // generation's alias, so a rotation does not reset the scorecard.
+  const lineages = new Map<string, typeof keys>();
+  for (const k of keys) {
+    const list = lineages.get(k.lineageId) ?? [];
+    list.push(k);
+    lineages.set(k.lineageId, list);
+  }
+  const apps = [...lineages.values()]
+    .map((generations) => ({
+      current: currentGeneration(generations),
+      aliases: generations.map((g) => g.litellmKeyAlias),
+    }))
+    .filter(
+      (a): a is { current: (typeof keys)[number]; aliases: string[] } =>
+        a.current !== undefined,
+    );
+  const allAliases = apps.flatMap((a) => a.aliases);
+  // The trend has one point per UTC day, the last windowDays days
+  // including today, so its first day is a whole one.
+  const trendFrom = trendStart(now, windowDays);
+
+  // A bounded number of queries whatever the number of applications:
+  // one groupBy per table for the counts, one per table for the trend.
+  // The trend needs a day bucket, which groupBy cannot do, so it is raw
+  // SQL with bound parameters, scoped like the rest to this project, the
+  // period and the applications' aliases.
+  const [settings, events, calls, dailyCalls, dailyRefused] = await Promise.all(
+    [
+      getCurrentSettings(db),
+      allAliases.length
+        ? db.acmeGuardrailEvent.groupBy({
+            by: [
+              "agentId",
+              "direction",
+              "action",
+              "policyTriggered",
+              "gatewayMode",
+            ],
+            where: {
+              projectId,
+              eventTime: { gte: since },
+              agentId: { in: allAliases },
+            },
+            _count: { _all: true },
+          })
+        : Promise.resolve([]),
+      allAliases.length
+        ? db.acmeLitellmRequestLog.groupBy({
+            by: ["keyAlias", "status"],
+            where: {
+              projectId,
+              startTime: { gte: since },
+              keyAlias: { in: allAliases },
+            },
+            _count: { _all: true },
+            _sum: { spend: true },
+          })
+        : Promise.resolve([]),
+      // Timestamps are stored as UTC without a zone, so the bound is
+      // passed as UTC text and cast the same way.
+      allAliases.length
+        ? db.$queryRaw<AliasDayCount[]>`
+              SELECT key_alias AS alias,
+                     to_char(date_trunc('day', start_time), 'YYYY-MM-DD') AS day,
+                     COUNT(*)::int AS n
+              FROM acme_litellm_request_logs
+              WHERE project_id = ${projectId}
+                AND start_time >= ${trendFrom.toISOString()}::timestamp
+                AND key_alias = ANY(${allAliases}::text[])
+              GROUP BY 1, 2`
+        : Promise.resolve([]),
+      allAliases.length
+        ? db.$queryRaw<AliasDayCount[]>`
+              SELECT agent_id AS alias,
+                     to_char(date_trunc('day', event_time), 'YYYY-MM-DD') AS day,
+                     COUNT(*)::int AS n
+              FROM acme_guardrail_events
+              WHERE project_id = ${projectId}
+                AND event_time >= ${trendFrom.toISOString()}::timestamp
+                AND agent_id = ANY(${allAliases}::text[])
+                AND direction = 'input'
+                AND action = 'block'
+              GROUP BY 1, 2`
+        : Promise.resolve([]),
+    ],
+  );
+
+  const mode = settings
+    ? servedMode(settings, now, parseModeCeiling(env.CAIRO_GUARDRAIL_MODE_MAX))
+    : "record";
+
+  // CHG-2026-125: the aggregation moved to acmeApplicationDetail.ts, so
+  // the detail screen scores an application exactly as its card does.
+  const guard = guardrailCountsByAlias(events);
+  const callsByAlias = callCountsByAlias(calls);
+  const trendRows = trendRowsByAlias(dailyCalls, dailyRefused);
+
+  const scored = apps.map(({ current, aliases }) =>
+    buildApplicationScorecard({
+      current,
+      aliases,
+      guard,
+      calls: callsByAlias,
+      trendRows,
+      mode,
+      now,
+      canSeeSpend,
+      trendFrom,
+      windowDays,
+    }),
+  );
+
+  const order = { red: 0, amber: 1, green: 2, none: 3 } as const;
+  scored.sort(
+    (a, b) =>
+      order[a.score.overall] - order[b.score.overall] ||
+      a.app.name.localeCompare(b.app.name),
+  );
+
+  return {
+    settings,
+    mode,
+    scored,
+    summary: {
+      ...summarise(scored, canSeeSpend),
+      topRisks: rankTopRisks(
+        scored.map(({ app, score }) => ({
+          name: app.name,
+          alias: app.alias,
+          score,
+        })),
+        TOP_RISKS_SHOWN,
+      ),
+    },
+  };
+}
+
 export const acmeApplicationsRouter = createTRPCRouter({
   scorecards: protectedProjectProcedure
     .input(
@@ -170,10 +377,7 @@ export const acmeApplicationsRouter = createTRPCRouter({
       }),
     )
     .query(async ({ ctx, input }) => {
-      throwIfNoneOf(ctx.session, input.projectId, [
-        "llmGateway:read",
-        "evidence:read",
-      ]);
+      throwIfNoneOf(ctx.session, input.projectId, APPLICATIONS_READ_SCOPES);
       if (env.CAIRO_LITELLM_MANAGEMENT_ENABLED !== "true") {
         return { enabled: false as const };
       }
@@ -183,148 +387,14 @@ export const acmeApplicationsRouter = createTRPCRouter({
         scope: "llmGatewaySpend:read",
       });
       const now = new Date();
-      const since = new Date(now.getTime() - input.windowDays * 86_400_000);
-
-      const keys = await prisma.acmeLitellmKey.findMany({
-        where: { projectId: input.projectId, status: { in: USED_STATUSES } },
-        select: {
-          lineageId: true,
-          generation: true,
-          displayName: true,
-          litellmKeyAlias: true,
-          status: true,
-          models: true,
-          rpmLimit: true,
-          maxBudget: true,
-          budgetDuration: true,
-          expiresAt: true,
-          createdAt: true,
-        },
-        orderBy: [{ lineageId: "asc" }, { generation: "asc" }],
-      });
-
-      // One application per lineage that still has a key in use. Its
-      // settings are the newest active generation's; its traffic is every
-      // generation's alias, so a rotation does not reset the scorecard.
-      const lineages = new Map<string, typeof keys>();
-      for (const k of keys) {
-        const list = lineages.get(k.lineageId) ?? [];
-        list.push(k);
-        lineages.set(k.lineageId, list);
-      }
-      const apps = [...lineages.values()]
-        .map((generations) => ({
-          current: currentGeneration(generations),
-          aliases: generations.map((g) => g.litellmKeyAlias),
-        }))
-        .filter(
-          (a): a is { current: (typeof keys)[number]; aliases: string[] } =>
-            a.current !== undefined,
-        );
-      const allAliases = apps.flatMap((a) => a.aliases);
-      // The trend has one point per UTC day, the last windowDays days
-      // including today, so its first day is a whole one.
-      const trendFrom = trendStart(now, input.windowDays);
-
-      // A bounded number of queries whatever the number of applications:
-      // one groupBy per table for the counts, one per table for the trend.
-      // The trend needs a day bucket, which groupBy cannot do, so it is raw
-      // SQL with bound parameters, scoped like the rest to this project, the
-      // period and the applications' aliases.
-      const [settings, events, calls, dailyCalls, dailyRefused] =
-        await Promise.all([
-          getCurrentSettings(prisma),
-          allAliases.length
-            ? prisma.acmeGuardrailEvent.groupBy({
-                by: [
-                  "agentId",
-                  "direction",
-                  "action",
-                  "policyTriggered",
-                  "gatewayMode",
-                ],
-                where: {
-                  projectId: input.projectId,
-                  eventTime: { gte: since },
-                  agentId: { in: allAliases },
-                },
-                _count: { _all: true },
-              })
-            : Promise.resolve([]),
-          allAliases.length
-            ? prisma.acmeLitellmRequestLog.groupBy({
-                by: ["keyAlias", "status"],
-                where: {
-                  projectId: input.projectId,
-                  startTime: { gte: since },
-                  keyAlias: { in: allAliases },
-                },
-                _count: { _all: true },
-                _sum: { spend: true },
-              })
-            : Promise.resolve([]),
-          // Timestamps are stored as UTC without a zone, so the bound is
-          // passed as UTC text and cast the same way.
-          allAliases.length
-            ? prisma.$queryRaw<AliasDayCount[]>`
-                SELECT key_alias AS alias,
-                       to_char(date_trunc('day', start_time), 'YYYY-MM-DD') AS day,
-                       COUNT(*)::int AS n
-                FROM acme_litellm_request_logs
-                WHERE project_id = ${input.projectId}
-                  AND start_time >= ${trendFrom.toISOString()}::timestamp
-                  AND key_alias = ANY(${allAliases}::text[])
-                GROUP BY 1, 2`
-            : Promise.resolve([]),
-          allAliases.length
-            ? prisma.$queryRaw<AliasDayCount[]>`
-                SELECT agent_id AS alias,
-                       to_char(date_trunc('day', event_time), 'YYYY-MM-DD') AS day,
-                       COUNT(*)::int AS n
-                FROM acme_guardrail_events
-                WHERE project_id = ${input.projectId}
-                  AND event_time >= ${trendFrom.toISOString()}::timestamp
-                  AND agent_id = ANY(${allAliases}::text[])
-                  AND direction = 'input'
-                  AND action = 'block'
-                GROUP BY 1, 2`
-            : Promise.resolve([]),
-        ]);
-
-      const mode = settings
-        ? servedMode(
-            settings,
-            now,
-            parseModeCeiling(env.CAIRO_GUARDRAIL_MODE_MAX),
-          )
-        : "record";
-
-      // CHG-2026-125: the aggregation moved to acmeApplicationDetail.ts, so
-      // the detail screen scores an application exactly as its card does.
-      const guard = guardrailCountsByAlias(events);
-      const callsByAlias = callCountsByAlias(calls);
-      const trendRows = trendRowsByAlias(dailyCalls, dailyRefused);
-
-      const scored = apps.map(({ current, aliases }) =>
-        buildApplicationScorecard({
-          current,
-          aliases,
-          guard,
-          calls: callsByAlias,
-          trendRows,
-          mode,
-          now,
-          canSeeSpend,
-          trendFrom,
+      const { mode, scored, summary } = await loadApplicationScorecards(
+        ctx.prisma,
+        {
+          projectId: input.projectId,
           windowDays: input.windowDays,
-        }),
-      );
-
-      const order = { red: 0, amber: 1, green: 2, none: 3 } as const;
-      scored.sort(
-        (a, b) =>
-          order[a.score.overall] - order[b.score.overall] ||
-          a.app.name.localeCompare(b.app.name),
+          canSeeSpend,
+          now,
+        },
       );
 
       return {
@@ -333,17 +403,7 @@ export const acmeApplicationsRouter = createTRPCRouter({
         mode,
         canSeeSpend,
         generatedAt: now.toISOString(),
-        summary: {
-          ...summarise(scored, canSeeSpend),
-          topRisks: rankTopRisks(
-            scored.map(({ app, score }) => ({
-              name: app.name,
-              alias: app.alias,
-              score,
-            })),
-            TOP_RISKS_SHOWN,
-          ),
-        },
+        summary,
         applications: scored.map(({ app, score, input: i }) => ({
           ...app,
           calls: i.calls,
@@ -372,10 +432,7 @@ export const acmeApplicationsRouter = createTRPCRouter({
       }),
     )
     .query(async ({ ctx, input }) => {
-      throwIfNoneOf(ctx.session, input.projectId, [
-        "llmGateway:read",
-        "evidence:read",
-      ]);
+      throwIfNoneOf(ctx.session, input.projectId, APPLICATIONS_READ_SCOPES);
       if (env.CAIRO_LITELLM_MANAGEMENT_ENABLED !== "true") {
         return { enabled: false as const };
       }

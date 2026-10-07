@@ -57,7 +57,8 @@ const BAND_VARIANT: Record<
   none: "secondary",
 };
 
-const DIMENSION_LABEL: Record<Dimension, string> = {
+/** CHG-2026-132: also the EYEON overview's top risks. */
+export const DIMENSION_LABEL: Record<Dimension, string> = {
   protection: "Protection",
   threats: "Threat activity",
   dataProtection: "Data protection",
