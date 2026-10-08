@@ -6679,8 +6679,8 @@ Both addresses answer, and both send sign-in back to the new one. Images are unc
 |---|---|
 | **Change ID** | CHG-2026-139 · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | [ADR-0027](acme-governance/adr/ADR-0027-eyeon-native-pages.md) (the EYEON-native page pattern; no new ADR); slice 8 of ADR-0026 |
-| **Approval** | Owner, 2026-10-08: reviewed and merged #379 and approved its release ("merged and yes to release"; console `acme-v4.38.0.45`). The page stays off until `CAIRO_EYEON_GATEWAY_HEALTH_ENABLED` is set, a separate yes. No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
-| **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
+| **Approval** | Owner, 2026-10-08: reviewed and merged #379 and approved its release ("merged and yes to release"; console `acme-v4.38.0.45`). The page stays off until `CAIRO_EYEON_GATEWAY_HEALTH_ENABLED` is set, a separate yes. No pre-merge review report, per the owner's dev decision (PL-087). Switch-on: owner, 2026-10-08, "Yes, switch on now"; after the rollback below, "Re-apply it after the release". Not a production approval |
+| **Dates** | Dev: switched on 2026-10-08 15:02 UTC, on console `acme-v4.38.0.46` (released in `acme-v4.38.0.45`). A first switch-on at 12:56 UTC was rolled back at 13:03 UTC by an actor not yet identified (acme-rayin-ops deployment record of 2026-10-08) · Staging: not available · Prod: not yet |
 | **Impact** | Client-visible once the flag is on: a "Gateway health" page, first under Observability, for Owners, Admins and Auditors. With the flag off (the default) nothing changes on screen, except that the Ctrl/Cmd K list names the entry and opening it says the page is switched off. No downtime |
 | **Schema change** | None |
 | **Rollback** | Flag off, or redeploy the previous image |
@@ -6896,8 +6896,8 @@ ESLint (no warnings) and Prettier pass on every changed code file. Fresh typeche
 |---|---|
 | **Change ID** | CHG-2026-143 · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | [ADR-0027](acme-governance/adr/ADR-0027-eyeon-native-pages.md) (the EYEON-native page pattern; no new ADR); a slice of ADR-0026 |
-| **Approval** | Pending. The owner reviews and merges; no self-approval. Audience decided by the owner on 2026-10-08: the prototype's (Owner, Admin, Prompt Analyst, Viewer and Business Analyst) |
-| **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
+| **Approval** | Owner, 2026-10-08: reviewed and merged #387 and approved its release and switch-on ("merged 387, go ahead and release"; console `acme-v4.38.0.46`). Audience decided by the owner on 2026-10-08: the prototype's (Owner, Admin, Prompt Analyst, Viewer and Business Analyst). No self-approval. Not a production approval |
+| **Dates** | Dev: 2026-10-08, console `acme-v4.38.0.46` (`d08e929f9`, `sha256:da57133a…`), switched on 15:02 UTC · Staging: not available · Prod: not yet |
 | **Impact** | Client-visible once the flag is on: a "Spend" entry under Governance Controls, right after LLM Gateway, opening the Cost and usage page, for every role that sees the gateway Spend tab. With the flag off (the default) nothing changes on screen, except that the Ctrl/Cmd K list names the entry and opening it says the page is switched off. No downtime |
 | **Schema change** | None |
 | **Rollback** | Flag off, or redeploy the previous image |
