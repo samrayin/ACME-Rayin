@@ -10,7 +10,8 @@
 # values: the guardrail ceiling (CAIRO_GUARDRAIL_MODE_MAX), the SSO-enforced
 # domains (AUTH_DOMAINS_WITH_SSO_ENFORCEMENT) and the guardrail administrators
 # (CAIRO_GUARDRAIL_ADMINS). Account linking (AUTH_AZURE_AD_ALLOW_ACCOUNT_LINKING)
-# must be absent. Only the ceiling's value is printed; the others print as
+# must be absent. The EYEON page switches (CHG-2026-145) must match too. Only
+# the ceiling's and the switches' values are printed; the others print as
 # "match" or "differs", because they name the environment and its people.
 # This does not compare the console's other settings: that needs the Phase C
 # reconciliation of deploy/azure with the live environment.
@@ -95,6 +96,21 @@ mode=$(tfvar guardrail_mode_max)
 check CAIRO_GUARDRAIL_MODE_MAX "${mode:-record}" yes
 check AUTH_DOMAINS_WITH_SSO_ENFORCEMENT "$(tfvar sso_enforced_domains)" no
 check CAIRO_GUARDRAIL_ADMINS "$(tfvar guardrail_admins)" no
+# CHG-2026-145: the EYEON page switches, which deploy/azure always renders as
+# "true" or "false" (a variable missing from the tfvars means its default,
+# false). Their values are shown: they name no environment or person.
+for flag in \
+  eyeon_overview_enabled:CAIRO_EYEON_OVERVIEW_ENABLED \
+  eyeon_guardrail_decisions_enabled:CAIRO_EYEON_GUARDRAIL_DECISIONS_ENABLED \
+  eyeon_enforcement_enabled:CAIRO_EYEON_ENFORCEMENT_ENABLED \
+  eyeon_home_enabled:CAIRO_EYEON_HOME_ENABLED \
+  eyeon_rail_enabled:CAIRO_EYEON_RAIL_ENABLED \
+  eyeon_gateway_health_enabled:CAIRO_EYEON_GATEWAY_HEALTH_ENABLED \
+  eyeon_spend_enabled:CAIRO_EYEON_SPEND_ENABLED \
+  acme_ai_enabled:CAIRO_ACME_AI_ENABLED; do
+  value=$(tfvar "${flag%%:*}")
+  check "${flag#*:}" "${value:-false}" yes
+done
 if has_env AUTH_AZURE_AD_ALLOW_ACCOUNT_LINKING; then
   echo "DIFFERS   AUTH_AZURE_AD_ALLOW_ACCOUNT_LINKING is set live; it must stay unset (CHG-2026-108)"
   failed=1
