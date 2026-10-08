@@ -75,7 +75,7 @@ const EYEON_RAIL_CATEGORIES: readonly EyeonRailCategoryDefinition[] = [
 /**
  * Each sidebar group's category. A Record, so a new group fails the type check
  * here until someone places it. "Reports / Logs" holds only Logs today, so it
- * maps to Logs; Reports shows once a route is placed there below.
+ * maps to Logs; Reports holds Dashboards (placed below by pathname).
  */
 const CATEGORY_OF_GROUP: Record<RouteGroup, EyeonRailCategoryId> = {
   [RouteGroup.GovernanceControls]: "governance",
@@ -96,9 +96,13 @@ const CATEGORY_OF_PATHNAME: ReadonlyArray<{
   matches: (pathname: string) => boolean;
   category: EyeonRailCategoryId;
 }> = [
-  // The prototype's Home section: the project home and Dashboards.
+  // Home is the project home alone. Dashboards are reports (owner's choice,
+  // 2026-10-07: Reports holds Dashboards and, later, an executive summary).
   { matches: (p) => p === "/project/[projectId]", category: "home" },
-  { matches: (p) => p === "/project/[projectId]/dashboards", category: "home" },
+  {
+    matches: (p) => p === "/project/[projectId]/dashboards",
+    category: "reports",
+  },
   // Gateway health sits under Observability, as in the prototype.
   { matches: (p) => p.endsWith("/gateway-health"), category: "observability" },
 ];
@@ -129,7 +133,12 @@ export type EyeonRailNavigation = {
 
 export type EyeonRailCategory = EyeonRailCategoryDefinition & {
   items: NavigationItem[];
-  /** Where the category goes when chosen; only Home navigates. */
+  /**
+   * Where the category goes when chosen: its first page this person can open,
+   * as in the prototype. Undefined when the page on screen is already in the
+   * category (choosing it then only shows its list), or when none of its
+   * entries has a page of its own.
+   */
   href: string | undefined;
   /** The page on screen is one of this category's items. */
   containsCurrentPage: boolean;
@@ -184,15 +193,15 @@ export function buildEyeonRailModel({
     (definition): EyeonRailCategory[] => {
       const items = itemsOf.get(definition.id) ?? [];
       if (!items.some(isSeen)) return [];
+      const containsCurrentPage = items.some((item) => item.isActive);
       return [
         {
           ...definition,
           items,
-          href:
-            definition.id === "home"
-              ? items.find((item) => !item.menuNode && item.url)?.url
-              : undefined,
-          containsCurrentPage: items.some((item) => item.isActive),
+          href: containsCurrentPage
+            ? undefined
+            : items.find((item) => isSeen(item) && item.url)?.url,
+          containsCurrentPage,
         },
       ];
     },

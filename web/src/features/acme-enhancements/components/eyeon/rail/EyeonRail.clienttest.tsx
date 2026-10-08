@@ -10,8 +10,9 @@ import { useEyeonRailStore } from "@/src/features/acme-enhancements/components/e
 import type { EyeonRailNavigation } from "@/src/features/acme-enhancements/components/eyeon/rail/eyeonRailModel";
 
 // CHG-2026-135 (ADR-0026 §12.2): the rail on screen. A nav landmark; the
-// active category marked with aria-current; choosing a category lists its
-// items in the sidebar beside it; Home goes to the project home; an entry
+// active category marked with aria-current; choosing a category goes to its
+// first page and lists its items in the sidebar beside it, while the page's
+// own category only shows its list (owner, 2026-10-07); an entry
 // that renders nothing never shows, nor does a category holding only such
 // entries; with CAIRO_EYEON_RAIL_ENABLED off the sidebar is the old one.
 
@@ -124,8 +125,11 @@ function Shell() {
 
 const rail = () => screen.getByRole("navigation", { name: "Categories" });
 const sidebar = () => screen.getByRole("complementary", { name: "Sidebar" });
-const category = (name: string) =>
-  within(rail()).getByRole(name === "Home" ? "link" : "button", { name });
+/** A category: a link to its first page, or a button for the page's own. */
+const category = (name: string) => {
+  const found = within(rail()).queryByRole("link", { name });
+  return found ?? within(rail()).getByRole("button", { name });
+};
 
 describe("EyeonRail (CHG-2026-135)", () => {
   beforeEach(() => {
@@ -188,28 +192,38 @@ describe("EyeonRail (CHG-2026-135)", () => {
     expect(category("Home")).toHaveAttribute("href", "/project/p1");
   });
 
+  it("each other category goes to its first page; the page's own category only shows its list", () => {
+    render(<Shell />);
+    expect(category("Evaluation")).toHaveAttribute(
+      "href",
+      "/project/p1/datasets",
+    );
+    expect(category("Governance Controls")).toHaveAttribute(
+      "href",
+      "/project/p1/acme-enhancements/guardrails",
+    );
+    // Tracing is on screen: Observability stays a button and keeps the page.
+    expect(category("Observability").tagName).toBe("BUTTON");
+  });
+
   it("never shows an entry that renders nothing, nor a category of only such entries", async () => {
     render(<Shell />);
     await within(rail()).findByRole("button", { name: "Support" });
 
-    expect(
-      within(rail()).queryByRole("button", { name: "Prompt Management" }),
-    ).toBeNull();
-    expect(
-      within(rail()).queryByRole("button", { name: "Reports" }),
-    ).toBeNull();
+    expect(within(rail()).queryByText("Prompt Management")).toBeNull();
+    expect(within(rail()).queryByText("Reports")).toBeNull();
     expect(screen.queryByText("never")).toBeNull();
   });
 
   it("is keyboard-operable, with a visible focus ring", () => {
     render(<Shell />);
 
-    for (const name of ["Governance Controls", "Evaluation", "Settings"]) {
-      const button = category(name);
-      expect(button.tagName).toBe("BUTTON");
-      expect(button).toHaveClass("focus-visible:ring-2");
-      act(() => button.focus());
-      expect(button).toHaveFocus();
+    for (const name of ["Governance Controls", "Observability", "Settings"]) {
+      const control = category(name);
+      expect(["A", "BUTTON"]).toContain(control.tagName);
+      expect(control).toHaveClass("focus-visible:ring-2");
+      act(() => control.focus());
+      expect(control).toHaveFocus();
     }
   });
 });

@@ -123,8 +123,13 @@ describe("rail categories per role (CHG-2026-135)", () => {
   // The content-free roles' pinned sidebars, sorted into categories.
   it.each([
     [Role.SECURITY, ["governance", "logs", "settings", "support"]],
-    [Role.ANALYST, ["home", "governance", "settings", "support"]],
-    [Role.AUDITOR, ["governance", "prompts", "logs", "settings", "support"]],
+    // Dashboards sit under Reports (owner, 2026-10-07); Gateway health
+    // (CHG-2026-139) under Observability, open to the Auditor.
+    [Role.ANALYST, ["home", "governance", "reports", "settings", "support"]],
+    [
+      Role.AUDITOR,
+      ["governance", "observability", "prompts", "logs", "settings", "support"],
+    ],
     [
       Role.OWNER,
       [
@@ -133,6 +138,7 @@ describe("rail categories per role (CHG-2026-135)", () => {
         "observability",
         "evaluation",
         "prompts",
+        "reports",
         "logs",
         "settings",
         "support",
@@ -180,7 +186,12 @@ describe("rail categories per role (CHG-2026-135)", () => {
     // and LLM Gateway behind their flags, and, for this test, Support too).
     // The Business Analyst's only Governance Controls entry is LLM Gateway,
     // so the category goes; Support holds only such entries, so it goes too.
-    expect(categoriesOf(Role.ANALYST, false)).toEqual(["home", "settings"]);
+    // Dashboards is a plain link, so Reports stays.
+    expect(categoriesOf(Role.ANALYST, false)).toEqual([
+      "home",
+      "reports",
+      "settings",
+    ]);
     // Guardrails is a plain link, so the Security Analyst keeps the category.
     expect(categoriesOf(Role.SECURITY, false)).toContain("governance");
 
@@ -199,21 +210,22 @@ describe("rail categories per role (CHG-2026-135)", () => {
         presence,
         selected: undefined,
       }).categories.map((category) => category.id),
-    ).toEqual(["home", "settings", "support"]);
+    ).toEqual(["home", "reports", "settings", "support"]);
   });
 
-  it("Reports and Logs are separate; Reports waits for a route of its own", () => {
+  it("Reports and Logs are separate: Reports holds Dashboards, Logs holds Logs", () => {
     const owner = railFor(Role.OWNER);
     const logs = owner.categories.find((category) => category.id === "logs");
     expect(logs?.items.map((item) => item.title)).toEqual(["Logs"]);
-    expect(owner.categories.map((category) => category.id)).not.toContain(
-      "reports",
-    );
+    const reports = owner.categories.find((c) => c.id === "reports");
+    expect(reports?.items.map((item) => item.title)).toEqual(["Dashboards"]);
+    const home = owner.categories.find((c) => c.id === "home");
+    expect(home?.items.map((item) => item.title)).toEqual(["Home"]);
   });
 });
 
 describe("placing items (CHG-2026-135)", () => {
-  it("follows the prototype: Home and Dashboards under Home, gateway health under Observability", () => {
+  it("places Home alone, Dashboards under Reports and gateway health under Observability", () => {
     expect(
       eyeonRailCategoryOf({
         pathname: "/project/[projectId]",
@@ -225,7 +237,7 @@ describe("placing items (CHG-2026-135)", () => {
         pathname: "/project/[projectId]/dashboards",
         group: undefined,
       }),
-    ).toBe("home");
+    ).toBe("reports");
     expect(
       eyeonRailCategoryOf({
         pathname: "/project/[projectId]/acme-enhancements/gateway-health",
@@ -283,7 +295,7 @@ describe("the active category (CHG-2026-135)", () => {
       rail.sidebarNavigation.grouped?.[RouteGroup.Observability]?.map(
         (item) => item.title,
       ),
-    ).toEqual(["Tracing", "Sessions", "Users"]);
+    ).toEqual(["Gateway health", "Tracing", "Sessions", "Users"]);
   });
 
   it("is the chosen category while the person stays on the page", () => {
@@ -294,9 +306,40 @@ describe("the active category (CHG-2026-135)", () => {
   });
 
   it("ignores a chosen category the person cannot see", () => {
-    expect(railAt("/project/[projectId]/traces", "reports").activeId).toBe(
-      "observability",
+    // The Security Analyst has no Evaluation category.
+    const navigation = navigationFor(
+      Role.SECURITY,
+      "/project/[projectId]/acme-enhancements/guardrails",
     );
+    const rail = buildEyeonRailModel({
+      navigation,
+      presence: presenceOf(navigation, true),
+      selected: "evaluation",
+    });
+    expect(rail.activeId).toBe("governance");
+  });
+
+  it("goes to each category's first page, except the page's own category", () => {
+    const rail = railAt("/project/[projectId]/traces");
+    const observability = rail.categories.find((c) => c.id === "observability");
+    expect(observability?.containsCurrentPage).toBe(true);
+    expect(observability?.href).toBeUndefined();
+    const evaluation = rail.categories.find((c) => c.id === "evaluation");
+    expect(evaluation?.href).toBe(evaluation?.items[0]?.url);
+    expect(evaluation?.href).toBeDefined();
+  });
+
+  it("never sends a category to an entry that renders nothing", () => {
+    const navigation = navigationFor(Role.OWNER, "/project/[projectId]/traces");
+    const rail = buildEyeonRailModel({
+      navigation,
+      presence: presenceOf(navigation, false),
+      selected: undefined,
+    });
+    for (const category of rail.categories) {
+      const target = category.items.find((item) => item.url === category.href);
+      if (category.href) expect(target?.menuNode).toBeUndefined();
+    }
   });
 
   it("falls back to Home, which goes to the project home", () => {

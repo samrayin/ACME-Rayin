@@ -115,8 +115,10 @@ function EyeonRailProbe({
  * ACME (CHG-2026-135, ADR-0026 §12.2): the EYEON navigation rail, at the far
  * left beside the sidebar, following the prototype: each category an icon in
  * a circle with its name under it, Settings and Support at the bottom.
- * Choosing a category shows its own list in the sidebar; Home goes to the
- * project home. Desktop only; on a phone the sidebar sheet is unchanged.
+ * Choosing a category goes to its first page this person can open, as in the
+ * prototype, and shows its own list in the sidebar; choosing the category of
+ * the page on screen only shows the list. Desktop only; on a phone the
+ * sidebar sheet is unchanged.
  *
  * The docked sidebar is fixed to the window's left edge, so the rail moves it
  * right by its own width (the sibling selector below).
