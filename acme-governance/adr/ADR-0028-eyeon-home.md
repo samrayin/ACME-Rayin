@@ -5,11 +5,11 @@
 | **Change ID** | CHG-2026-136 |
 | **Owner** | Anees Ur Rahman |
 | **Affected release** | The first console release after merge (tag to be added at release) |
-| **Status** | Proposed |
+| **Status** | Accepted |
 | **Type** | Forward |
 | **Date** | 2026-10-07 |
 | **Author** | Claude (EYEON build session), for the owner |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Approval** | Owner, 2026-10-08: reviewed and merged #374 and approved its release (console `acme-v4.38.0.45`); Home is behind `CAIRO_EYEON_HOME_ENABLED`, a separate yes. Not a production approval |
 | **Commits / tag** | To be added at merge · release tag to be added at release |
 
 ## 1. Purpose

@@ -6555,7 +6555,7 @@ Both addresses answer, and both send sign-in back to the new one. Images are unc
 |---|---|
 | **Change ID** | CHG-2026-134 · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | [ADR-0026](acme-governance/adr/ADR-0026-adopting-the-eyeon-prototype.md) §12.1 (addendum) |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Approval** | Owner, 2026-10-08: reviewed and merged #375 and approved its release ("merged and yes to release"; console `acme-v4.38.0.45`). Live with that release: no flag. No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
 | **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
 | **Impact** | Client-visible on every console page: the "ACME AI" button and its panel are gone; the user menu (avatar, name, email and its items) sits at the right edge of the top bar instead of the sidebar footer. No downtime |
 | **Schema change** | None |
@@ -6581,7 +6581,7 @@ Both addresses answer, and both send sign-in back to the new one. Images are unc
 |---|---|
 | **Change ID** | CHG-2026-138 · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | [ADR-0027](acme-governance/adr/ADR-0027-eyeon-native-pages.md) (the EYEON-native page pattern; no new ADR); slice 5 of ADR-0026 |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Approval** | Owner, 2026-10-08: reviewed and merged #372 and its type-check fix #380 and approved its release ("merged and yes to release"; console `acme-v4.38.0.45`). The page stays off until `CAIRO_EYEON_ENFORCEMENT_ENABLED` is set, a separate yes. The follow-up (#382) is merged but not in that release. No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
 | **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
 | **Impact** | Client-visible once the flag is on: an "Enforcement & policy" page under Governance Controls, after Guardrail decisions, for Owners, Admins, Security Analysts and Auditors. With the flag off (the default) nothing changes on screen, except that the Ctrl/Cmd K list names the entry and opening it says the page is switched off. No downtime |
 | **Schema change** | None |
@@ -6614,7 +6614,7 @@ Both addresses answer, and both send sign-in back to the new one. Images are unc
 |---|---|
 | **Change ID** | CHG-2026-136 · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | [ADR-0028](acme-governance/adr/ADR-0028-eyeon-home.md) (proposed); slice 11 of ADR-0026 |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Approval** | Owner, 2026-10-08: reviewed and merged #374 and approved its release ("merged and yes to release"; console `acme-v4.38.0.45`). The role landings apply with that release, because the Guardrail decisions page is on; Home stays the classic one until `CAIRO_EYEON_HOME_ENABLED` is set, a separate yes. No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
 | **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
 | **Impact** | Client-visible once the flag is on: Owners and Admins open a project on the EYEON overview, titled Home, and can arrange it for themselves. Separately, and whatever this flag says, Security Analysts and Auditors open a project on the Guardrail decisions page wherever `CAIRO_EYEON_GUARDRAIL_DECISIONS_ENABLED` is on, so on a deployment that already has that page on, their landing changes as soon as this is deployed. With both flags off (the default) every role lands where it did before. No downtime |
 | **Schema change** | None |
@@ -6645,7 +6645,7 @@ Both addresses answer, and both send sign-in back to the new one. Images are unc
 |---|---|
 | **Change ID** | CHG-2026-137 · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | [ADR-0027](acme-governance/adr/ADR-0027-eyeon-native-pages.md) (the EYEON-native page pattern; no new ADR); builds on CHG-2026-133 |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Approval** | Owner, 2026-10-08: reviewed and merged #373 and approved its release ("merged and yes to release"; console `acme-v4.38.0.45`). Live with that release: the Guardrail decisions page is on. No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
 | **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
 | **Impact** | Client-visible once CHG-2026-133's flag is on: the Guardrail decisions page gains page filters, the decision flow, a measure toggle and the gateway's mode per day under decisions over time, a policy type by direction breakdown and the personal-data types. With the flag off (the default) nothing changes. No downtime |
 | **Schema change** | None |
@@ -6679,7 +6679,7 @@ Both addresses answer, and both send sign-in back to the new one. Images are unc
 |---|---|
 | **Change ID** | CHG-2026-139 · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | [ADR-0027](acme-governance/adr/ADR-0027-eyeon-native-pages.md) (the EYEON-native page pattern; no new ADR); slice 8 of ADR-0026 |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Approval** | Owner, 2026-10-08: reviewed and merged #379 and approved its release ("merged and yes to release"; console `acme-v4.38.0.45`). The page stays off until `CAIRO_EYEON_GATEWAY_HEALTH_ENABLED` is set, a separate yes. No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
 | **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
 | **Impact** | Client-visible once the flag is on: a "Gateway health" page, first under Observability, for Owners, Admins and Auditors. With the flag off (the default) nothing changes on screen, except that the Ctrl/Cmd K list names the entry and opening it says the page is switched off. No downtime |
 | **Schema change** | None |
@@ -6717,7 +6717,7 @@ Both addresses answer, and both send sign-in back to the new one. Images are unc
 |---|---|
 | **Change ID** | CHG-2026-135 · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | [ADR-0026](acme-governance/adr/ADR-0026-adopting-the-eyeon-prototype.md) §12.2 (addendum); reverses CHG-2026-131's "the rail waits for the upstream sync" on the owner's decision |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Approval** | Owner, 2026-10-08: reviewed and merged #377 (which replaced #376) and approved its release ("merged and yes to release"; console `acme-v4.38.0.45`). The rail stays off until `CAIRO_EYEON_RAIL_ENABLED` is set, a separate yes. No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
 | **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
 | **Impact** | Client-visible once the flag is on, on desktop inside a project: a category rail at the far left, and the sidebar lists the chosen category. With the flag off (the default) the sidebar is unchanged. No downtime |
 | **Schema change** | None |

@@ -68,7 +68,7 @@ Dark mode looks like the EYEON prototype: near-black, crisp text, bright accents
 5. Superseding ADR-0019 §2 before the "Langfuse" text clean-up starts.
 
 ## 11. Slice 1: shell and navigation (addendum, CHG-2026-131)
-**Date:** 2026-10-07. **Change:** CHG-2026-131, Tier 1. **Approval:** pending; the owner reviews and merges, no self-approval.
+**Date:** 2026-10-07. **Change:** CHG-2026-131, Tier 1. **Approval:** owner, 2026-10-07: reviewed and merged #364 and approved its release (console `acme-v4.38.0.43`); no self-approval.
 
 **What changed, dark mode only.** The console keeps its single sidebar; the prototype's look reaches it through tokens in `globals.css` and `dark:` classes.
 - **Sidebar hover apart from the active item.** Hover and the active item both used `sidebar-accent`, so a hovered row looked selected. A new pair, `--sidebar-hover` and `--sidebar-hover-foreground` (with their `@theme inline` colours), now carries every hover style in `sidebar.tsx`: the menu button and its default and outline variants, hover on an open menu, the group action, the menu action and the badge, and the sub-button. Dark takes the prototype's hover, `#0C1316` (`198 29% 6.7%`) with ink-1 text, and keeps it whatever the dark accent. The active item and the pressed state keep `sidebar-accent` and the accent text; Tailwind emits `data-[active=true]` after `hover:`, so a hovered active item still looks active. `nav-main.tsx` has no hover style of its own.
@@ -88,7 +88,7 @@ Dark mode looks like the EYEON prototype: near-black, crisp text, bright accents
 ## 12. Addendum: the owner's shell decisions of 2026-10-07 (CHG-2026-134, CHG-2026-135)
 
 ### 12.1 CHG-2026-134: ACME AI removed; the user menu in its place
-**Date:** 2026-10-07. **Change:** CHG-2026-134, Tier 1. **Approval:** pending; the owner reviews and merges, no self-approval. **Owner's instruction:** "Remove ACME AI completely from EYEON. we will plan for it sometime later. in that place put the user settings".
+**Date:** 2026-10-07. **Change:** CHG-2026-134, Tier 1. **Approval:** owner, 2026-10-08: reviewed and merged #375 and approved its release (console `acme-v4.38.0.45`); no self-approval. **Owner's instruction:** "Remove ACME AI completely from EYEON. we will plan for it sometime later. in that place put the user settings".
 
 **What ACME AI is.** ACME's own in-console chat (ADR-0015, CHG-2026-080): a top-bar launcher (`AcmeChatLauncher`, "ACME AI" on desktop, an icon on the mobile top bar), a panel host in the authenticated layout (`AcmeChatWidget`) and one server procedure, `acmeChat.sendMessage`, which calls the gateway. It is not upstream's in-app agent (the "Assistant", with its Ctrl/Cmd+I shortcut), which is a separate feature. ACME AI had no keyboard shortcut of its own (Escape only closed the panel), no Ctrl/Cmd K entry and no onboarding mention.
 
@@ -103,7 +103,7 @@ Dark mode looks like the EYEON prototype: near-black, crisp text, bright accents
 **Flag:** none. **Rollback:** redeploy the previous console image. **Schema:** none.
 
 ### 12.2 CHG-2026-135: the navigation rail
-**Date:** 2026-10-07. **Change:** CHG-2026-135, Tier 1. **Approval:** pending; the owner reviews and merges, no self-approval. **Owner's instruction:** "set the Category UI as per attached sample" (the prototype's navigation rail).
+**Date:** 2026-10-07. **Change:** CHG-2026-135, Tier 1. **Approval:** owner, 2026-10-08: reviewed and merged #377 and approved its release (console `acme-v4.38.0.45`, the rail off until its flag is set); no self-approval. **Owner's instruction:** "set the Category UI as per attached sample" (the prototype's navigation rail).
 
 **This reverses CHG-2026-131 on the owner's decision.** Slice 1 (§11) kept the single sidebar and said the rail waits for the upstream sync (§10.2), because the rail restructures navigation that upstream changes often. The owner now wants the rail before the sync, so §10.2 is answered: before.
 
