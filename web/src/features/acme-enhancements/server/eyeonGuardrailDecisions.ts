@@ -210,6 +210,16 @@ export type DailyVerdicts = {
   checks: number;
   /** Of `checks`, those decided in enforce mode. */
   enforcedChecks: number;
+  /**
+   * CHG-2026-137 follow-up, for the KPI tiles: the decisions that match the
+   * filters, and of them those decided in enforce mode.
+   */
+  matching: number;
+  matchingEnforced: number;
+  /** Matching block verdicts on prompts (refused), applied or recorded. */
+  promptsRefused: number;
+  /** Matching block verdicts on answers (withheld), applied or recorded. */
+  answersWithheld: number;
   allowed: number;
   /** Refused in enforce mode. */
   blocked: number;
@@ -223,6 +233,10 @@ export type DailyVerdicts = {
 const DAILY_COUNTS = [
   "checks",
   "enforcedChecks",
+  "matching",
+  "matchingEnforced",
+  "promptsRefused",
+  "answersWithheld",
   "allowed",
   "blocked",
   "wouldBlock",
@@ -244,6 +258,10 @@ export function dailyVerdicts(
     day: utcDay(new Date(start.getTime() + i * 86_400_000)),
     checks: 0,
     enforcedChecks: 0,
+    matching: 0,
+    matchingEnforced: 0,
+    promptsRefused: 0,
+    answersWithheld: 0,
     allowed: 0,
     blocked: 0,
     wouldBlock: 0,

@@ -33,6 +33,7 @@ export type EyeonFlowNode = {
 
 export type EyeonFlowLink = { source: string; target: string; value: number };
 
+/** In pixels: the flow is drawn at this size, never scaled (see below). */
 const BOX: FlowBox = {
   width: 720,
   height: 288,
@@ -95,10 +96,17 @@ export function EyeonFlow({
 
   return (
     <div className="flex flex-col gap-2">
+      {/* CHG-2026-137 follow-up (owner, 2026-10-08: "too large"): drawn at
+          its natural size, one unit to one pixel, so its text stays the
+          console's 12 px and it is as tall as the prototype's (about 280 px).
+          It never stretches with the card: on a wide screen it is centred,
+          and where the card is narrower than the chart, it scrolls. */}
       <div className="overflow-x-auto">
         <svg
           viewBox={`0 0 ${BOX.width} ${BOX.height}`}
-          className="h-auto w-full min-w-[36rem]"
+          width={BOX.width}
+          height={BOX.height}
+          className="mx-auto block max-w-none"
           role={onSelect ? "group" : "img"}
           aria-label={label}
         >

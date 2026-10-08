@@ -87,6 +87,10 @@ function summary(linksApplications: boolean) {
         day: "2026-10-06",
         checks: 120,
         enforcedChecks: 0,
+        matching: 120,
+        matchingEnforced: 0,
+        promptsRefused: 4,
+        answersWithheld: 1,
         allowed: 108,
         blocked: 0,
         wouldBlock: 5,
@@ -98,6 +102,10 @@ function summary(linksApplications: boolean) {
         day: "2026-10-07",
         checks: 80,
         enforcedChecks: 0,
+        matching: 80,
+        matchingEnforced: 0,
+        promptsRefused: 2,
+        answersWithheld: 1,
         allowed: 72,
         blocked: 0,
         wouldBlock: 3,
@@ -401,6 +409,136 @@ describe("EYEON Guardrail decisions page (CHG-2026-133, CHG-2026-137)", () => {
     );
     // The owner dropped the tag on 2026-10-07 (CHG-2026-137).
     expect(screen.queryByText("Preview")).toBeNull();
+  });
+
+  // CHG-2026-137 follow-up (owner, 2026-10-08: "the charts within Guardrail
+  // decision are not getting displayed ... decision flow chart is too
+  // large"): a chart in every KPI tile, each named with its figures; the
+  // flow at its natural size; decisions over time at a card's height; a bar
+  // in each policy cell.
+  const tileChart = (label: string) =>
+    within(screen.getByTitle(label).closest("a")!).getByRole("img");
+
+  it("draws a chart in every KPI tile, each named with what it counts", () => {
+    render(<EyeonGuardrailDecisionsPage />);
+    const span = "2 points from 2026-10-06 to 2026-10-07";
+    const names = {
+      "Guardrail checks": `Guardrail checks per UTC day, ${span}: 200 in total, at most 120.`,
+      "Prompts that would be refused": `Prompts that would be refused per UTC day, ${span}: 6 in total, at most 4.`,
+      "Answers that would be withheld": `Answers that would be withheld per UTC day, ${span}: 2 in total, at most 1.`,
+      "Personal data that would be redacted": `Personal data that would be redacted per UTC day, ${span}: 10 in total, at most 6.`,
+      // A rate per 100 checks of each day, so no total is stated.
+      "No verdict, last 24 hours": `Checks without a verdict per 100 checks, per UTC day, ${span}: 2 with a value, from 0.83% to 1.25%.`,
+      "Decided in enforce mode": `Share of checks decided in enforce mode per UTC day, ${span}: 2 with a value, each 0%.`,
+    };
+    for (const [tile, name] of Object.entries(names))
+      expect(tileChart(tile)).toHaveAttribute("aria-label", name);
+    expect(
+      [...tileChart("No verdict, last 24 hours").querySelectorAll("title")].map(
+        (t) => t.textContent,
+      ),
+    ).toEqual(["2026-10-06: 0.83%", "2026-10-07: 1.25%"]);
+  });
+
+  it("follows the filters in the tiles' charts, and leaves a gap for a day without a base", () => {
+    h.query = { projectId: "p1", verdict: "block" };
+    const data = summary(true);
+    h.result = {
+      isPending: false,
+      isError: false,
+      data: {
+        ...data,
+        daily: [
+          { ...data.daily[0]!, matching: 0, matchingEnforced: 0 },
+          data.daily[1]!,
+        ],
+      },
+    };
+    render(<EyeonGuardrailDecisionsPage />);
+    const share = tileChart("Matching decisions in enforce mode");
+    expect(share).toHaveAttribute(
+      "aria-label",
+      "Share of matching decisions decided in enforce mode per UTC day, 2 points from 2026-10-06 to 2026-10-07: 1 with a value, each 0%.",
+    );
+    // No matching decision that day: not known, so not drawn as 0%.
+    expect(
+      [...share.querySelectorAll("title")].map((t) => t.textContent),
+    ).toEqual(["2026-10-06: no matching decision", "2026-10-07: 0%"]);
+  });
+
+  it("draws the decision flow at its natural size, never stretched to the card", () => {
+    render(<EyeonGuardrailDecisionsPage />);
+    const flow = screen.getByRole("group", {
+      name: /^Decision flow, last 7 days: /,
+    });
+    // One unit to one pixel: its 12 px text is never enlarged.
+    expect(flow).toHaveAttribute("viewBox", "0 0 720 288");
+    expect(flow).toHaveAttribute("width", "720");
+    expect(flow).toHaveAttribute("height", "288");
+    expect(flow.getAttribute("class")).not.toMatch(/w-full|h-auto/);
+    // Centred on a wide card, and scrolled on a narrow one.
+    expect(flow.getAttribute("class")).toMatch(/\bmx-auto\b/);
+    expect(flow.parentElement?.getAttribute("class")).toMatch(
+      /\boverflow-x-auto\b/,
+    );
+  });
+
+  it("draws decisions over time at a card's height", () => {
+    render(<EyeonGuardrailDecisionsPage />);
+    const bars = screen.getByRole("img", {
+      name: /^Guardrail interventions per UTC day, 2 bars /,
+    });
+    expect(bars.getAttribute("class")).toMatch(/\bh-56\b/);
+    expect(bars).toHaveAttribute("viewBox", "0 0 300 224");
+  });
+
+  it("says so when decisions over time has nothing to draw", () => {
+    const data = summary(true);
+    h.result = {
+      isPending: false,
+      isError: false,
+      data: {
+        ...data,
+        daily: data.daily.map((p) => ({
+          ...p,
+          wouldBlock: 0,
+          wouldRedact: 0,
+          noVerdict: 0,
+        })),
+      },
+    };
+    render(<EyeonGuardrailDecisionsPage />);
+    expect(
+      screen.getByText(
+        "No refusal, redaction or check without a verdict in this view, so no bars to draw.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("img", {
+        name: /^Guardrail interventions per UTC day/,
+      }),
+    ).toBeNull();
+  });
+
+  it("draws a bar in each policy cell with any, on one scale, in the log's words", () => {
+    render(<EyeonGuardrailDecisionsPage />);
+    const table = screen.getByRole("table", {
+      name: /Refusals and redactions by policy type and direction/,
+    });
+    const bars = within(table).getAllByRole("img");
+    expect(bars.map((el) => el.getAttribute("aria-label"))).toEqual([
+      "Personal data on prompts: Would redact 8.",
+      "Personal data on answers: Would redact 2.",
+      "Jailbreak or misuse on prompts: Would block 6.",
+    ]);
+    // The largest cell (8) fills its bar; the others in proportion.
+    expect(
+      bars.map((el) =>
+        Number(
+          el.querySelector('rect[fill="currentColor"]')?.getAttribute("width"),
+        ),
+      ),
+    ).toEqual([200, 50, 150]);
   });
 
   it("says the types come from redactions only while another verdict is chosen", () => {

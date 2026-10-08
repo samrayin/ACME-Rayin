@@ -15,33 +15,64 @@ function fixed(n: number): string {
  * value `pad` below the top. `line` traces the values; `area` closes it to
  * the bottom edge. A single value is drawn as a flat line; no values draw
  * nothing.
+ *
+ * CHG-2026-137 follow-up: a null value has no point (a day without checks
+ * has no share), so the line breaks there rather than dropping to zero; a
+ * point alone between two gaps is drawn as a short flat stroke, a quarter of
+ * a step to each side. `ceiling` fixes the top of the scale (100 for a share
+ * in percent), unless a value is larger. With no nulls and no ceiling the
+ * paths are as before.
  */
 export function sparklinePaths(
-  values: readonly number[],
+  values: readonly (number | null)[],
   width: number,
   height: number,
   pad = 2,
+  ceiling = 0,
 ): { line: string; area: string } {
-  if (values.length === 0) return { line: "", area: "" };
-  const max = Math.max(0, ...values);
+  const present = values.filter((v): v is number => v !== null);
+  if (present.length === 0) return { line: "", area: "" };
+  const max = Math.max(0, ceiling, ...present);
   const y = (v: number) =>
     height - pad - (max > 0 ? (Math.max(0, v) / max) * (height - 2 * pad) : 0);
-  const points =
-    values.length === 1
-      ? [
-          [0, y(values[0]!)],
-          [width, y(values[0]!)],
-        ]
-      : values.map((v, i) => [(i * width) / (values.length - 1), y(v)]);
-  const line = points
-    .map(([px, py], i) => `${i === 0 ? "M" : "L"}${fixed(px!)} ${fixed(py!)}`)
-    .join(" ");
-  const lastX = points[points.length - 1]![0]!;
-  const firstX = points[0]![0]!;
-  return {
-    line,
-    area: `${line} L${fixed(lastX)} ${fixed(height)} L${fixed(firstX)} ${fixed(height)} Z`,
-  };
+  const step = values.length > 1 ? width / (values.length - 1) : width;
+  // Runs of consecutive values, each drawn as its own line and area.
+  const runs: number[][][] = [];
+  let run: number[][] = [];
+  values.forEach((v, i) => {
+    if (v === null) {
+      if (run.length > 0) runs.push(run);
+      run = [];
+      return;
+    }
+    run.push([i * step, y(v)]);
+  });
+  if (run.length > 0) runs.push(run);
+  const drawn = runs.map((points) => {
+    if (points.length > 1) return points;
+    const [px, py] = points[0]!;
+    // One value in the whole series spans the box, as before.
+    if (values.length === 1)
+      return [
+        [0, py!],
+        [width, py!],
+      ];
+    return [
+      [Math.max(0, px! - step / 4), py!],
+      [Math.min(width, px! + step / 4), py!],
+    ];
+  });
+  const lines = drawn.map((points) =>
+    points
+      .map(([px, py], i) => `${i === 0 ? "M" : "L"}${fixed(px!)} ${fixed(py!)}`)
+      .join(" "),
+  );
+  const areas = drawn.map((points, k) => {
+    const lastX = points[points.length - 1]![0]!;
+    const firstX = points[0]![0]!;
+    return `${lines[k]} L${fixed(lastX)} ${fixed(height)} L${fixed(firstX)} ${fixed(height)} Z`;
+  });
+  return { line: lines.join(" "), area: areas.join(" ") };
 }
 
 /** A point on a circle, `degrees` clockwise from 12 o'clock. */

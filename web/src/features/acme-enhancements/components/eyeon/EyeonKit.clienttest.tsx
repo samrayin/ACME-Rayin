@@ -12,6 +12,7 @@ import {
   EyeonChartTable,
   EyeonRing,
   EyeonSparkline,
+  EyeonStackBar,
   EyeonStackedBars,
 } from "@/src/features/acme-enhancements/components/eyeon/EyeonCharts";
 import { EyeonCard } from "@/src/features/acme-enhancements/components/eyeon/EyeonCard";
@@ -141,6 +142,58 @@ describe("EYEON charts", () => {
     ]);
   });
 
+  // CHG-2026-137 follow-up: a share per day, where a sum means nothing and a
+  // day without a base has no value.
+  it("states a rate's range, not a total, and names a point without a value", () => {
+    const { container } = render(
+      <EyeonSparkline
+        label="Share decided in enforce mode per UTC day"
+        points={[
+          { label: "2026-10-01", value: 0 },
+          { label: "2026-10-02", value: null },
+          { label: "2026-10-03", value: 87.5 },
+        ]}
+        rate={{
+          format: (v) => `${Math.round(v)}%`,
+          max: 100,
+          missing: "no checks",
+        }}
+      />,
+    );
+    expect(screen.getByRole("img")).toHaveAttribute(
+      "aria-label",
+      "Share decided in enforce mode per UTC day, 3 points from 2026-10-01 to 2026-10-03: 2 with a value, from 0% to 88%.",
+    );
+    expect(
+      [...container.querySelectorAll("title")].map((t) => t.textContent),
+    ).toEqual(["2026-10-01: 0%", "2026-10-02: no checks", "2026-10-03: 88%"]);
+    // The line breaks at the gap; 87.5 sits below the top, on a 0..100 scale.
+    const line = container.querySelectorAll("path")[1]!.getAttribute("d");
+    // A value alone between gaps is a short flat stroke, a quarter step wide
+    // to each side, kept inside the box.
+    expect(line).toBe("M0 30 L15 30 M105 5.5 L120 5.5");
+  });
+
+  it("says when a rate has no value at all, and draws nothing", () => {
+    const { container } = render(
+      <EyeonSparkline
+        label="No verdict per 100 checks"
+        points={[
+          { label: "2026-10-01", value: null },
+          { label: "2026-10-02", value: null },
+        ]}
+        rate={{ format: (v) => `${v}%`, missing: "no checks" }}
+      />,
+    );
+    expect(screen.getByRole("img")).toHaveAttribute(
+      "aria-label",
+      "No verdict per 100 checks, 2 points from 2026-10-01 to 2026-10-02: none with a value (no checks).",
+    );
+    expect(
+      [...container.querySelectorAll("path")].map((p) => p.getAttribute("d")),
+    ).toEqual(["", ""]);
+  });
+
   it("draws an empty ring for a share that does not exist", () => {
     const { container } = render(
       <EyeonRing label="No checks." fraction={null} centerText="No checks" />,
@@ -251,6 +304,83 @@ describe("EyeonStackedBars", () => {
       "aria-label",
       "Interventions: no data.",
     );
+  });
+
+  // CHG-2026-137 follow-up: a card's main chart, and an honest empty state.
+  it("draws a card's main chart tall and full width, with its scale written around it", () => {
+    const { container } = render(
+      <EyeonStackedBars
+        label="Interventions per UTC day"
+        series={series}
+        points={[
+          { label: "2026-10-01", values: [2, 1, 0] },
+          { label: "2026-10-02", values: [0, 3, 1] },
+        ]}
+        size="lg"
+      />,
+    );
+    const chart = screen.getByRole("img");
+    expect(chart.getAttribute("class")).toMatch(/\bh-56\b/);
+    expect(chart).toHaveAttribute("viewBox", "0 0 300 224");
+    expect(chart.getAttribute("class")).toMatch(/\bw-full\b/);
+    // The top of the scale (a dashed line, its value above the plot) and
+    // the first and last day: hidden from the accessible name, which states
+    // the figures already.
+    expect(chart.querySelectorAll('line[stroke-dasharray="4 4"]')).toHaveLength(
+      1,
+    );
+    const scale = [...container.querySelectorAll('[aria-hidden="true"]')]
+      .filter((el) => el.tagName.toLowerCase() !== "svg")
+      .map((el) => [...el.childNodes].map((n) => n.textContent));
+    expect(scale).toEqual([["4"], ["2026-10-01", "2026-10-02"]]);
+  });
+
+  it("says so, in place of an empty plot, when every value is zero", () => {
+    render(
+      <EyeonStackedBars
+        label="Interventions per UTC day"
+        series={series}
+        points={[{ label: "2026-10-01", values: [0, 0, 0] }]}
+        size="lg"
+        emptyText="No interventions in this view."
+      />,
+    );
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(
+      screen.getByText("No interventions in this view."),
+    ).toBeInTheDocument();
+    // The legend still names what was counted.
+    expect(screen.getByRole("list", { name: "Legend" }).textContent).toBe(
+      "Blocked0Would block0No verdict0",
+    );
+  });
+});
+
+describe("EyeonStackBar (CHG-2026-137 follow-up)", () => {
+  it("is one named bar of segments, on the caller's scale", () => {
+    render(
+      <EyeonStackBar
+        title="Personal data on prompts"
+        segments={[
+          { name: "Redacted", value: 2, tone: "redact" },
+          { name: "Would redact", value: 3, tone: "redact", muted: true },
+        ]}
+        max={10}
+      />,
+    );
+    const bar = screen.getByRole("img", {
+      name: "Personal data on prompts: Redacted 2, Would redact 3.",
+    });
+    expect(
+      [...bar.querySelectorAll('rect[fill="currentColor"]')].map((r) => [
+        r.getAttribute("x"),
+        r.getAttribute("width"),
+        r.getAttribute("fill-opacity"),
+      ]),
+    ).toEqual([
+      ["0", "40", "1"],
+      ["40", "60", "0.4"],
+    ]);
   });
 });
 

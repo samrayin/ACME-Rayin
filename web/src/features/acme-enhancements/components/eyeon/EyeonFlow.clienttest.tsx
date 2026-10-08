@@ -120,6 +120,40 @@ describe("EyeonFlow", () => {
     expect(within(svg).queryAllByRole("button")).toHaveLength(0);
   });
 
+  // CHG-2026-137 follow-up (owner, 2026-10-08: "decision flow chart is too
+  // large.. reduce it to medium"): drawn at its natural size, one unit to
+  // one pixel, so its text is never enlarged on a wide screen.
+  it("is drawn at its natural size, centred, and scrolls where the card is narrower", () => {
+    const { container } = render(
+      <EyeonFlow
+        label="Decision flow"
+        columns={columns}
+        nodes={nodes}
+        links={links}
+        total={100}
+        totalName="checks"
+        tableCaption="Decision flow"
+      />,
+    );
+    const svg = container.querySelector("svg")!;
+    expect(svg).toHaveAttribute("viewBox", "0 0 720 288");
+    expect(svg).toHaveAttribute("width", "720");
+    expect(svg).toHaveAttribute("height", "288");
+    const classes = svg.getAttribute("class") ?? "";
+    expect(classes).not.toMatch(/\bw-full\b|\bh-auto\b|min-w-/);
+    expect(classes).toMatch(/\bmx-auto\b/);
+    expect(svg.parentElement?.getAttribute("class")).toMatch(
+      /\boverflow-x-auto\b/,
+    );
+    // Every label is anchored inside the drawing (jsdom measures no text, so
+    // this checks the anchors only, not the labels' widths).
+    for (const text of svg.querySelectorAll("text")) {
+      const x = Number(text.getAttribute("x"));
+      expect(x).toBeGreaterThanOrEqual(0);
+      expect(x).toBeLessThanOrEqual(720);
+    }
+  });
+
   it("has a table view with every step, its count and share", () => {
     render(
       <EyeonFlow
