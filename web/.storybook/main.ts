@@ -124,6 +124,13 @@ const config: StorybookConfig = {
     getAbsolutePath("@storybook/addon-vitest"),
   ],
   framework: getAbsolutePath("@storybook/nextjs-vite"),
+  // ACME (CHG-2026-144): no anonymous usage data or crash reports leave a
+  // developer's machine or a CI build. Set here, in the committed config, so
+  // every `storybook dev` and `storybook build` is off without a flag.
+  core: {
+    disableTelemetry: true,
+    enableCrashReports: false,
+  },
   staticDirs: ["../public", "./public"],
   // Resolve `@langfuse/shared` to its TypeScript source, mirroring the app's
   // own alias (next.config.mjs: webpack alias + turbopack.resolveAlias both map
