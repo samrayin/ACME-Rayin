@@ -106,6 +106,12 @@ const AUDITOR_ROLE_ALLOWED_PROCEDURES: ReadonlySet<string> = new Set([
   // CHG-2026-136 (ADR-0028): whether Home shows the overview. A flag only,
   // under the overview's access rule; no data.
   "eyeonOverview.homeStatus",
+  // CHG-2026-139 (ADR-0027): the EYEON Gateway health page and its
+  // navigation entry's on/off check. Metadata only, under the LLM Gateway
+  // page's read rule (evidence:read for the Auditor); individual failed
+  // calls only with llmGatewayLogs:read, which the Auditor holds.
+  "eyeonGatewayHealth.summary",
+  "eyeonGatewayHealth.status",
   "acmeLitellm.models",
   "acmeLitellm.catalogue",
   "acmePromptApproval.listPending",

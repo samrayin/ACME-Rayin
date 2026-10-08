@@ -204,6 +204,14 @@ export const env = createEnv({
       .enum(["true", "false"])
       .optional()
       .default("false"),
+    // ACME addition (CHG-2026-139, ADR-0027): the EYEON Gateway health page.
+    // SERVER-ONLY, no NEXT_PUBLIC_ form. Default off: the eyeonGatewayHealth
+    // router reads nothing and says so, the navigation entry is hidden, and
+    // the console looks as before.
+    CAIRO_EYEON_GATEWAY_HEALTH_ENABLED: z
+      .enum(["true", "false"])
+      .optional()
+      .default("false"),
     NEXTAUTH_SECRET:
       process.env.NODE_ENV === "production"
         ? z.string().min(1)
@@ -965,6 +973,8 @@ export const env = createEnv({
     CAIRO_EYEON_ENFORCEMENT_ENABLED:
       process.env.CAIRO_EYEON_ENFORCEMENT_ENABLED,
     CAIRO_EYEON_HOME_ENABLED: process.env.CAIRO_EYEON_HOME_ENABLED,
+    CAIRO_EYEON_GATEWAY_HEALTH_ENABLED:
+      process.env.CAIRO_EYEON_GATEWAY_HEALTH_ENABLED,
     SEED_SECRET_KEY: process.env.SEED_SECRET_KEY,
     NEXT_PUBLIC_DEMO_PROJECT_ID: process.env.NEXT_PUBLIC_DEMO_PROJECT_ID,
     NEXT_PUBLIC_DEMO_ORG_ID: process.env.NEXT_PUBLIC_DEMO_ORG_ID,

@@ -111,10 +111,13 @@ const EXPECTED: Record<"SECURITY" | "ANALYST" | "AUDITOR", string[]> = {
   // renders nothing while CAIRO_EYEON_OVERVIEW_ENABLED is off.
   // CHG-2026-133: the EYEON Guardrail decisions page (projectGuardrails:read).
   // CHG-2026-138: the EYEON Enforcement and policy page, under the same scope.
+  // CHG-2026-139: the EYEON Gateway health page (evidence:read); its entry
+  // renders nothing while CAIRO_EYEON_GATEWAY_HEALTH_ENABLED is off.
   AUDITOR: [
     "Applications",
     "Contact ACME Support",
     "Enforcement & policy",
+    "Gateway health",
     "Go to...",
     "Guardrail decisions",
     "Guardrails",
@@ -239,6 +242,34 @@ describe("sidebar sections (CHG-2026-073, CHG-2026-081)", () => {
       expect(visibleTitles(role)).toContain("Enforcement & policy");
       for (const other of [Role.ANALYST, Role.MEMBER, Role.VIEWER])
         expect(visibleTitles(other)).not.toContain("Enforcement & policy");
+    },
+  );
+
+  it("the EYEON Gateway health page is first under Observability (CHG-2026-139)", () => {
+    const observability = ROUTES.filter(
+      (r) => r.group === RouteGroup.Observability,
+    ).map((r) => r.title);
+    expect(observability[0]).toBe("Gateway health");
+    const entry = ROUTES.find((r) => r.title === "Gateway health");
+    expect(entry?.projectRbacScopes).toEqual([
+      "llmGateway:read",
+      "evidence:read",
+    ]);
+    expect(entry?.menuNode).toBeDefined();
+  });
+
+  it.each([Role.OWNER, Role.ADMIN, Role.AUDITOR])(
+    "%s sees the Gateway health entry; Security, Business and Prompt Analysts and Viewers do not (CHG-2026-139)",
+    (role) => {
+      expect(visibleTitles(role)).toContain("Gateway health");
+      for (const other of [
+        Role.SECURITY,
+        Role.ANALYST,
+        Role.MEMBER,
+        Role.VIEWER,
+      ]) {
+        expect(visibleTitles(other)).not.toContain("Gateway health");
+      }
     },
   );
 
