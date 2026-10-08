@@ -8,13 +8,13 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
-  SIDEBAR_WIDTH_MAX_REM,
   SIDEBAR_WIDTH_MIN_REM,
   sidebarWidthAfterDrag,
   sidebarWidthForKey,
   sidebarWidthText,
   type SidebarSide,
 } from "@/src/features/acme-enhancements/components/eyeon/shell/sidebarWidth";
+import { rootFontPx } from "@/src/features/acme-enhancements/components/eyeon/shell/useWindowSidebarMax";
 import type { EyeonSidebarWidthControl } from "@/src/features/acme-enhancements/components/eyeon/shell/eyeonSidebarWidthContext";
 
 /** A press that moves less than this is a click, which toggles the sidebar. */
@@ -36,18 +36,17 @@ function sideOf(element: Element): SidebarSide {
     : "left";
 }
 
-function rootFontPx(): number {
-  return Number.parseFloat(
-    window.getComputedStyle(document.documentElement).fontSize,
-  );
-}
-
 /**
  * ACME (CHG-2026-142, ADR-0026 §12.4): the docked sidebar's inner edge, where
  * upstream's rail was. Dragging it resizes the sidebar; a click (a press that
  * does not move) still collapses it, as the rail did. From the keyboard it is
  * a window splitter: Left and Right arrows step the width, Home and End go to
  * the limits, Enter resets to the default.
+ *
+ * The widest is the window's own maximum (`control.maxWidth`, a quarter of
+ * the window between 11.5rem and 24rem). A drag or key that leaves the width
+ * where it is keeps nothing, so a wider width kept for a wider window is not
+ * lost; Enter, the reset, always applies.
  *
  * Rendered by sidebar.tsx's SidebarRail only on desktop while the sidebar is
  * expanded; collapsed, the rail is upstream's own (a click expands it).
@@ -76,6 +75,7 @@ export function EyeonSidebarResizeHandle({
     const side = sideOf(event.currentTarget);
     const startX = event.clientX;
     const startWidth = control.width;
+    const maxRem = control.maxWidth;
     const remPx = rootFontPx();
     let moved = false;
     let latest = startWidth;
@@ -93,13 +93,14 @@ export function EyeonSidebarResizeHandle({
       if (!moved && Math.abs(delta) < DRAG_THRESHOLD_PX) return;
       moved = true;
       draggedRef.current = true;
-      latest = sidebarWidthAfterDrag(startWidth, delta, remPx, side);
+      latest = sidebarWidthAfterDrag(startWidth, delta, remPx, side, maxRem);
       control.preview(latest);
     }
     function onUp() {
       stop();
       if (!moved) return;
-      control.commit(latest);
+      if (latest === startWidth) control.cancelPreview();
+      else control.commit(latest);
       // The click that follows this release, if any, is part of the drag.
       window.setTimeout(() => {
         draggedRef.current = false;
@@ -107,7 +108,7 @@ export function EyeonSidebarResizeHandle({
     }
     function onCancel() {
       stop();
-      control.preview(startWidth);
+      control.cancelPreview();
     }
     function onEscape(key: KeyboardEvent) {
       if (key.key !== "Escape") return;
@@ -137,9 +138,11 @@ export function EyeonSidebarResizeHandle({
       event.key,
       control.width,
       sideOf(event.currentTarget),
+      control.maxWidth,
     );
     if (next === null) return;
     event.preventDefault();
+    if (next === control.width && event.key !== "Enter") return;
     control.commit(next);
   };
 
@@ -151,7 +154,7 @@ export function EyeonSidebarResizeHandle({
         aria-label="Resize sidebar"
         aria-valuenow={control.width}
         aria-valuemin={SIDEBAR_WIDTH_MIN_REM}
-        aria-valuemax={SIDEBAR_WIDTH_MAX_REM}
+        aria-valuemax={control.maxWidth}
         aria-valuetext={sidebarWidthText(control.width)}
         aria-describedby={descriptionId}
         tabIndex={0}

@@ -25,6 +25,9 @@ import { SIDEBAR_WIDTH_DEFAULT_REM } from "@/src/features/acme-enhancements/comp
 // resets it; the width is kept in this browser only; the phone sheet and
 // the collapsed sidebar keep their own widths; with the EYEON rail on, the
 // list beside the rail resizes and the rail keeps its own width.
+// The follow-up (owner, 2026-10-08): the width is kept per signed-in person,
+// the browser's old width moves to the first person once, and on a narrow
+// window the widest is a quarter of the window, re-measured on resize.
 
 const h = vi.hoisted(() => ({
   railFlag: false,
@@ -49,12 +52,15 @@ vi.mock("@/src/utils/api", () => ({
   },
 }));
 
-const KEY = "cairo.sidebarWidth.v1";
+const USER = "u1";
+const KEY = "cairo.sidebarWidth.v1:u1";
+const LEGACY_KEY = "cairo.sidebarWidth.v1";
 
 /** The layout's wiring, reduced: the provider, the sidebar and its rail. */
-function Shell() {
+/** `userId` null: no person known yet. */
+function Shell({ userId = USER }: { userId?: string | null }) {
   return (
-    <EyeonSidebarProvider>
+    <EyeonSidebarProvider userId={userId ?? undefined}>
       <Sidebar collapsible="icon">
         <span>panel</span>
         <SidebarRail />
@@ -117,6 +123,8 @@ function stubScreen(matches: (query: string) => boolean) {
 }
 
 beforeEach(() => {
+  // A window wide enough for the full 24rem (a quarter of 1920px is 30rem).
+  vi.stubGlobal("innerWidth", 1920);
   h.railFlag = false;
   h.query = { projectId: "p1" };
   window.localStorage.clear();
@@ -338,7 +346,7 @@ describe("persistence (CHG-2026-142)", () => {
       return null;
     }
     const { container } = render(
-      <EyeonSidebarProvider>
+      <EyeonSidebarProvider userId={USER}>
         <Probe />
         <Sidebar collapsible="icon">
           <SidebarRail />
@@ -475,7 +483,7 @@ const NAVIGATION: EyeonRailNavigation = {
 function RailShell() {
   const rail = useEyeonRail(NAVIGATION);
   return (
-    <EyeonSidebarProvider>
+    <EyeonSidebarProvider userId={USER}>
       <div className="flex">
         {rail.model && <EyeonRail model={rail.model} />}
         <Sidebar collapsible="icon">
@@ -526,6 +534,249 @@ describe("with the EYEON rail (CHG-2026-142)", () => {
   });
 });
 
+/** Animation frames, held until `run` (the window is re-measured in one). */
+function stubFrames() {
+  const frames = new Map<number, FrameRequestCallback>();
+  let last = 0;
+  const request = vi.fn((callback: FrameRequestCallback) => {
+    last += 1;
+    frames.set(last, callback);
+    return last;
+  });
+  const cancel = vi.fn((id: number) => {
+    frames.delete(id);
+  });
+  vi.stubGlobal("requestAnimationFrame", request);
+  vi.stubGlobal("cancelAnimationFrame", cancel);
+  return {
+    request,
+    cancel,
+    run: () =>
+      act(() => {
+        const pending = [...frames.values()];
+        frames.clear();
+        pending.forEach((callback) => callback(0));
+      }),
+  };
+}
+
+function resizeWindow(width: number) {
+  vi.stubGlobal("innerWidth", width);
+  act(() => {
+    window.dispatchEvent(new Event("resize"));
+  });
+}
+
+const widthKeys = () =>
+  Object.keys(window.localStorage).filter((key) =>
+    key.startsWith("cairo.sidebarWidth"),
+  );
+
+describe("the window's maximum (CHG-2026-142 follow-up)", () => {
+  it("is the handle's largest value, a quarter of the window, re-measured on resize", () => {
+    const frames = stubFrames();
+    vi.stubGlobal("innerWidth", 1280);
+    render(<Shell />);
+    expect(handle()).toHaveAttribute("aria-valuemax", "20");
+    expect(handle()).toHaveAttribute("aria-valuemin", "11.5");
+
+    resizeWindow(1000);
+    // Measured on the next frame, not on every resize event.
+    expect(handle()).toHaveAttribute("aria-valuemax", "20");
+    frames.run();
+    expect(handle()).toHaveAttribute("aria-valuemax", "15.625");
+
+    resizeWindow(600);
+    frames.run();
+    expect(handle()).toHaveAttribute("aria-valuemax", "11.5");
+
+    resizeWindow(3000);
+    frames.run();
+    expect(handle()).toHaveAttribute("aria-valuemax", "24");
+  });
+
+  it("shows a kept width too wide for the window within it, and the kept width again when it widens", () => {
+    window.localStorage.setItem(KEY, "22");
+    const frames = stubFrames();
+    vi.stubGlobal("innerWidth", 1280);
+    const { container } = render(<Shell />);
+
+    expect(handle()).toHaveAttribute("aria-valuenow", "20");
+    expect(handle()).toHaveAttribute("aria-valuetext", "20 rem");
+    expect(cssWidth(container)).toBe("20rem");
+    expect(window.localStorage.getItem(KEY)).toBe("22");
+
+    resizeWindow(700);
+    frames.run();
+    expect(handle()).toHaveAttribute("aria-valuenow", "11.5");
+    expect(cssWidth(container)).toBe("11.5rem");
+    expect(window.localStorage.getItem(KEY)).toBe("22");
+
+    resizeWindow(1920);
+    frames.run();
+    expect(handle()).toHaveAttribute("aria-valuenow", "22");
+    expect(cssWidth(container)).toBe("22rem");
+    expect(window.localStorage.getItem(KEY)).toBe("22");
+  });
+
+  it("stops the keys; a key that leaves the width in place keeps the wider kept width", () => {
+    window.localStorage.setItem(KEY, "22");
+    vi.stubGlobal("innerWidth", 1280);
+    render(<Shell />);
+
+    fireEvent.keyDown(handle(), { key: "ArrowRight" });
+    expect(handle()).toHaveAttribute("aria-valuenow", "20");
+    expect(window.localStorage.getItem(KEY)).toBe("22");
+    fireEvent.keyDown(handle(), { key: "End" });
+    expect(handle()).toHaveAttribute("aria-valuenow", "20");
+    expect(window.localStorage.getItem(KEY)).toBe("22");
+
+    // A key that changes the width keeps what is shown.
+    fireEvent.keyDown(handle(), { key: "ArrowLeft" });
+    expect(handle()).toHaveAttribute("aria-valuenow", "19.5");
+    expect(window.localStorage.getItem(KEY)).toBe("19.5");
+    fireEvent.keyDown(handle(), { key: "End" });
+    expect(handle()).toHaveAttribute("aria-valuenow", "20");
+    expect(window.localStorage.getItem(KEY)).toBe("20");
+  });
+
+  it("stops a drag; a drag that ends where it started keeps the wider kept width", () => {
+    window.localStorage.setItem(KEY, "22");
+    vi.stubGlobal("innerWidth", 1280);
+    render(<Shell />);
+
+    press(handle(), 500);
+    moveTo(2000);
+    expect(handle()).toHaveAttribute("aria-valuenow", "20");
+    release();
+    expect(handle()).toHaveAttribute("aria-valuenow", "20");
+    expect(window.localStorage.getItem(KEY)).toBe("22");
+
+    press(handle(), 500);
+    moveTo(436); // -64px = -4rem
+    release();
+    expect(handle()).toHaveAttribute("aria-valuenow", "16");
+    expect(window.localStorage.getItem(KEY)).toBe("16");
+
+    press(handle(), 500);
+    moveTo(2000);
+    release();
+    expect(handle()).toHaveAttribute("aria-valuenow", "20");
+    expect(window.localStorage.getItem(KEY)).toBe("20");
+  });
+
+  it("Escape during a drag shows the kept width again, within the window", () => {
+    window.localStorage.setItem(KEY, "22");
+    vi.stubGlobal("innerWidth", 1280);
+    render(<Shell />);
+
+    press(handle(), 500);
+    moveTo(400);
+    expect(handle()).toHaveAttribute("aria-valuenow", "13.75");
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    });
+    expect(handle()).toHaveAttribute("aria-valuenow", "20");
+    expect(window.localStorage.getItem(KEY)).toBe("22");
+  });
+
+  it("Enter resets the kept width, even where the window already shows the default", () => {
+    window.localStorage.setItem(KEY, "22");
+    const frames = stubFrames();
+    vi.stubGlobal("innerWidth", 700);
+    render(<Shell />);
+    expect(handle()).toHaveAttribute("aria-valuenow", "11.5");
+    expect(handle()).toHaveAttribute("aria-valuemax", "11.5");
+
+    fireEvent.keyDown(handle(), { key: "Enter" });
+    expect(window.localStorage.getItem(KEY)).toBeNull();
+
+    resizeWindow(1920);
+    frames.run();
+    expect(handle()).toHaveAttribute("aria-valuenow", "11.5");
+  });
+
+  it("measures at most once a frame, and removes its listener and frame when the sidebar goes away", () => {
+    const frames = stubFrames();
+    const added = vi.spyOn(window, "addEventListener");
+    const removed = vi.spyOn(window, "removeEventListener");
+    const { unmount } = render(<Shell />);
+    const resizeListeners = added.mock.calls
+      .filter(([type]) => type === "resize")
+      .map(([, listener]) => listener);
+    expect(resizeListeners).toHaveLength(1);
+
+    resizeWindow(1000);
+    resizeWindow(1100);
+    resizeWindow(1200);
+    expect(frames.request).toHaveBeenCalledTimes(1);
+
+    unmount();
+    expect(removed).toHaveBeenCalledWith("resize", resizeListeners[0]);
+    expect(frames.cancel).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("one width per person (CHG-2026-142 follow-up)", () => {
+  it("keeps the width under the signed-in person's own key", () => {
+    render(<Shell />);
+
+    fireEvent.keyDown(handle(), { key: "End" });
+    expect(window.localStorage.getItem(KEY)).toBe("24");
+    expect(widthKeys()).toEqual([KEY]);
+  });
+
+  it("moves the browser's old width to the person on the first render, once", () => {
+    window.localStorage.setItem(LEGACY_KEY, "18");
+    const seen: number[] = [];
+    function Probe() {
+      seen.push(useEyeonSidebarWidth()?.width ?? -1);
+      return null;
+    }
+    const { container } = render(
+      <EyeonSidebarProvider userId={USER}>
+        <Probe />
+        <Sidebar collapsible="icon">
+          <SidebarRail />
+        </Sidebar>
+      </EyeonSidebarProvider>,
+    );
+
+    expect(seen[0]).toBe(18);
+    expect(cssWidth(container)).toBe("18rem");
+    expect(window.localStorage.getItem(KEY)).toBe("18");
+    expect(window.localStorage.getItem(LEGACY_KEY)).toBeNull();
+  });
+
+  it("with no person yet: the default, nothing written, the old width left in place", () => {
+    window.localStorage.setItem(LEGACY_KEY, "18");
+    const { container } = render(<Shell userId={null} />);
+
+    expect(handle()).toHaveAttribute("aria-valuenow", "11.5");
+    // It still resizes, for this page only.
+    fireEvent.keyDown(handle(), { key: "End" });
+    expect(cssWidth(container)).toBe("24rem");
+    expect(widthKeys()).toEqual([LEGACY_KEY]);
+    expect(window.localStorage.getItem(LEGACY_KEY)).toBe("18");
+  });
+
+  it("shows the next person's own width when the person changes", () => {
+    window.localStorage.setItem(KEY, "20");
+    window.localStorage.setItem("cairo.sidebarWidth.v1:u2", "14");
+    const { rerender } = render(<Shell />);
+    expect(handle()).toHaveAttribute("aria-valuenow", "20");
+
+    rerender(<Shell userId="u2" />);
+    expect(handle()).toHaveAttribute("aria-valuenow", "14");
+    fireEvent.keyDown(handle(), { key: "Enter" });
+    expect(window.localStorage.getItem("cairo.sidebarWidth.v1:u2")).toBeNull();
+    expect(window.localStorage.getItem(KEY)).toBe("20");
+
+    rerender(<Shell />);
+    expect(handle()).toHaveAttribute("aria-valuenow", "20");
+  });
+});
+
 describe("the upstream files it relies on (CHG-2026-142)", () => {
   // If an upstream sync rewrites these lines, the handle silently goes away
   // (or the stored width stops applying); these fail first.
@@ -541,11 +792,11 @@ describe("the upstream files it relies on (CHG-2026-142)", () => {
     expect(sidebar).toContain("ACME (CHG-2026-142)");
   });
 
-  it("the authenticated layout uses EYEON's provider, and the sidebar still renders its rail", () => {
+  it("the authenticated layout uses EYEON's provider with the signed-in person, and the sidebar still renders its rail", () => {
     const layout = source(
       "src/components/layouts/app-layout/variants/AuthenticatedLayout.tsx",
     );
-    expect(layout).toContain("<EyeonSidebarProvider>");
+    expect(layout).toContain("<EyeonSidebarProvider userId={user.id}>");
     expect(layout).not.toContain("<SidebarProvider");
     expect(source("src/components/nav/AppSidebar/AppSidebar.tsx")).toContain(
       "<SidebarRail />",
