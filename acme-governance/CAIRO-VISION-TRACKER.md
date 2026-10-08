@@ -2,9 +2,12 @@
 **Purpose:** single source of truth for "are we there yet," updated at every stage. Not a changelog — a status board. The changelog and ledger remain the detailed record; this file answers one question fast: what's done, what's next, what's blocking.
 
 **Last updated:** 2026-10-08. **The product is EYEON in the UI, and the prototype's pages are going live one by one.** Console `acme-v4.38.0.47`, worker `worker-acme-v4.38.0.6`, both TRACED (checked 17:24 UTC).
-- **On in dev:** Overview, Guardrail decisions, Gateway health and Spend. The last two were switched on 2026-10-08.
-- **Built but switched off:** EYEON Home, the navigation rail, Enforcement and policy, and ACME AI. Each needs the owner's yes.
-- **Next:** the Gateway health hero as the prototype's clickable route map (CHG-2026-139 follow-up).
+- **On in dev (re-checked 18:17 UTC):** every EYEON page.
+  - Overview and Guardrail decisions.
+  - Gateway health and Spend, switched on 15:02 UTC.
+  - EYEON Home, the navigation rail, Enforcement and policy, and ACME AI, switched on 17:44 UTC on the owner's yes.
+- **ACME AI is on but not configured:** its gateway settings are not provisioned, so it answers "not configured". The owner decides whether to provision it or switch it off.
+- **Next:** the Gateway health hero as the prototype's clickable route map (CHG-2026-139 follow-up, #394), awaiting the owner's merge.
 - **Open:** an unexplained rollback of the console at 2026-10-08 13:03 UTC, which undid a flag change. The owner is tracing it.
 - **Detail:** the 2026-10-06 to 08 section under "Active work right now".
 
@@ -190,11 +193,11 @@ because this session did not do them.
 | **CHG-2026-130, -131** (ADR-0026) | The prototype's dark palette and the shell restyle | 🟢 Released `.42` and `.43`. No flag |
 | **CHG-2026-132** (ADR-0027) | The EYEON overview and the shared EYEON UI kit | 🟢 Released `.43`, **on** in dev |
 | **CHG-2026-133, -137** | Guardrail decisions: the dashboard, its second slice, and the chart fix (#388) | 🟢 Released `.44`, `.45` and `.47`, **on** in dev |
-| **CHG-2026-134, -141** | ACME AI removed from the top bar (the user menu took its place), then kept behind `CAIRO_ACME_AI_ENABLED` | 🟢 Released `.45` and `.46`. ACME AI is **off** |
-| **CHG-2026-135** | The navigation rail | 🟡 Released `.45`, **off** |
-| **CHG-2026-136** (ADR-0028) | EYEON Home: the overview as Home, arranged per person; role landings | 🟡 Released `.45`. Landings live; Home itself **off** |
-| **CHG-2026-138** | Enforcement and policy, plus a follow-up (no pod names; who and why of mode changes) | 🟡 Released `.45` and `.46`. The overview card shows the follow-up; the page is **off** |
-| **CHG-2026-139** | Gateway health: which models answer now, and what is failing | 🟢 Released `.45`, **on** since 2026-10-08 15:02 UTC. A first switch-on at 12:56 UTC was rolled back at 13:03 UTC by an actor not yet identified. 🟡 **In build:** the hero as the prototype's clickable route map (owner, 2026-10-08) |
+| **CHG-2026-134, -141** | ACME AI removed from the top bar (the user menu took its place), then kept behind `CAIRO_ACME_AI_ENABLED` | 🟡 Released `.45` and `.46`. ACME AI is **on** since 2026-10-08 17:44 UTC, but not configured: its gateway settings are not provisioned |
+| **CHG-2026-135** | The navigation rail | 🟢 Released `.45`, **on** since 2026-10-08 17:44 UTC |
+| **CHG-2026-136** (ADR-0028) | EYEON Home: the overview as Home, arranged per person; role landings | 🟢 Released `.45`, **on** since 2026-10-08 17:44 UTC |
+| **CHG-2026-138** | Enforcement and policy, plus a follow-up (no pod names; who and why of mode changes) | 🟢 Released `.45` and `.46`, **on** since 2026-10-08 17:44 UTC |
+| **CHG-2026-139** | Gateway health: which models answer now, and what is failing | 🟢 Released `.45`, **on** since 2026-10-08 15:02 UTC. A first switch-on at 12:56 UTC was rolled back at 13:03 UTC by an actor not yet identified. 🟡 **In review:** the hero as the prototype's clickable route map (#394; owner, 2026-10-08) |
 | **CHG-2026-142** | The resizable sidebar | 🟢 Released `.46`. No flag |
 | **CHG-2026-143** | Spend: cost and usage of the gateway, by model, application, team and key, against each key's budget | 🟢 Released `.46`, **on** since 2026-10-08 15:02 UTC |
 
