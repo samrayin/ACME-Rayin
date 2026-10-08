@@ -127,7 +127,7 @@ Dark mode looks like the EYEON prototype: near-black, crisp text, bright accents
 **Rollback:** flag off, or redeploy the previous image. **Schema:** none.
 
 ### 12.3 CHG-2026-141: ACME AI behind a flag (addendum to §12.1)
-**Date:** 2026-10-07. **Change:** CHG-2026-141, Tier 1. **Approval:** pending; the owner reviews and merges, no self-approval. **Owner's instruction:** ACME AI is needed again later, and the owner asked for "the best approach considering it is required for future enhancements".
+**Date:** 2026-10-07. **Change:** CHG-2026-141, Tier 1. **Approval:** owner, 2026-10-08: reviewed and merged #381 and approved its release (console `acme-v4.38.0.46`, ACME AI off until its flag is set); no self-approval. **Owner's instruction:** ACME AI is needed again later, and the owner asked for "the best approach considering it is required for future enhancements".
 
 **Why a flag replaces §12.1's code switch.** §12.1 chose a code switch because the owner asked for removal and, with no launcher, a flag could only re-open an API that nothing in the console called. Now ACME AI has to be able to return, so the switch has to be something an operator can turn without a code change, a review and a new image. A server-only `CAIRO_*` flag, off by default, does that. With the flag off, the console is exactly as §12.1 left it, so a deployment that does not set the flag sees no change. The options rejected:
 - **Keep the code switch:** every return would need a code change, a review and a release, and the launcher and panel would have to be wired back by hand from the history.
@@ -171,7 +171,7 @@ The CHG-2026-134 structural test now checks two things: the top bars and the lay
 **Flag:** `CAIRO_ACME_AI_ENABLED`, server-only, default off. **Rollback:** turn the flag off, or redeploy the previous console image. **Schema:** none.
 
 ### 12.4 CHG-2026-142: a resizable sidebar (addendum)
-**Date:** 2026-10-08. **Change:** CHG-2026-142, Tier 1. **Approval:** pending; the owner reviews and merges, no self-approval. **Owner's instruction:** "Should be able to resize the sidebar."
+**Date:** 2026-10-08. **Change:** CHG-2026-142, Tier 1. **Approval:** owner, 2026-10-08: reviewed and merged #385 and approved its release (console `acme-v4.38.0.46`); no self-approval. **Owner's instruction:** "Should be able to resize the sidebar."
 
 **What it does.**
 - **Dragging:** on desktop, the sidebar's inner edge (the edge facing the page) can be dragged wider or narrower, between 11.5rem and 24rem. The sidebar's gap in the page and its fixed panel both take their width from `--sidebar-width`, so the page reflows with it. The edge shows the resize cursor, and a line on hover, on keyboard focus (a wider line) and while dragging. While dragging, the sidebar's width transition is switched off so it follows the pointer, and text cannot be selected. Escape during a drag puts the width back.
