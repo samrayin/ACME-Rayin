@@ -184,9 +184,10 @@ describe("rail categories per role (CHG-2026-135)", () => {
   it("a category whose only entries render nothing stays hidden", () => {
     // Every entry that decides for itself renders nothing (the EYEON pages
     // and LLM Gateway behind their flags, and, for this test, Support too).
-    // The Business Analyst's only Governance Controls entry is LLM Gateway,
-    // so the category goes; Support holds only such entries, so it goes too.
-    // Dashboards is a plain link, so Reports stays.
+    // The Business Analyst's Governance Controls entries are LLM Gateway and
+    // Spend (CHG-2026-143), both behind flags, so the category goes; Support
+    // holds only such entries, so it goes too. Dashboards is a plain link, so
+    // Reports stays.
     expect(categoriesOf(Role.ANALYST, false)).toEqual([
       "home",
       "reports",
@@ -195,13 +196,18 @@ describe("rail categories per role (CHG-2026-135)", () => {
     // Guardrails is a plain link, so the Security Analyst keeps the category.
     expect(categoriesOf(Role.SECURITY, false)).toContain("governance");
 
-    // Only LLM Gateway switched off: Support stays, Governance Controls goes.
+    // Only LLM Gateway and Spend switched off: Support stays, Governance
+    // Controls goes.
     const navigation = navigationFor(Role.ANALYST);
     const presence = {
       ...presenceOf(navigation, true),
       [eyeonRailItemKey({
         title: "LLM Gateway",
         pathname: "/project/[projectId]/acme-enhancements/llm-gateway",
+      })]: false,
+      [eyeonRailItemKey({
+        title: "Spend",
+        pathname: "/project/[projectId]/acme-enhancements/spend",
       })]: false,
     };
     expect(

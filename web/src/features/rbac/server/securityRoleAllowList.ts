@@ -81,6 +81,15 @@ const ANALYST_ROLE_ALLOWED_PROCEDURES: ReadonlySet<string> = new Set([
   "dashboardWidgets.get",
   "acmeLitellm.status",
   "acmeLitellm.spend",
+  // CHG-2026-143 (ADR-0027): the EYEON Cost and usage (Spend) page and its
+  // navigation entry's on/off check, under the Spend tab's scope
+  // (llmGatewaySpend:read), which the Business Analyst holds. Metadata
+  // only: spend, calls and tokens by day, model, application, team and key,
+  // and the keys' budgets. The Auditor and the Security Analyst hold neither
+  // the scope nor these entries (owner, 2026-10-08: the prototype's
+  // audience).
+  "eyeonSpend.summary",
+  "eyeonSpend.status",
   "acmeTheme.get",
 ]);
 
