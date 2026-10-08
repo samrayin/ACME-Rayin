@@ -6746,7 +6746,7 @@ Both addresses answer, and both send sign-in back to the new one. Images are unc
 |---|---|
 | **Change ID** | CHG-2026-141 · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | [ADR-0026](acme-governance/adr/ADR-0026-adopting-the-eyeon-prototype.md) §12.3 (addendum to §12.1) |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Approval** | Owner, 2026-10-08: reviewed and merged #381 and approved its release ("merged and yes to release", and "go ahead and release" for the combined release; console `acme-v4.38.0.46`). ACME AI stays off until `CAIRO_ACME_AI_ENABLED` is set, a separate yes. No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
 | **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
 | **Impact** | None with the flag off (the default): the console and the API stay as CHG-2026-134 left them. With the flag on, client-visible: the "ACME AI" button is back in the top bar, just left of the user menu (an icon on a phone), for Owners, Admins and Prompt Analysts, and opens its panel. No downtime |
 | **Schema change** | None |
@@ -6815,7 +6815,7 @@ Fresh typecheck:
 |---|---|
 | **Change ID** | CHG-2026-138 follow-up · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | [ADR-0027](acme-governance/adr/ADR-0027-eyeon-native-pages.md) (the EYEON-native page pattern; no ADR change) |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Approval** | Owner, 2026-10-08: reviewed and merged #382 and approved its release ("merged and yes to release", and "go ahead and release" for the combined release; console `acme-v4.38.0.46`). Live on the overview card with that release; the Enforcement page stays off until `CAIRO_EYEON_ENFORCEMENT_ENABLED` is set. No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
 | **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
 | **Impact** | Client-visible once each page's flag is on: the Enforcement & policy page (CHG-2026-138, not yet released) and the EYEON overview (CHG-2026-132), also shown as EYEON Home (CHG-2026-136). With the flags off (the default) nothing changes on screen. No downtime |
 | **Schema change** | None |
@@ -6849,7 +6849,7 @@ Nothing else about the person is returned: no user id, and no email to anyone th
 |---|---|
 | **Change ID** | CHG-2026-142 · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | [ADR-0026](acme-governance/adr/ADR-0026-adopting-the-eyeon-prototype.md) §12.4 (addendum) |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Approval** | Owner, 2026-10-08: reviewed and merged #385 and approved its release ("merged and yes to release", and "go ahead and release" for the combined release; console `acme-v4.38.0.46`). Live with that release: no flag; the width changes only when someone drags. No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
 | **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
 | **Impact** | Client-visible on desktop: the sidebar's inner edge can be dragged to make the sidebar wider (up to 24rem) and back, and the page reflows with it. Nothing changes until a person drags: the default width (11.5rem) is unchanged, and a click on the edge still collapses the sidebar. No downtime |
 | **Schema change** | None |
