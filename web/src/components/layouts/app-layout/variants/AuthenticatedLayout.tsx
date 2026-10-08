@@ -52,6 +52,7 @@ import { usePostHogClientCapture } from "@/src/features/posthog-analytics/usePos
 import { useSession } from "next-auth/react";
 import { useQueryProjectOrOrganization } from "@/src/features/projects/hooks";
 import { useHasOrganizationAccess } from "@/src/features/rbac/utils/checkOrganizationAccess";
+import { AcmeChatPanelHost } from "@/src/features/acme-enhancements/components/AcmeChatWidget";
 import { EyeonUserMenuProvider } from "@/src/features/acme-enhancements/components/eyeon/shell/EyeonUserMenuContext";
 import { AcmeThemeStyleInjector } from "@/src/features/acme-enhancements/components/AcmeThemeStyleInjector";
 import { EyeonRail } from "@/src/features/acme-enhancements/components/eyeon/rail/EyeonRail";
@@ -342,10 +343,15 @@ export function AuthenticatedLayout({
                       its launcher button) so the open window and its geometry
                       survive route changes. */}
                 <InAppAgentWindowHost />
-                {/* ACME (CHG-2026-134): the ACME AI panel is removed from
-                    EYEON; its code stays for a later plan. */}
+                {/* ACME (CHG-2026-141): the ACME AI panel, only while
+                    CAIRO_ACME_AI_ENABLED is on (CHG-2026-134 removed it). */}
                 {typeof router.query.projectId === "string" ? (
-                  <AcmeThemeStyleInjector projectId={router.query.projectId} />
+                  <>
+                    <AcmeChatPanelHost projectId={router.query.projectId} />
+                    <AcmeThemeStyleInjector
+                      projectId={router.query.projectId}
+                    />
+                  </>
                 ) : null}
               </SidebarInset>
             </div>

@@ -125,3 +125,47 @@ Dark mode looks like the EYEON prototype: near-black, crisp text, bright accents
 **Not built:** the prototype's pins, counts and "Phase 2" tags in the lists; its own collapse of the rail; its mobile category drawer; a Reports page. Fonts still wait for §10.1.
 
 **Rollback:** flag off, or redeploy the previous image. **Schema:** none.
+
+### 12.3 CHG-2026-141: ACME AI behind a flag (addendum to §12.1)
+**Date:** 2026-10-07. **Change:** CHG-2026-141, Tier 1. **Approval:** pending; the owner reviews and merges, no self-approval. **Owner's instruction:** ACME AI is needed again later, and the owner asked for "the best approach considering it is required for future enhancements".
+
+**Why a flag replaces §12.1's code switch.** §12.1 chose a code switch because the owner asked for removal and, with no launcher, a flag could only re-open an API that nothing in the console called. Now ACME AI has to be able to return, so the switch has to be something an operator can turn without a code change, a review and a new image. A server-only `CAIRO_*` flag, off by default, does that. With the flag off, the console is exactly as §12.1 left it, so a deployment that does not set the flag sees no change. The options rejected:
+- **Keep the code switch:** every return would need a code change, a review and a release, and the launcher and panel would have to be wired back by hand from the history.
+- **A `NEXT_PUBLIC_` flag:** it is fixed into the client bundle at build time, so it would still need a rebuild, and one image could not serve deployments with different settings. EYEON's flags are server-only.
+- **The session** (as upstream's assistant uses `session.environment`): this would mean editing upstream's sign-in callback and session types, two more upstream files on the CHG-2026-100 conflict list, and it would add an ACME setting to every session.
+- **Extending a query ACME AI's UI already calls:** there is none. The launcher reads only the session's roles, and the panel calls only `sendMessage`, which is a mutation.
+
+**What changed.**
+- **The flag:** `CAIRO_ACME_AI_ENABLED`, server-only, `"true"` or `"false"`, default `"false"`. `acmeAiEnabled()` in `acmeChatRouter.ts` reads it.
+- **With the flag off:** ACME AI behaves as described in §12.1. There is no launcher and no panel, and `acmeChat.sendMessage` refuses every caller first with `PRECONDITION_FAILED`, before any read or gateway call.
+- **With the flag on:** ACME AI behaves as it did before CHG-2026-134.
+  - The launcher sits in the top bar just left of the user menu. On desktop it reads "ACME AI"; on the phone's top bar it is an icon.
+  - The panel is hosted in the authenticated layout.
+  - `sendMessage` runs all its checks: `projectAiAssistant:use`, the gateway settings (`RAYIN_CHAT_LLM_*`), then the prompt and the gateway.
+- **How the console learns the flag:** a new query, `acmeChat.status`.
+  - It is sign-in only (`authenticatedProcedure`), returns `{ enabled }`, and reads nothing else.
+  - Only two components send it: the launcher (`AcmeChatTopbarLauncher`, in the top bars) and the panel host (`AcmeChatPanelHost`, in the layout). Each asks only once the person may use ACME AI in the current project (`projectAiAssistant:use`).
+  - The answer is cached for 60 seconds. ACME AI counts as off while the answer is loading or if the query fails.
+  - The existing `AcmeChatLauncher` and `AcmeChatWidget` are unchanged; the two new components wrap them.
+- **One difference from before CHG-2026-134:** the panel host is removed when the person moves to a project where they may not use ACME AI. Before, the panel stayed in the page, hidden, so a conversation could follow the person into that project; now it does not.
+
+**The content-free roles' allow-lists are unchanged.** Security Analyst, Business Analyst and Auditor gain nothing:
+- `status` is not a project procedure, so the allow-lists, which guard project procedures, do not apply to it. It carries only the deployment's switch and no project data.
+- Their console never sends it, because none of them holds `projectAiAssistant:use`.
+- `sendMessage` stays off every list, so it refuses them with `FORBIDDEN` before the handler runs, with the flag on or off.
+- A test still requires that no allow-list name an `acmeChat.` procedure.
+
+**Upstream files touched,** each with an "ACME (CHG-2026-141)" comment:
+- `page-header.tsx` and `mobile-top-bar.tsx`: one import and one launcher line each. The CHG-2026-134 comment there now names only the assistant.
+- `AuthenticatedLayout.tsx`: one import, and the panel host is back beside the theme injector.
+
+The CHG-2026-134 structural test now checks two things: the top bars and the layout mount ACME AI only through the two components above, and they never mount upstream's assistant launcher.
+
+**Not changed:**
+- Upstream's assistant: it is still removed from both top bars and still off through `LANGFUSE_IN_APP_AGENT_ENABLED`.
+- The user menu.
+- ACME AI's own behaviour: its tools, prompt, gateway call and tracing.
+
+**Turning it on:** set `CAIRO_ACME_AI_ENABLED=true` on the console, along with the three `RAYIN_CHAT_LLM_*` settings, then restart it. Without the gateway settings, ACME AI replies that it is not configured. `deploy/azure` does not declare the flag yet. Turning ACME AI on is a separate owner decision.
+
+**Flag:** `CAIRO_ACME_AI_ENABLED`, server-only, default off. **Rollback:** turn the flag off, or redeploy the previous console image. **Schema:** none.

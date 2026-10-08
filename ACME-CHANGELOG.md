@@ -6739,3 +6739,72 @@ Both addresses answer, and both send sign-in back to the new one. Images are unc
 **Release:** web image only. To switch the rail on, set `CAIRO_EYEON_RAIL_ENABLED=true` on the console and restart it; `deploy/azure` does not declare the flag yet.
 
 **Tests:** 23 new model tests (the Security Analyst's, Business Analyst's, Auditor's and Owner's categories pinned, from the same filtered navigation the sidebar-per-role test pins; for all seven roles every sidebar item lands in exactly one category or above every list, none added; no content surface in a content-free role's categories; a category holding only switched-off entries hidden; Reports and Logs separate; Home, Dashboards and gateway health placed as in the prototype; a route added later lands in its group's category; the active category follows the page, the person's choice and falls back to Home); 10 new rail tests (the categories in order; `aria-current` on the current page's category with only its items in the sidebar; choosing a category switches the list; Home links to the project home; an entry that renders nothing never shows; keyboard-operable buttons with a focus ring; the sidebar structure the rail shifts; with the flag off no rail and the navigation handed over unchanged; no rail outside a project); 10 new router tests (off unless set to true; every role, the content-free ones included, told when it is on, without a database read; refused when not signed in). The sidebar-per-role test (15) passes unchanged. ESLint with no warnings and Prettier on every changed file. Fresh typecheck passed over both changes (the 2 tolerated Enterprise-file errors only).
+
+## 2026-10-07 — ACME AI behind a flag (CHG-2026-141)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-141 · owner: Anees Ur Rahman · Tier 1 |
+| **ADR** | [ADR-0026](acme-governance/adr/ADR-0026-adopting-the-eyeon-prototype.md) §12.3 (addendum to §12.1) |
+| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
+| **Impact** | None with the flag off (the default): the console and the API stay as CHG-2026-134 left them. With the flag on, client-visible: the "ACME AI" button is back in the top bar, just left of the user menu (an icon on a phone), for Owners, Admins and Prompt Analysts, and opens its panel. No downtime |
+| **Schema change** | None |
+| **Rollback** | Flag off, or redeploy the previous image |
+| **Feature flag** | `CAIRO_ACME_AI_ENABLED`, server-only, default off |
+
+**What:** CHG-2026-134 took ACME AI (ACME's own chat, ADR-0015) out of EYEON with a code switch. The owner asked for "the best approach considering it is required for future enhancements". It now sits behind a flag, so it can come back without a code change.
+- **Flag off (the default):** exactly as CHG-2026-134 left it. There is no launcher in either top bar and no panel. `acmeChat.sendMessage` refuses every caller first (`PRECONDITION_FAILED`), before any read or gateway call.
+- **Flag on:** ACME AI works as it did before CHG-2026-134.
+  - The launcher sits in the top bar just left of the user menu: "ACME AI" on desktop, an icon on the phone's top bar.
+  - The panel is hosted in the authenticated layout.
+  - `sendMessage` runs all its original checks: `projectAiAssistant:use`, the gateway settings (`RAYIN_CHAT_LLM_*`), then the prompt and the gateway.
+- **How the console learns the flag:** a new query, `acmeChat.status`.
+  - It is sign-in only, returns `{ enabled }`, and reads no database.
+  - The launcher and the panel host send it only for people who may use ACME AI in the current project (`projectAiAssistant:use`).
+  - The answer is cached for 60 seconds. ACME AI counts as off while the answer is loading or if the query fails.
+- **Upstream's assistant** is not part of this change. It stays removed from both top bars and off through `LANGFUSE_IN_APP_AGENT_ENABLED`.
+
+**Why it matters:** ACME AI is needed for future enhancements. A server-only flag lets an operator bring it back with a setting and a restart instead of a code change, a review and a new image. With the flag off, nothing changes.
+
+**Content-free roles:** their allow-lists are unchanged, and the Security Analyst, Business Analyst and Auditor gain nothing.
+- `status` is not a project procedure, so the allow-lists, which guard project procedures, do not apply to it. It carries only the deployment's switch.
+- None of these roles holds `projectAiAssistant:use`, so their console never sends it.
+- `sendMessage` stays off every list and refuses them with `FORBIDDEN`, with the flag on or off.
+
+**Upstream files:** `page-header.tsx`, `mobile-top-bar.tsx` and `AuthenticatedLayout.tsx` each get one import and one line, marked "ACME (CHG-2026-141)". The launcher and the panel come in through two new ACME components, `AcmeChatTopbarLauncher` and `AcmeChatPanelHost`. CHG-2026-134's structural test now requires the top bars and the layout to mount ACME AI only through these two components, and never upstream's assistant launcher.
+
+**One difference from before CHG-2026-134:** the panel is removed, rather than hidden, when the person moves to a project where they may not use ACME AI. A conversation therefore no longer follows them into that project.
+
+**Release:** web image only. To switch ACME AI on, set `CAIRO_ACME_AI_ENABLED=true` on the console, along with the three `RAYIN_CHAT_LLM_*` settings, then restart it. Without the gateway settings, ACME AI replies that it is not configured. `deploy/azure` does not declare the flag yet. Turning it on is a separate owner decision. Do not set `LANGFUSE_IN_APP_AGENT_ENABLED` on EYEON deployments.
+
+**Tests:** 22 new server tests:
+- With the flag unset or `"false"`, an Owner is refused before the prompt step, the trace, the gateway or any database read. The default `"false"` is pinned.
+- With the flag on:
+  - a Viewer is refused by the normal access check;
+  - the Security Analyst, Business Analyst and Auditor are refused by their allow-lists;
+  - Owner, Admin and Prompt Analyst reach the gateway settings check and are told ACME AI is not configured;
+  - a configured Owner's message goes through the prompt step to the gateway, and the test checks the address, key, model and message sent.
+- `acmeChat.status` refuses a caller who is not signed in. It answers every role, the content-free ones included, with the switch alone and reads nothing.
+- No allow-list gains an `acmeChat.` procedure.
+
+10 new top-bar tests, on desktop and on the phone:
+- Switched off: no launcher, even for an Owner, and the user menu stays last.
+- Switched on: the launcher sits just left of the user menu, and Admin and Prompt Analyst get it too.
+- Viewer, Security Analyst, Business Analyst and Auditor get no launcher and never ask for the switch.
+
+5 new ACME AI component tests:
+- Switch off or unknown: no launcher and no panel, even with the panel's state open.
+- Switch on: the launcher opens the hosted panel.
+- A role that may not use ACME AI sees nothing and never asks.
+- The status query takes no input.
+
+CHG-2026-134's structural top-bar test now requires the top bars and the layout to mount ACME AI only through `AcmeChatTopbarLauncher` and `AcmeChatPanelHost`, and never upstream's assistant launcher.
+
+Existing tests still pass: ACME AI switched off (7), the top bar (8), the user menu (3), the app shell (4) and the ACME AI component (4).
+
+ESLint (no warnings) and Prettier pass on every changed file.
+
+Fresh typecheck:
+- On the base before CHG-2026-136, -137 and -139 merged, it passed with only the 2 tolerated Enterprise-file errors.
+- On the current main it reports 2 more errors, neither in this change's files. They are in `eyeonEnforcement.ts` and `eyeonEnforcementRouter.ts` (CHG-2026-138), which import `RefusalType` and `refusalsByType`; CHG-2026-137 removed both from `eyeonGuardrailDecisions.ts`.
