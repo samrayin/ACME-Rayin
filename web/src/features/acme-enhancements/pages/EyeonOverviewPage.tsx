@@ -1,8 +1,12 @@
-import { useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
+import { LayoutGrid } from "lucide-react";
 import Page from "@/src/components/layouts/page";
 import { Card, CardContent } from "@/src/components/ui/card";
 import { Badge } from "@/src/components/ui/badge";
+import { Button } from "@/src/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -29,39 +33,76 @@ import {
 import { EyeonNotRecorded } from "@/src/features/acme-enhancements/components/eyeon/EyeonHonestLabels";
 import { EyeonKpiTile } from "@/src/features/acme-enhancements/components/eyeon/EyeonKpiTile";
 import {
+  EyeonArrangeBar,
+  EyeonArrangeFrame,
+  EyeonArrangeZone,
+} from "@/src/features/acme-enhancements/components/eyeon/EyeonArrange";
+import {
   budgetPeriodLabel,
   formatRate,
   formatShare,
   interventionLabel,
   modeSplitNote,
 } from "@/src/features/acme-enhancements/utils/eyeonOverviewLabels";
+import {
+  EYEON_HOME_CARD_NAMES,
+  EYEON_HOME_CARD_WIDTH,
+  EYEON_HOME_TILE_NAMES,
+  type ArrangeZone,
+  type EyeonHomeCardId,
+  type EyeonHomeLayout,
+  type EyeonHomeTileId,
+  cardSpans,
+  hiddenWidgets,
+  hideWidget,
+  isDefaultEyeonHomeLayout,
+  moveWidget,
+  moveWidgetTo,
+  showWidget,
+  shownWidgets,
+} from "@/src/features/acme-enhancements/utils/eyeonHomeLayout";
+import { useEyeonHomeLayout } from "@/src/features/acme-enhancements/utils/useEyeonHomeLayout";
 
 // ACME (CHG-2026-132, ADR-0027): the EYEON overview, the first EYEON-native
 // page, composed from the EYEON kit (components/eyeon). It follows the
 // prototype's Home as far as the data truthfully allows; what EYEON does not
 // record says so, and nothing is estimated. Metadata only.
+//
+// CHG-2026-136 (ADR-0028): the overview is also EYEON Home (`asHome`), and
+// each person can arrange it for themselves: move tiles among the tiles and
+// cards among the cards, hide and show them, and reset. The arrangement is
+// kept in this browser only and only orders what the page already has: it
+// fetches nothing and shows no role anything it could not see before.
 
 type Summary = Extract<
   RouterOutputs["eyeonOverview"]["summary"],
   { enabled: true }
 >;
 
-const headerProps = {
-  title: "Overview",
-  help: {
-    description:
-      "EYEON at a glance for this project: the guardrail checks and what " +
-      "they stopped, the guardrail mode and its ceiling, the judge's " +
-      "no-verdict rate, the applications that need action and, for roles " +
-      "allowed to see it, spend against budget. Metadata only.",
-  },
-};
+function headerPropsFor(asHome: boolean) {
+  return {
+    title: asHome ? "Home" : "Overview",
+    help: {
+      description:
+        "EYEON at a glance for this project: the guardrail checks and what " +
+        "they stopped, the guardrail mode and its ceiling, the judge's " +
+        "no-verdict rate, the applications that need action and, for roles " +
+        "allowed to see it, spend against budget. Metadata only. Arrange " +
+        "moves and hides the tiles and cards for you only, in this browser.",
+    },
+  };
+}
 
-export default function EyeonOverviewPage() {
+export default function EyeonOverviewPage({
+  asHome = false,
+}: {
+  /** Shown as the project's Home (CHG-2026-136): titled "Home". */
+  asHome?: boolean;
+}) {
   const projectId = useProjectIdFromURL();
 
   return (
-    <Page headerProps={headerProps} scrollable withPadding>
+    <Page headerProps={headerPropsFor(asHome)} scrollable withPadding>
       {projectId ? <EyeonOverview projectId={projectId} /> : null}
     </Page>
   );
@@ -119,6 +160,8 @@ function headline(data: Summary): string {
     : `${n.toLocaleString()} applications need action.`;
 }
 
+type ArrangeGroup = "tiles" | "cards";
+
 function OverviewContent({
   data,
   projectId,
@@ -139,6 +182,253 @@ function OverviewContent({
   ) => data.daily.map((p) => ({ label: p.day, value: p[key] }));
   const total = (s: { enforced: number; notEnforced: number }) =>
     (s.enforced + s.notEnforced).toLocaleString();
+
+  const tiles: Record<EyeonHomeTileId, ReactNode> = {
+    checks: (
+      <EyeonKpiTile
+        label="Guardrail checks"
+        figure={{ state: "measured", value: d.checks.toLocaleString() }}
+        subtitle={`${d.promptChecks.toLocaleString()} prompts and ${d.answerChecks.toLocaleString()} answers, ${period}`}
+        href={decisionsHref}
+        trend={
+          <EyeonSparkline
+            label="Guardrail checks per UTC day"
+            points={daily("checks")}
+          />
+        }
+      />
+    ),
+    promptsRefused: (
+      <EyeonKpiTile
+        label={interventionLabel("promptsRefused", d.promptsRefused)}
+        figure={{ state: "measured", value: total(d.promptsRefused) }}
+        subtitle={modeSplitNote(d.promptsRefused)}
+        href={decisionsHref}
+        trend={
+          <EyeonSparkline
+            label="Prompts refused per UTC day"
+            points={daily("promptsRefused")}
+            tone="block"
+          />
+        }
+      />
+    ),
+    answersWithheld: (
+      <EyeonKpiTile
+        label={interventionLabel("answersWithheld", d.answersWithheld)}
+        figure={{ state: "measured", value: total(d.answersWithheld) }}
+        subtitle={modeSplitNote(d.answersWithheld)}
+        href={decisionsHref}
+        trend={
+          <EyeonSparkline
+            label="Answers withheld per UTC day"
+            points={daily("answersWithheld")}
+            tone="block"
+          />
+        }
+      />
+    ),
+    redactions: (
+      <EyeonKpiTile
+        label={interventionLabel("redactions", d.redactions)}
+        figure={{ state: "measured", value: total(d.redactions) }}
+        subtitle={modeSplitNote(d.redactions)}
+        href={decisionsHref}
+        trend={
+          <EyeonSparkline
+            label="Redactions per UTC day"
+            points={daily("redactions")}
+            tone="redact"
+          />
+        }
+      />
+    ),
+    noVerdict: (
+      <EyeonKpiTile
+        label={`No verdict, last ${data.judge.windowHours} hours`}
+        figure={{
+          state: "measured",
+          value:
+            data.judge.rate === null
+              ? "No checks"
+              : formatRate(data.judge.rate),
+        }}
+        subtitle={
+          data.judge.rate === null
+            ? `No guardrail checks in the last ${data.judge.windowHours} hours`
+            : `${data.judge.noVerdict.toLocaleString()} of ${data.judge.checks.toLocaleString()} checks without a judge answer`
+        }
+        delta={
+          data.judge.rate === null
+            ? undefined
+            : data.judge.alert
+              ? {
+                  text: `At or above the ${formatRate(data.judge.alertRate)} alert`,
+                  tone: "bad",
+                }
+              : {
+                  text: `Below the ${formatRate(data.judge.alertRate)} alert`,
+                  tone: "good",
+                }
+        }
+        href={`${base}/guardrails`}
+      />
+    ),
+    applicationsNeedingAction: (
+      <EyeonKpiTile
+        label="Applications needing action"
+        figure={
+          data.applications
+            ? {
+                state: "measured",
+                value: data.applications.byOverall.red.toLocaleString(),
+              }
+            : {
+                state: "notRecorded",
+                reason:
+                  "Gateway management is switched off on this deployment, so no applications are rated.",
+              }
+        }
+        subtitle={
+          data.applications
+            ? `Rated Act now, of ${data.applications.total.toLocaleString()} applications, ${period}`
+            : "No applications without gateway management"
+        }
+        href={data.applications ? `${base}/applications` : undefined}
+      />
+    ),
+  };
+
+  // The spend card exists only for a viewer the server sent spend to; an
+  // arrangement can hide it, never add it.
+  const cards: Record<EyeonHomeCardId, ReactNode | undefined> = {
+    decisions: (
+      <DecisionsCard data={data} href={decisionsHref} period={period} />
+    ),
+    enforcement: (
+      <EnforcementCard
+        data={data}
+        href={`${base}/guardrails`}
+        period={period}
+      />
+    ),
+    applications: (
+      <ApplicationsCard data={data} href={`${base}/applications`} />
+    ),
+    spend: data.spend ? (
+      <SpendCard
+        spend={data.spend}
+        href={`${base}/llm-gateway`}
+        period={period}
+      />
+    ) : undefined,
+    notRecorded: <NotRecordedCard />,
+  };
+
+  const userId = useSession().data?.user?.id;
+  const arrangement = useEyeonHomeLayout(projectId, userId);
+  const layout = arrangement.layout;
+  const [arranging, setArranging] = useState(false);
+  const [announcement, setAnnouncement] = useState("");
+
+  // The arrange controls, by key, so focus can follow a moved, hidden or
+  // shown widget instead of falling back to the page.
+  const buttons = useRef(new Map<string, HTMLButtonElement>());
+  const buttonRef = (key: string) => (element: HTMLButtonElement | null) => {
+    if (element) buttons.current.set(key, element);
+    else buttons.current.delete(key);
+  };
+  const focusFirst = (keys: string[]) => {
+    for (const key of keys) {
+      const element = buttons.current.get(key);
+      if (element && !element.disabled) {
+        element.focus();
+        return;
+      }
+    }
+  };
+  /** Applies a change now, then moves focus to the first control named. */
+  const commit = (change: () => void, focus: string[]) => {
+    flushSync(change);
+    focusFirst(focus);
+  };
+
+  const groupOf = (group: ArrangeGroup): ArrangeZone<string> => layout[group];
+  const isAvailable = (group: ArrangeGroup) => (id: string) =>
+    group === "tiles" || cards[id as EyeonHomeCardId] !== undefined;
+  const nameOf = (group: ArrangeGroup, id: string) =>
+    group === "tiles"
+      ? EYEON_HOME_TILE_NAMES[id as EyeonHomeTileId]
+      : EYEON_HOME_CARD_NAMES[id as EyeonHomeCardId];
+  const withGroup = (
+    group: ArrangeGroup,
+    next: ArrangeZone<string>,
+  ): EyeonHomeLayout =>
+    group === "tiles"
+      ? { ...layout, tiles: next as EyeonHomeLayout["tiles"] }
+      : { ...layout, cards: next as EyeonHomeLayout["cards"] };
+  const placeMessage = (
+    group: ArrangeGroup,
+    id: string,
+    next: ArrangeZone<string>,
+  ) => {
+    const shown = shownWidgets(next, isAvailable(group));
+    return `${nameOf(group, id)} moved to place ${shown.indexOf(id) + 1} of ${shown.length}.`;
+  };
+
+  const move = (
+    group: ArrangeGroup,
+    id: string,
+    direction: "earlier" | "later",
+  ) => {
+    const next = moveWidget(groupOf(group), id, direction, isAvailable(group));
+    commit(() => {
+      arrangement.save(withGroup(group, next));
+      setAnnouncement(placeMessage(group, id, next));
+    }, [
+      `${group}:${id}:${direction}`,
+      `${group}:${id}:${direction === "earlier" ? "later" : "earlier"}`,
+    ]);
+  };
+  const drop = (group: ArrangeGroup, id: string, target: string) => {
+    const next = moveWidgetTo(groupOf(group), id, target);
+    arrangement.save(withGroup(group, next));
+    setAnnouncement(placeMessage(group, id, next));
+  };
+  const hide = (group: ArrangeGroup, id: string) =>
+    commit(() => {
+      arrangement.save(withGroup(group, hideWidget(groupOf(group), id)));
+      setAnnouncement(
+        `${nameOf(group, id)} hidden. Show it again from the hidden list.`,
+      );
+    }, [`show:${group}:${id}`, "done"]);
+  const show = (group: ArrangeGroup, id: string) =>
+    commit(() => {
+      arrangement.save(withGroup(group, showWidget(groupOf(group), id)));
+      setAnnouncement(`${nameOf(group, id)} shown again.`);
+    }, [`${group}:${id}:hide`, "done"]);
+  const resetToDefault = () =>
+    commit(() => {
+      arrangement.reset();
+      setAnnouncement("Default arrangement restored.");
+    }, ["reset", "done"]);
+  const startArranging = () =>
+    commit(() => {
+      setArranging(true);
+      setAnnouncement("");
+    }, ["done"]);
+  const stopArranging = () => commit(() => setArranging(false), ["arrange"]);
+
+  const hidden = (["tiles", "cards"] as const).flatMap((group) =>
+    hiddenWidgets(groupOf(group), isAvailable(group)).map((id) => ({
+      key: `${group}:${id}`,
+      name: nameOf(group, id),
+      onShow: () => show(group, id),
+    })),
+  );
+  const shownTiles = shownWidgets(layout.tiles);
+  const shownCards = shownWidgets(layout.cards, isAvailable("cards"));
+  const spans = cardSpans(shownCards, (id) => EYEON_HOME_CARD_WIDTH[id]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -161,151 +451,118 @@ function OverviewContent({
             </Badge>
           </div>
         </div>
-        <Select
-          value={String(windowDays)}
-          onValueChange={(v) => onWindowDaysChange(v === "30" ? 30 : 7)}
-        >
-          <SelectTrigger className="w-40" aria-label="Period">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="7">Last 7 days</SelectItem>
-            <SelectItem value="30">Last 30 days</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex flex-wrap items-center gap-2">
+          {!arranging && hidden.length > 0 ? (
+            <span className="text-muted-foreground text-xs">
+              {hidden.length === 1
+                ? "1 hidden by you"
+                : `${hidden.length} hidden by you`}
+            </span>
+          ) : null}
+          <Select
+            value={String(windowDays)}
+            onValueChange={(v) => onWindowDaysChange(v === "30" ? 30 : 7)}
+          >
+            <SelectTrigger className="w-40" aria-label="Period">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="7">Last 7 days</SelectItem>
+              <SelectItem value="30">Last 30 days</SelectItem>
+            </SelectContent>
+          </Select>
+          {arranging ? null : (
+            <Button
+              type="button"
+              variant="outline"
+              ref={buttonRef("arrange")}
+              title="Move or hide this page's tiles and cards, for you only"
+              onClick={startArranging}
+            >
+              <LayoutGrid className="mr-1 h-4 w-4" aria-hidden="true" />
+              Arrange
+            </Button>
+          )}
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-        <EyeonKpiTile
-          label="Guardrail checks"
-          figure={{ state: "measured", value: d.checks.toLocaleString() }}
-          subtitle={`${d.promptChecks.toLocaleString()} prompts and ${d.answerChecks.toLocaleString()} answers, ${period}`}
-          href={decisionsHref}
-          trend={
-            <EyeonSparkline
-              label="Guardrail checks per UTC day"
-              points={daily("checks")}
-            />
-          }
+      {arranging ? (
+        <EyeonArrangeBar
+          hidden={hidden}
+          onReset={resetToDefault}
+          resetDisabled={isDefaultEyeonHomeLayout(layout)}
+          onDone={stopArranging}
+          buttonRef={buttonRef}
+          storageRefused={arrangement.storageRefused}
         />
-        <EyeonKpiTile
-          label={interventionLabel("promptsRefused", d.promptsRefused)}
-          figure={{ state: "measured", value: total(d.promptsRefused) }}
-          subtitle={modeSplitNote(d.promptsRefused)}
-          href={decisionsHref}
-          trend={
-            <EyeonSparkline
-              label="Prompts refused per UTC day"
-              points={daily("promptsRefused")}
-              tone="block"
-            />
-          }
-        />
-        <EyeonKpiTile
-          label={interventionLabel("answersWithheld", d.answersWithheld)}
-          figure={{ state: "measured", value: total(d.answersWithheld) }}
-          subtitle={modeSplitNote(d.answersWithheld)}
-          href={decisionsHref}
-          trend={
-            <EyeonSparkline
-              label="Answers withheld per UTC day"
-              points={daily("answersWithheld")}
-              tone="block"
-            />
-          }
-        />
-        <EyeonKpiTile
-          label={interventionLabel("redactions", d.redactions)}
-          figure={{ state: "measured", value: total(d.redactions) }}
-          subtitle={modeSplitNote(d.redactions)}
-          href={decisionsHref}
-          trend={
-            <EyeonSparkline
-              label="Redactions per UTC day"
-              points={daily("redactions")}
-              tone="redact"
-            />
-          }
-        />
-        <EyeonKpiTile
-          label={`No verdict, last ${data.judge.windowHours} hours`}
-          figure={{
-            state: "measured",
-            value:
-              data.judge.rate === null
-                ? "No checks"
-                : formatRate(data.judge.rate),
-          }}
-          subtitle={
-            data.judge.rate === null
-              ? `No guardrail checks in the last ${data.judge.windowHours} hours`
-              : `${data.judge.noVerdict.toLocaleString()} of ${data.judge.checks.toLocaleString()} checks without a judge answer`
-          }
-          delta={
-            data.judge.rate === null
-              ? undefined
-              : data.judge.alert
-                ? {
-                    text: `At or above the ${formatRate(data.judge.alertRate)} alert`,
-                    tone: "bad",
-                  }
-                : {
-                    text: `Below the ${formatRate(data.judge.alertRate)} alert`,
-                    tone: "good",
-                  }
-          }
-          href={`${base}/guardrails`}
-        />
-        <EyeonKpiTile
-          label="Applications needing action"
-          figure={
-            data.applications
-              ? {
-                  state: "measured",
-                  value: data.applications.byOverall.red.toLocaleString(),
-                }
-              : {
-                  state: "notRecorded",
-                  reason:
-                    "Gateway management is switched off on this deployment, so no applications are rated.",
-                }
-          }
-          subtitle={
-            data.applications
-              ? `Rated Act now, of ${data.applications.total.toLocaleString()} applications, ${period}`
-              : "No applications without gateway management"
-          }
-          href={data.applications ? `${base}/applications` : undefined}
-        />
-      </div>
+      ) : null}
+      <p aria-live="polite" className="sr-only">
+        {announcement}
+      </p>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="min-w-0 lg:col-span-2">
-          <DecisionsCard data={data} href={decisionsHref} period={period} />
-        </div>
-        <EnforcementCard
-          data={data}
-          href={`${base}/guardrails`}
-          period={period}
-        />
-        <div
-          className={
-            data.spend ? "min-w-0 lg:col-span-2" : "min-w-0 lg:col-span-3"
-          }
+      {shownTiles.length > 0 ? (
+        <EyeonArrangeZone
+          ids={shownTiles}
+          nameOf={(id) => nameOf("tiles", id)}
+          onDrop={(id, target) => drop("tiles", id, target)}
         >
-          <ApplicationsCard data={data} href={`${base}/applications`} />
-        </div>
-        {data.spend ? (
-          <SpendCard
-            spend={data.spend}
-            href={`${base}/llm-gateway`}
-            period={period}
-          />
-        ) : null}
-        <div className="min-w-0 lg:col-span-3">
-          <NotRecordedCard />
-        </div>
-      </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+            {shownTiles.map((id, index) => (
+              <EyeonArrangeFrame
+                key={id}
+                id={id}
+                name={EYEON_HOME_TILE_NAMES[id]}
+                place={index + 1}
+                count={shownTiles.length}
+                arranging={arranging}
+                onMoveEarlier={() => move("tiles", id, "earlier")}
+                onMoveLater={() => move("tiles", id, "later")}
+                onHide={() => hide("tiles", id)}
+                buttonRef={(action) => buttonRef(`tiles:${id}:${action}`)}
+              >
+                {tiles[id]}
+              </EyeonArrangeFrame>
+            ))}
+          </div>
+        </EyeonArrangeZone>
+      ) : null}
+
+      {shownCards.length > 0 ? (
+        <EyeonArrangeZone
+          ids={shownCards}
+          nameOf={(id) => nameOf("cards", id)}
+          onDrop={(id, target) => drop("cards", id, target)}
+        >
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            {shownCards.map((id, index) => (
+              <EyeonArrangeFrame
+                key={id}
+                id={id}
+                name={EYEON_HOME_CARD_NAMES[id]}
+                place={index + 1}
+                count={shownCards.length}
+                arranging={arranging}
+                span={spans.get(id)}
+                onMoveEarlier={() => move("cards", id, "earlier")}
+                onMoveLater={() => move("cards", id, "later")}
+                onHide={() => hide("cards", id)}
+                buttonRef={(action) => buttonRef(`cards:${id}:${action}`)}
+              >
+                {cards[id]}
+              </EyeonArrangeFrame>
+            ))}
+          </div>
+        </EyeonArrangeZone>
+      ) : null}
+
+      {shownTiles.length === 0 && shownCards.length === 0 ? (
+        <p className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
+          Everything on this page is hidden.{" "}
+          {arranging
+            ? "Show tiles and cards again from the hidden list, or reset to default."
+            : "Use Arrange to show tiles and cards again."}
+        </p>
+      ) : null}
     </div>
   );
 }

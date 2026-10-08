@@ -196,6 +196,14 @@ export const env = createEnv({
       .enum(["true", "false"])
       .optional()
       .default("false"),
+    // ACME addition (CHG-2026-136, ADR-0028): EYEON Home. The project home
+    // shows the EYEON overview to the roles that can open it; it needs
+    // CAIRO_EYEON_OVERVIEW_ENABLED as well. SERVER-ONLY, no NEXT_PUBLIC_
+    // form. Default off: Home is the classic dashboard, as before.
+    CAIRO_EYEON_HOME_ENABLED: z
+      .enum(["true", "false"])
+      .optional()
+      .default("false"),
     NEXTAUTH_SECRET:
       process.env.NODE_ENV === "production"
         ? z.string().min(1)
@@ -956,6 +964,7 @@ export const env = createEnv({
       process.env.CAIRO_EYEON_GUARDRAIL_DECISIONS_ENABLED,
     CAIRO_EYEON_ENFORCEMENT_ENABLED:
       process.env.CAIRO_EYEON_ENFORCEMENT_ENABLED,
+    CAIRO_EYEON_HOME_ENABLED: process.env.CAIRO_EYEON_HOME_ENABLED,
     SEED_SECRET_KEY: process.env.SEED_SECRET_KEY,
     NEXT_PUBLIC_DEMO_PROJECT_ID: process.env.NEXT_PUBLIC_DEMO_PROJECT_ID,
     NEXT_PUBLIC_DEMO_ORG_ID: process.env.NEXT_PUBLIC_DEMO_ORG_ID,

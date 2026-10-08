@@ -1,7 +1,8 @@
 /**
  * ACME (CHG-2026-132, ADR-0027): the EYEON overview, the first EYEON-native
  * page. One query for the page (`summary`) and one for its navigation entry
- * (`status`), both read-only.
+ * (`status`), both read-only. CHG-2026-136 (ADR-0028) adds `homeStatus`:
+ * whether the project home shows the overview, read the same way.
  *
  * Who sees it: the Applications page's rule, llmGateway:read (Owner, Admin)
  * or evidence:read (Auditor); spend only with llmGatewaySpend:read. Behind
@@ -53,6 +54,11 @@ function overviewEnabled(): boolean {
   return env.CAIRO_EYEON_OVERVIEW_ENABLED === "true";
 }
 
+/** EYEON Home needs the overview: one flag on without the other is off. */
+function homeEnabled(): boolean {
+  return env.CAIRO_EYEON_HOME_ENABLED === "true" && overviewEnabled();
+}
+
 export const eyeonOverviewRouter = createTRPCRouter({
   /**
    * Whether the overview is switched on, for the navigation entry. The flag
@@ -64,6 +70,20 @@ export const eyeonOverviewRouter = createTRPCRouter({
     .query(({ ctx, input }) => {
       throwIfNoneOf(ctx.session, input.projectId, APPLICATIONS_READ_SCOPES);
       return { enabled: overviewEnabled() };
+    }),
+
+  /**
+   * CHG-2026-136 (ADR-0028): whether the project home shows the overview, for
+   * the home page. True only while CAIRO_EYEON_HOME_ENABLED and
+   * CAIRO_EYEON_OVERVIEW_ENABLED are both on. Under the overview's own
+   * access rule, so only a role that can open the overview gets it as Home.
+   * Reads no database.
+   */
+  homeStatus: protectedProjectProcedure
+    .input(z.object({ projectId: z.string() }))
+    .query(({ ctx, input }) => {
+      throwIfNoneOf(ctx.session, input.projectId, APPLICATIONS_READ_SCOPES);
+      return { enabled: homeEnabled() };
     }),
 
   summary: protectedProjectProcedure
