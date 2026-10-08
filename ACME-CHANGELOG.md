@@ -7047,3 +7047,26 @@ The existing 25 now run with a person and a 1920-pixel window, and the layout ch
 Existing tests pass unchanged: the top bar (18), the app shell chrome row (4), the EYEON rail (11) and its model (25).
 
 ESLint (no warnings) and Prettier pass on every changed code file. Fresh typecheck passed with only the 2 tolerated Enterprise-file errors.
+
+## 2026-10-08 — Telemetry off at the source (CHG-2026-144)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-144 · owner: Anees Ur Rahman · Tier 2 |
+| **ADR** | None (build and tooling hygiene; no behaviour change) |
+| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
+| **Impact** | None on screen. Stops anonymous usage data leaving developer machines, the registry builds and the running containers |
+| **Schema change** | None |
+| **Rollback** | Revert the commit; the next image build carries the previous settings |
+
+**What:** the owner, on 2026-10-08: "Turn it off completely to ensure no restart of system will turn-on the telemetry". Each tool is switched off where it is configured, so no restart, new machine or rebuild turns it back on:
+- **Storybook:** `core.disableTelemetry` and `core.enableCrashReports: false` in the committed `web/.storybook/main.ts`, so every `storybook dev` and `storybook build`, on any machine or in CI, sends nothing. A local Storybook start earlier that day had announced its telemetry before it was stopped and restarted with telemetry off.
+- **Turborepo:** `TURBO_TELEMETRY_DISABLED=1` on the base stage of the web and worker images, so `turbo prune` and `turbo run build` in the registry build send nothing.
+- **Prisma's update check:** `CHECKPOINT_DISABLE=1` on the same base stage. The web container runs `prisma migrate deploy` at every start, which otherwise contacts Prisma's update-check service.
+- **Anything else that honours it:** `DO_NOT_TRACK=1` on the same stage.
+- **Already off, unchanged:** Next.js telemetry (`NEXT_TELEMETRY_DISABLED=1`, build and runtime stages of the web image).
+
+**Release:** the image settings take effect with the next web and worker image builds; the Storybook setting with the next local or CI run. No migration, no runtime setting on the cluster.
+
+**Checks:** ESLint and Prettier clean on the Storybook config. The Dockerfiles change only by three `ENV` lines on their first stage.

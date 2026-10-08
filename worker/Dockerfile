@@ -4,6 +4,14 @@ FROM node:24-alpine AS alpine
 # It's important to update the index before installing packages to ensure you're getting the latest versions.
 # Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
 RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libc6-compat busybox ssl_client zlib
+# ACME (CHG-2026-144): no anonymous usage data leaves the image build or the
+# running container. Set on the base stage, so every later stage inherits it:
+# Turborepo's telemetry (prune and build), Prisma's update check (whenever a
+# Prisma CLI command runs, as in the build's client generation) and any tool
+# that honours DO_NOT_TRACK.
+ENV TURBO_TELEMETRY_DISABLED=1
+ENV CHECKPOINT_DISABLE=1
+ENV DO_NOT_TRACK=1
 
 FROM alpine AS build-base
 # Pin turbo to avoid nondeterministic prune output from future patch releases.
