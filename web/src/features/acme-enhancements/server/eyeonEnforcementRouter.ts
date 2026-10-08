@@ -19,10 +19,17 @@
  * the judge's no-verdict rate over 24 hours; the guardrail pods' reported
  * settings versions; and the mode each gateway replica reported with its
  * latest decision in this project. No prompt or answer text, redacted text,
- * personal-data findings, encrypted content or token hash is read; who
- * changed a setting and the reason given are read with the settings history
- * but never returned. The tests assert on every select, group and SQL
- * statement. The figures are shaped in eyeonEnforcement.ts.
+ * personal-data findings, encrypted content or token hash is read. The tests
+ * assert on every select, group and SQL statement. The figures are shaped in
+ * eyeonEnforcement.ts.
+ *
+ * Owner decisions of 2026-10-07 (CHG-2026-138 follow-up):
+ * - who changed the mode and the reason given are returned as the Guardrails
+ *   page shows them to the same viewer: an automatic switch-back says so; a
+ *   person's email only to the deployment's guardrail administrators
+ *   (SF-2026-018), otherwise "a guardrail administrator"; never the user id;
+ * - the guardrail pods are counted, never named: the pod name column is not
+ *   read, as the gateway replicas' names are never returned.
  */
 import { z } from "zod";
 import { AcmeGuardrailEventAction, Prisma } from "@langfuse/shared/src/db";
@@ -170,17 +177,18 @@ export const eyeonEnforcementRouter = createTRPCRouter({
           _count: { _all: true },
         }),
         judgeAvailability(ctx.prisma, { projectId, now }),
-        // Each guardrail pod's reported version: name, version and time
-        // only, the latest first, at most the Guardrails page's number.
+        // Each guardrail pod's reported version and time, the latest first,
+        // at most the Guardrails page's number. Counted, never named: the
+        // pod name column is not read (owner decision, 2026-10-07).
         ctx.prisma.acmeGuardrailSettingsPod.findMany({
           where: {
             lastSyncAt: {
               gte: new Date(now.getTime() - POD_WINDOW_HOURS * 3_600_000),
             },
           },
-          orderBy: [{ lastSyncAt: "desc" }, { pod: "asc" }],
+          orderBy: { lastSyncAt: "desc" },
           take: MAX_LISTED_PODS,
-          select: { pod: true, appliedVersion: true, lastSyncAt: true },
+          select: { appliedVersion: true, lastSyncAt: true },
         }),
         // The mode each gateway replica reported with its latest decision in
         // this project (the Guardrails page's own aggregation, last 24
@@ -188,17 +196,27 @@ export const eyeonEnforcementRouter = createTRPCRouter({
         listReportingGateways(ctx.prisma, { projectId, now }),
       ]);
 
-      const mode = enforcementMode(settings, changes, now, ceiling);
+      // One of the deployment's guardrail administrators, by the Guardrails
+      // page's rule (getConfig). Such a viewer sees the email of the person
+      // who changed the mode, as on that page (SF-2026-018); nobody else does.
+      const isGuardrailAdmin = canEditGuardrailSettings({
+        email: ctx.session.user.email,
+        rawAdminList: env.CAIRO_GUARDRAIL_ADMINS,
+        signupClosed: selfSignupClosed(env),
+      });
+      const mode = enforcementMode(
+        settings,
+        changes,
+        now,
+        ceiling,
+        isGuardrailAdmin,
+      );
       const decisions = decisionTotals(groups);
 
       // Display only: say whether this viewer could make the change on the
       // Guardrails page, by the rule that page applies (getConfig).
       const viewerCanSwitch =
-        canEditGuardrailSettings({
-          email: ctx.session.user.email,
-          rawAdminList: env.CAIRO_GUARDRAIL_ADMINS,
-          signupClosed: selfSignupClosed(env),
-        }) &&
+        isGuardrailAdmin &&
         mayCallProjectProcedure({
           projectRole: ctx.session.projectRole,
           procedurePath: SET_MODE_PROCEDURE,
@@ -213,7 +231,7 @@ export const eyeonEnforcementRouter = createTRPCRouter({
         decisions,
         daily: dailyModes(dailyFrom, input.windowDays, dailyRows),
         history: {
-          ...modeHistory(changes, since, MODE_CHANGES_SHOWN),
+          ...modeHistory(changes, since, MODE_CHANGES_SHOWN, isGuardrailAdmin),
           limit: MODE_CHANGES_SHOWN,
         },
         trial: {

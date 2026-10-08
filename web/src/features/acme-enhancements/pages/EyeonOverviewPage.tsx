@@ -39,6 +39,7 @@ import {
 } from "@/src/features/acme-enhancements/components/eyeon/EyeonArrange";
 import {
   budgetPeriodLabel,
+  changedByText,
   formatRate,
   formatShare,
   interventionLabel,
@@ -73,6 +74,10 @@ import { useEyeonHomeLayout } from "@/src/features/acme-enhancements/utils/useEy
 // cards among the cards, hide and show them, and reset. The arrangement is
 // kept in this browser only and only orders what the page already has: it
 // fetches nothing and shows no role anything it could not see before.
+//
+// CHG-2026-138 follow-up (owner decision, 2026-10-07): the enforcement
+// card's last change of mode says who made it and why, worded as on the
+// Guardrails page (changedByText).
 
 type Summary = Extract<
   RouterOutputs["eyeonOverview"]["summary"],
@@ -729,9 +734,16 @@ function EnforcementCard({
         <dt className="text-muted-foreground">Last change</dt>
         <dd>
           {lastChange
-            ? `To ${lastChange.to === "enforce" ? "Enforce" : "Record"}, ${new Date(lastChange.at).toLocaleString()}${lastChange.automatic ? " (automatic switch-back)" : ""}`
+            ? `To ${lastChange.to === "enforce" ? "Enforce" : "Record"}, ${new Date(lastChange.at).toLocaleString()}, by ${changedByText(lastChange)}`
             : "No change of mode recorded"}
         </dd>
+        {lastChange ? (
+          <>
+            <dt className="text-muted-foreground">Reason</dt>
+            {/* Plain text as typed at save time, never rendered as HTML. */}
+            <dd className="min-w-0 break-words">“{lastChange.reason}”</dd>
+          </>
+        ) : null}
         {trialEndsAt ? (
           <>
             <dt className="text-muted-foreground">Switches back</dt>

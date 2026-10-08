@@ -17,6 +17,12 @@
  * mode history. No prompt or answer text, redacted text, personal-data
  * findings or encrypted content is read; the tests assert on every select,
  * group and SQL statement. The figures are shaped in eyeonOverview.ts.
+ *
+ * The last change of mode says who made it and the reason given (owner
+ * decision, 2026-10-07), as the Guardrails page shows them: an automatic
+ * switch-back says so; a person's email only to the deployment's guardrail
+ * administrators (SF-2026-018), otherwise "a guardrail administrator"; never
+ * the user id.
  */
 import { z } from "zod";
 import { Prisma } from "@langfuse/shared/src/db";
@@ -33,10 +39,12 @@ import {
 } from "@/src/features/acme-enhancements/server/acmeApplicationsRouter";
 import {
   EVENT_FUTURE_SKEW_MS,
+  canEditGuardrailSettings,
   getCurrentSettings,
   judgeAvailability,
   listModeChanges,
   parseModeCeiling,
+  selfSignupClosed,
 } from "@/src/features/acme-enhancements/server/acmeGuardrailSettings";
 import { trendStart } from "@/src/features/acme-enhancements/server/acmeApplicationScorecard";
 import {
@@ -156,6 +164,14 @@ export const eyeonOverviewRouter = createTRPCRouter({
 
       const settings = scorecards ? scorecards.settings : settingsAlone;
       const summary = scorecards?.summary;
+      // Who made the last change of mode is shown as on the Guardrails page
+      // (getConfig): the person's email to the deployment's guardrail
+      // administrators only (SF-2026-018).
+      const isGuardrailAdmin = canEditGuardrailSettings({
+        email: ctx.session.user.email,
+        rawAdminList: env.CAIRO_GUARDRAIL_ADMINS,
+        signupClosed: selfSignupClosed(env),
+      });
 
       return {
         enabled: true as const,
@@ -167,6 +183,7 @@ export const eyeonOverviewRouter = createTRPCRouter({
           changes,
           now,
           parseModeCeiling(env.CAIRO_GUARDRAIL_MODE_MAX),
+          isGuardrailAdmin,
         ),
         decisions: decisionTotals(groups),
         daily: dailyDecisions(dailyFrom, input.windowDays, dailyRows),

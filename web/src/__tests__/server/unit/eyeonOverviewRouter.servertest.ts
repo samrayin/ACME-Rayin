@@ -12,12 +12,18 @@ import {
 } from "@/src/server/api/trpc";
 import { eyeonOverviewRouter } from "@/src/features/acme-enhancements/server/eyeonOverviewRouter";
 import { acmeApplicationsRouter } from "@/src/features/acme-enhancements/server/acmeApplicationsRouter";
+import { acmeGuardrailsRouter } from "@/src/features/acme-enhancements/server/acmeGuardrailsRouter";
 
 // CHG-2026-132 (ADR-0027): the EYEON overview's access rules and reads,
 // against a mocked Prisma. A role without the page's scopes is refused before
 // the database is touched; with the flag off nothing is read; spend is absent
 // without its scope; no content column is ever selected, grouped or queried;
 // the number of reads does not grow with the data.
+//
+// CHG-2026-138 follow-up (owner decision, 2026-10-07): the enforcement card's
+// last change of mode says who made it and the reason given, to every role
+// that may open the overview, exactly as the Guardrails page shows them (the
+// email to guardrail administrators only, never the user id).
 
 const PROJECT = "proj-eyeon-overview";
 const ORG = "org-eyeon-overview";
@@ -37,15 +43,16 @@ const CONTENT_SQL =
 const router = createTRPCRouter({
   eyeonOverview: eyeonOverviewRouter,
   acmeApplications: acmeApplicationsRouter,
+  acmeGuardrails: acmeGuardrailsRouter,
 });
 
-function sessionFor(role: string): Session {
+function sessionFor(role: string, email: string | null = null): Session {
   return {
     expires: "1",
     user: {
       id: `user-${role}`,
       name: role,
-      email: null,
+      email,
       canCreateOrganizations: false,
       admin: false,
       featureFlags: {},
@@ -111,7 +118,8 @@ function keyRow(lineage: string, alias: string, generation: number) {
 const KEY_ROWS = [keyRow("lineage-1", V1, 1), keyRow("lineage-1", V2, 2)];
 
 // Settings versions, ascending: the seeded record version, then a switch to
-// enforce by a person whose id and reason must never reach the page.
+// enforce by a person. The reason is shown; the person's id never, and their
+// email to guardrail administrators only.
 const SETTINGS_ROWS = [
   {
     version: 1,
@@ -132,9 +140,9 @@ const SETTINGS_ROWS = [
     piiEntities: ["EMAIL_ADDRESS"],
     jailbreakEnabled: true,
     topicalEnabled: true,
-    reason: "SECRET-REASON for the switch",
+    reason: "Reason typed for the switch",
     createdBy: "SECRET-USER-ID",
-    createdByEmail: null,
+    createdByEmail: "EDITOR-EMAIL",
     createdAt: new Date("2026-10-05T09:00:00.000Z"),
     revertAt: null,
     automatic: false,
@@ -233,9 +241,9 @@ function fakePrisma(keys: object[] = KEY_ROWS) {
   };
 }
 
-function rootCallerFor(role: string, db: object) {
+function rootCallerFor(role: string, db: object, email: string | null = null) {
   const ctx = createInnerTRPCContext({
-    session: sessionFor(role),
+    session: sessionFor(role, email),
     headers: {},
   });
   return router.createCaller({
@@ -244,14 +252,22 @@ function rootCallerFor(role: string, db: object) {
   });
 }
 
-function callerFor(role: string, db: object = explodingPrisma) {
-  return rootCallerFor(role, db).eyeonOverview;
+function callerFor(
+  role: string,
+  db: object = explodingPrisma,
+  email: string | null = null,
+) {
+  return rootCallerFor(role, db, email).eyeonOverview;
 }
 
 const INPUT_7 = { projectId: PROJECT, windowDays: 7 as const };
 
-async function enabledSummary(role: string, db = fakePrisma()) {
-  const result = await callerFor(role, db).summary(INPUT_7);
+async function enabledSummary(
+  role: string,
+  db = fakePrisma(),
+  email: string | null = null,
+) {
+  const result = await callerFor(role, db, email).summary(INPUT_7);
   if (!result.enabled) throw new Error("expected the overview to be enabled");
   return { result, db };
 }
@@ -262,12 +278,15 @@ describe("EYEON overview: access and reads (CHG-2026-132)", () => {
     overview: envRecord.CAIRO_EYEON_OVERVIEW_ENABLED,
     gateway: envRecord.CAIRO_LITELLM_MANAGEMENT_ENABLED,
     ceiling: envRecord.CAIRO_GUARDRAIL_MODE_MAX,
+    admins: envRecord.CAIRO_GUARDRAIL_ADMINS,
+    signup: envRecord.AUTH_DISABLE_SIGNUP,
   };
 
   beforeEach(() => {
     envRecord.CAIRO_EYEON_OVERVIEW_ENABLED = "true";
     envRecord.CAIRO_LITELLM_MANAGEMENT_ENABLED = "true";
     envRecord.CAIRO_GUARDRAIL_MODE_MAX = "enforce";
+    envRecord.CAIRO_GUARDRAIL_ADMINS = undefined;
     touched.mockClear();
   });
 
@@ -275,6 +294,8 @@ describe("EYEON overview: access and reads (CHG-2026-132)", () => {
     envRecord.CAIRO_EYEON_OVERVIEW_ENABLED = original.overview;
     envRecord.CAIRO_LITELLM_MANAGEMENT_ENABLED = original.gateway;
     envRecord.CAIRO_GUARDRAIL_MODE_MAX = original.ceiling;
+    envRecord.CAIRO_GUARDRAIL_ADMINS = original.admins;
+    envRecord.AUTH_DISABLE_SIGNUP = original.signup;
   });
 
   it.each(["MEMBER", "VIEWER", "NONE", "SECURITY", "ANALYST"])(
@@ -392,7 +413,7 @@ describe("EYEON overview: access and reads (CHG-2026-132)", () => {
     });
   });
 
-  it("shows the served mode with its ceiling, and the last change without who made it", async () => {
+  it("shows the served mode with its ceiling, and the last change with who made it and why", async () => {
     const { result } = await enabledSummary("AUDITOR");
     expect(result.mode).toEqual({
       mode: "enforce",
@@ -402,6 +423,10 @@ describe("EYEON overview: access and reads (CHG-2026-132)", () => {
         at: "2026-10-05T09:00:00.000Z",
         to: "enforce",
         automatic: false,
+        // Not a guardrail administrator: no email, as on the Guardrails
+        // page, so the card says "a guardrail administrator".
+        createdByEmail: null,
+        reason: "Reason typed for the switch",
       },
     });
     const json = JSON.stringify(result);
@@ -424,6 +449,98 @@ describe("EYEON overview: access and reads (CHG-2026-132)", () => {
     const { result } = await enabledSummary("OWNER", db);
     expect(result.mode).toMatchObject({ mode: null, lastChange: null });
   });
+
+  it.each(["OWNER", "ADMIN", "AUDITOR"])(
+    "returns who made the last change and the reason given to %s, and nothing else about the person",
+    async (role) => {
+      const { result } = await enabledSummary(role);
+      expect(result.mode.lastChange).toMatchObject({
+        automatic: false,
+        createdByEmail: null,
+        reason: "Reason typed for the switch",
+      });
+      const json = JSON.stringify(result.mode);
+      expect(json).not.toContain("SECRET-USER-ID");
+      expect(json).not.toContain("EDITOR-EMAIL");
+      expect(json).not.toMatch(/"createdBy"|"userId"/);
+    },
+  );
+
+  it("gives a guardrail administrator the person's email, as the Guardrails page does, never the user id", async () => {
+    envRecord.CAIRO_GUARDRAIL_ADMINS = "guardrail-admin";
+    envRecord.AUTH_DISABLE_SIGNUP = "true";
+    for (const role of ["OWNER", "AUDITOR"]) {
+      const { result } = await enabledSummary(
+        role,
+        fakePrisma(),
+        "guardrail-admin",
+      );
+      expect(result.mode.lastChange?.createdByEmail).toBe("EDITOR-EMAIL");
+      expect(JSON.stringify(result)).not.toMatch(/SECRET-USER-ID|"createdBy"/);
+    }
+    const other = await enabledSummary("ADMIN", fakePrisma(), "someone-else");
+    expect(other.result.mode.lastChange?.createdByEmail).toBeNull();
+    // A listed address while open sign-up is on is not an administrator.
+    envRecord.AUTH_DISABLE_SIGNUP = undefined;
+    const signupOpen = await enabledSummary(
+      "OWNER",
+      fakePrisma(),
+      "guardrail-admin",
+    );
+    expect(signupOpen.result.mode.lastChange?.createdByEmail).toBeNull();
+  });
+
+  it("says an automatic switch-back made the last change, instead of a person", async () => {
+    envRecord.CAIRO_GUARDRAIL_ADMINS = "guardrail-admin";
+    envRecord.AUTH_DISABLE_SIGNUP = "true";
+    const db = fakePrisma();
+    const automatic = {
+      ...SETTINGS_ROWS[1]!,
+      version: 3,
+      mode: "record",
+      reason: "Automatic switch-back to record",
+      createdBy: "automatic",
+      createdByEmail: null,
+      createdAt: new Date("2026-10-05T09:30:00.000Z"),
+      automatic: true,
+    };
+    db.acmeGuardrailSettings.findFirst.mockResolvedValue(automatic);
+    db.acmeGuardrailSettings.findMany.mockResolvedValue(
+      [...SETTINGS_ROWS, automatic].reverse(),
+    );
+    const { result } = await enabledSummary("OWNER", db, "guardrail-admin");
+    expect(result.mode.lastChange).toEqual({
+      at: "2026-10-05T09:30:00.000Z",
+      to: "record",
+      automatic: true,
+      createdByEmail: null,
+      reason: "Automatic switch-back to record",
+    });
+  });
+
+  it.each([
+    ["OWNER", null],
+    ["AUDITOR", null],
+    ["OWNER", "guardrail-admin"],
+    ["AUDITOR", "guardrail-admin"],
+  ] as const)(
+    "shows %s (email %s) who and why exactly as the Guardrails page's mode changes do",
+    async (role, email) => {
+      envRecord.CAIRO_GUARDRAIL_ADMINS = "guardrail-admin";
+      envRecord.AUTH_DISABLE_SIGNUP = "true";
+      const { result } = await enabledSummary(role, fakePrisma(), email);
+      const [newest] = await rootCallerFor(
+        role,
+        fakePrisma(),
+        email,
+      ).acmeGuardrails.modeChanges({ projectId: PROJECT });
+      expect(result.mode.lastChange).toMatchObject({
+        automatic: newest?.automatic,
+        createdByEmail: newest?.createdByEmail,
+        reason: newest?.reason,
+      });
+    },
+  );
 
   it("rates no applications and shows no spend while gateway management is off", async () => {
     envRecord.CAIRO_LITELLM_MANAGEMENT_ENABLED = "false";

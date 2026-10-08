@@ -13,7 +13,6 @@ import {
   policiesInForce,
 } from "@/src/features/acme-enhancements/server/eyeonEnforcement";
 import {
-  ageText,
   changeTitle,
   enforcementHeadline,
   formatMinutes,
@@ -24,9 +23,12 @@ import {
   podsHeadline,
   podsStatus,
 } from "@/src/features/acme-enhancements/utils/eyeonEnforcementLabels";
+import { changedByText } from "@/src/features/acme-enhancements/utils/eyeonOverviewLabels";
 
 // CHG-2026-138 (ADR-0027): the EYEON Enforcement and policy page's pure
-// functions: its figures and its wording.
+// functions: its figures and its wording. Follow-up (owner decisions,
+// 2026-10-07): who changed the mode and why are passed on as the Guardrails
+// page shows them, never the user id; the pods are counted, never named.
 
 const NOW = new Date("2026-10-07T12:00:00.000Z");
 const MIN = 60_000;
@@ -63,9 +65,9 @@ function change(
     previousMode,
     revertAt: null,
     automatic: false,
-    reason: "SECRET-REASON",
+    reason: `Reason typed for version ${version}`,
     createdBy: "SECRET-USER",
-    createdByEmail: "SECRET-EMAIL",
+    createdByEmail: "EDITOR-EMAIL",
     createdAt: new Date(NOW.getTime() - minutesAgo * MIN),
     ...extra,
   };
@@ -86,8 +88,32 @@ describe("enforcementMode", () => {
       storedMode: "enforce",
       cappedByCeiling: false,
       switchBackDue: false,
-      lastChange: { to: "enforce", automatic: false },
+      lastChange: {
+        to: "enforce",
+        automatic: false,
+        createdByEmail: null,
+        reason: "Reason typed for version 7",
+      },
     });
+    expect(JSON.stringify(m)).not.toMatch(/SECRET-|EDITOR-EMAIL|"createdBy"/);
+  });
+
+  it("names the person by email only for a guardrail administrator", () => {
+    const m = enforcementMode(
+      settings({ mode: "enforce" }),
+      [change(7, 60, "enforce", "record")],
+      NOW,
+      "enforce",
+      true,
+    );
+    expect(m.lastChange).toEqual({
+      at: new Date(NOW.getTime() - 60 * MIN).toISOString(),
+      to: "enforce",
+      automatic: false,
+      createdByEmail: "EDITOR-EMAIL",
+      reason: "Reason typed for version 7",
+    });
+    expect(JSON.stringify(m)).not.toContain("SECRET-USER");
   });
 
   it("serves a stored enforce as record under a record ceiling, and says so", () => {
@@ -184,7 +210,41 @@ describe("modeHistory", () => {
     expect(h.shown.map((r) => r.version)).toEqual([5, 3]);
     // Written by the automatic switch-back, by its creator marker.
     expect(h.shown[1]).toMatchObject({ automatic: true, from: "enforce" });
-    expect(JSON.stringify(h)).not.toContain("SECRET-");
+  });
+
+  it("says who and why as the Guardrails page does: no email by default, never the user id", () => {
+    const h = modeHistory(changes, NOW, 10);
+    expect(
+      h.shown.map((r) => [r.automatic, r.createdByEmail, r.reason]),
+    ).toEqual([
+      [false, null, "Reason typed for version 5"],
+      [true, null, "Reason typed for version 3"],
+      [false, null, "Reason typed for version 2"],
+    ]);
+    expect(JSON.stringify(h)).not.toMatch(/SECRET-|EDITOR-EMAIL|"createdBy"/);
+  });
+
+  it("gives a guardrail administrator the person's email, and none for an automatic change", () => {
+    const h = modeHistory(changes, NOW, 10, true);
+    expect(h.shown.map((r) => r.createdByEmail)).toEqual([
+      "EDITOR-EMAIL",
+      null,
+      "EDITOR-EMAIL",
+    ]);
+    expect(Object.keys(h.shown[0]!).sort()).toEqual(
+      [
+        "at",
+        "automatic",
+        "createdByEmail",
+        "from",
+        "inPeriod",
+        "reason",
+        "switchBackAt",
+        "to",
+        "version",
+      ].sort(),
+    );
+    expect(JSON.stringify(h)).not.toContain("SECRET-USER");
   });
 
   it("gives a trial its switch-back time", () => {
@@ -244,60 +304,73 @@ describe("podAgreement", () => {
   it("agrees when every reporting pod is on the version in force; stale pods are not counted", () => {
     const p = podAgreement(
       [
-        { pod: "pod-b", appliedVersion: 7, lastSyncAt: at(10) },
-        { pod: "pod-old", appliedVersion: 6, lastSyncAt: at(600) },
-        { pod: "pod-a", appliedVersion: 7, lastSyncAt: at(120) },
+        { appliedVersion: 7, lastSyncAt: at(10) },
+        { appliedVersion: 6, lastSyncAt: at(600) },
+        { appliedVersion: 7, lastSyncAt: at(120) },
+      ],
+      7,
+      NOW,
+    );
+    expect(p).toEqual({
+      reporting: 2,
+      onCurrent: 2,
+      older: 0,
+      unknown: 0,
+      stale: 1,
+      currentVersion: 7,
+      staleAfterSeconds: 120,
+      agree: true,
+    });
+  });
+
+  it("disagrees on an older version or settings unknown, in counts", () => {
+    const p = podAgreement(
+      [
+        { appliedVersion: 7, lastSyncAt: at(5) },
+        { appliedVersion: null, lastSyncAt: at(5) },
+        { appliedVersion: 6, lastSyncAt: at(5) },
       ],
       7,
       NOW,
     );
     expect(p).toMatchObject({
-      reporting: 2,
-      onCurrent: 2,
-      stale: 1,
-      agree: true,
-      staleAfterSeconds: 120,
+      reporting: 3,
+      onCurrent: 1,
+      older: 1,
+      unknown: 1,
+      stale: 0,
+      agree: false,
     });
-    // Reporting pods by name, then stale ones.
-    expect(p.pods.map((x) => [x.name, x.status])).toEqual([
-      ["pod-a", "current"],
-      ["pod-b", "current"],
-      ["pod-old", "stale"],
-    ]);
   });
 
-  it("disagrees on an older version or settings unknown", () => {
-    const p = podAgreement(
+  it("never passes on a pod's name, even if a row carries one", () => {
+    // A careless read that returned the name column: nothing names a pod.
+    const rows = [
+      { pod: "guard-pod-SECRET-a", appliedVersion: 7, lastSyncAt: at(5) },
+      { pod: "guard-pod-SECRET-b", appliedVersion: 6, lastSyncAt: at(900) },
+    ];
+    const p = podAgreement(rows, 7, NOW);
+    expect(JSON.stringify(p)).not.toContain("guard-pod");
+    expect(Object.keys(p).sort()).toEqual(
       [
-        { pod: "pod-a", appliedVersion: 7, lastSyncAt: at(5) },
-        { pod: "pod-b", appliedVersion: null, lastSyncAt: at(5) },
-        { pod: "pod-c", appliedVersion: 6, lastSyncAt: at(5) },
-      ],
-      7,
-      NOW,
+        "agree",
+        "currentVersion",
+        "older",
+        "onCurrent",
+        "reporting",
+        "stale",
+        "staleAfterSeconds",
+        "unknown",
+      ].sort(),
     );
-    expect(p.pods.map((x) => x.status)).toEqual([
-      "current",
-      "unknown",
-      "older",
-    ]);
-    expect(p.agree).toBe(false);
   });
 
   it("has nothing to agree on without reporting pods or settings", () => {
     expect(
-      podAgreement(
-        [{ pod: "pod-old", appliedVersion: 7, lastSyncAt: at(900) }],
-        7,
-        NOW,
-      ).agree,
+      podAgreement([{ appliedVersion: 7, lastSyncAt: at(900) }], 7, NOW).agree,
     ).toBeNull();
     expect(
-      podAgreement(
-        [{ pod: "pod-a", appliedVersion: 7, lastSyncAt: at(5) }],
-        null,
-        NOW,
-      ).agree,
+      podAgreement([{ appliedVersion: 7, lastSyncAt: at(5) }], null, NOW).agree,
     ).toBeNull();
   });
 });
@@ -481,16 +554,23 @@ describe("the page's wording", () => {
     );
   });
 
-  it("formats lengths and ages", () => {
+  it("formats lengths", () => {
     expect(formatMinutes(5)).toBe("5 minutes");
     expect(formatMinutes(60)).toBe("1 hour");
     expect(formatMinutes(120)).toBe("2 hours");
     expect(formatMinutes(90)).toBe("90 minutes");
-    expect(ageText(40)).toBe("40 s ago");
-    expect(ageText(600)).toBe("10 min ago");
-    expect(ageText(7200)).toBe("2 h ago");
-    expect(ageText(3 * 86_400)).toBe("3 d ago");
-    expect(ageText(-5)).toBe("0 s ago");
+  });
+
+  it("says who made a change as the Guardrails page does", () => {
+    expect(changedByText({ automatic: true, createdByEmail: null })).toBe(
+      "the automatic switch-back",
+    );
+    expect(
+      changedByText({ automatic: false, createdByEmail: "EDITOR-EMAIL" }),
+    ).toBe("EDITOR-EMAIL");
+    expect(changedByText({ automatic: false, createdByEmail: null })).toBe(
+      "a guardrail administrator",
+    );
   });
 
   it("tells pod agreement in versions", () => {

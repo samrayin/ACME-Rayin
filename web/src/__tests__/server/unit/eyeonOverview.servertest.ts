@@ -145,15 +145,16 @@ describe("overviewMode", () => {
     mode: "record" | "enforce",
     at: string,
     automatic = false,
+    createdBy = "SECRET-USER-ID",
   ): GuardrailModeChange => ({
     version: 2,
     mode,
     previousMode: null,
     revertAt: null,
     automatic,
-    reason: "a reason",
-    createdBy: "someone",
-    createdByEmail: null,
+    reason: `Reason for ${mode} at ${at}`,
+    createdBy,
+    createdByEmail: automatic ? null : "EDITOR-EMAIL",
     createdAt: new Date(at),
   });
 
@@ -185,7 +186,7 @@ describe("overviewMode", () => {
     ).toMatchObject({ mode: "record", trialEndsAt: null });
   });
 
-  it("names the newest change, without who made it", () => {
+  it("names the newest change and its reason; an automatic switch-back says so", () => {
     const m = overviewMode(
       version("record"),
       [
@@ -194,13 +195,54 @@ describe("overviewMode", () => {
       ],
       now,
       "enforce",
+      true,
     );
     expect(m.lastChange).toEqual({
       at: "2026-10-05T09:30:00.000Z",
       to: "record",
       automatic: true,
+      createdByEmail: null,
+      reason: "Reason for record at 2026-10-05T09:30:00.000Z",
     });
-    expect(JSON.stringify(m)).not.toContain("someone");
+    expect(JSON.stringify(m)).not.toMatch(/SECRET-|"createdBy"/);
+  });
+
+  it("reads a switch-back by its creator marker, as the Guardrails page does", () => {
+    const m = overviewMode(
+      version("record"),
+      [change("record", "2026-10-05T09:30:00.000Z", false, "automatic")],
+      now,
+      "enforce",
+      true,
+    );
+    expect(m.lastChange).toMatchObject({
+      automatic: true,
+      createdByEmail: null,
+    });
+  });
+
+  it("gives the person's email to a guardrail administrator only, never the user id", () => {
+    const changes = [change("enforce", "2026-10-05T09:00:00.000Z")];
+    const viewer = overviewMode(version("enforce"), changes, now, "enforce");
+    expect(viewer.lastChange).toEqual({
+      at: "2026-10-05T09:00:00.000Z",
+      to: "enforce",
+      automatic: false,
+      createdByEmail: null,
+      reason: "Reason for enforce at 2026-10-05T09:00:00.000Z",
+    });
+    expect(JSON.stringify(viewer)).not.toMatch(
+      /SECRET-|EDITOR-EMAIL|"createdBy"/,
+    );
+    const admin = overviewMode(
+      version("enforce"),
+      changes,
+      now,
+      "enforce",
+      true,
+    );
+    expect(admin.lastChange?.createdByEmail).toBe("EDITOR-EMAIL");
+    expect(JSON.stringify(admin)).not.toContain("SECRET-");
   });
 });
 

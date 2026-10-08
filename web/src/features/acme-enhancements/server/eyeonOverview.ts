@@ -4,7 +4,8 @@
  * Pure functions only, so they are tested without a database; the router
  * (eyeonOverviewRouter.ts) does the reads. Every input here is metadata:
  * counts of guardrail decisions by direction, verdict and the mode the
- * calling gateway reported, the guardrail settings' mode history, and the
+ * calling gateway reported, the guardrail settings' mode history (with who
+ * made the last change and why, shown as on the Guardrails page), and the
  * applications' scorecards. Nothing here sees prompt or answer text,
  * redacted text, personal-data findings or encrypted content.
  */
@@ -18,6 +19,7 @@ import {
   utcDay,
 } from "@/src/features/acme-enhancements/server/acmeApplicationScorecard";
 import {
+  AUTOMATIC_CREATOR,
   type GuardrailMode,
   type GuardrailModeChange,
   type GuardrailSettingsVersion,
@@ -144,6 +146,48 @@ export function dailyDecisions(
   return points;
 }
 
+/**
+ * Who made a recorded change of mode, and the reason given (owner decision,
+ * 2026-10-07, CHG-2026-138 follow-up), as the Guardrails page shows them to
+ * the same viewer (acmeGuardrailsRouter, modeChangeForDisplay).
+ */
+export type ModeChangeBy = {
+  /**
+   * Written by the automatic switch-back, not by a person: the page says so
+   * instead of naming anyone.
+   */
+  automatic: boolean;
+  /**
+   * The person's sign-in email, only for a viewer who is one of the
+   * deployment's guardrail administrators, as on the Guardrails page
+   * (security review SF-2026-018). Null for anyone else, where the page says
+   * "a guardrail administrator", and always null for an automatic change.
+   */
+  createdByEmail: string | null;
+  /**
+   * The reason typed at save time (for an automatic change, the
+   * switch-back's own). Plain text: the page never renders it as HTML.
+   */
+  reason: string;
+};
+
+/**
+ * Who made a change and why, for display. Nothing else about the person is
+ * passed on: never the user id, and the email only where the Guardrails page
+ * shows it (`showEmail`: the viewer is a guardrail administrator).
+ */
+export function modeChangeBy(
+  change: GuardrailModeChange,
+  showEmail: boolean,
+): ModeChangeBy {
+  const automatic = change.automatic || change.createdBy === AUTOMATIC_CREATOR;
+  return {
+    automatic,
+    createdByEmail: showEmail && !automatic ? change.createdByEmail : null,
+    reason: change.reason,
+  };
+}
+
 type OverviewMode = {
   /**
    * The mode EYEON serves now: the version in force, capped by the ceiling.
@@ -153,15 +197,21 @@ type OverviewMode = {
   ceiling: GuardrailMode;
   /** While an enforce trial is served: when it switches back to record. */
   trialEndsAt: string | null;
-  /** The newest recorded change of mode. Who made it is not returned. */
-  lastChange: { at: string; to: GuardrailMode; automatic: boolean } | null;
+  /** The newest recorded change of mode: when, to what, who and why. */
+  lastChange: ({ at: string; to: GuardrailMode } & ModeChangeBy) | null;
 };
 
+/**
+ * The mode now and its last change. `showEmail`: the viewer is one of the
+ * deployment's guardrail administrators (canEditGuardrailSettings), so the
+ * person's email is shown as on the Guardrails page; it defaults to no.
+ */
 export function overviewMode(
   settings: GuardrailSettingsVersion | null,
   changes: readonly GuardrailModeChange[],
   now: Date,
   ceiling: GuardrailMode,
+  showEmail = false,
 ): OverviewMode {
   const mode = settings ? servedMode(settings, now, ceiling) : null;
   const last = changes[changes.length - 1];
@@ -176,7 +226,7 @@ export function overviewMode(
       ? {
           at: last.createdAt.toISOString(),
           to: last.mode,
-          automatic: last.automatic,
+          ...modeChangeBy(last, showEmail),
         }
       : null,
   };

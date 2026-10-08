@@ -8,8 +8,13 @@
  * version each guardrail pod reports, the mode each gateway replica reported
  * with its latest decision, and counts of guardrail decisions by verdict,
  * policy label and reported mode. Nothing here sees prompt or answer text,
- * redacted text, personal-data findings or encrypted content, and nothing
- * here returns who changed a setting or the reason they gave.
+ * redacted text, personal-data findings or encrypted content.
+ *
+ * Owner decisions of 2026-10-07 (CHG-2026-138 follow-up):
+ * - who changed the mode and the reason given are shown, as the Guardrails
+ *   page shows them (modeChangeBy): never the user id, the email only to the
+ *   deployment's guardrail administrators;
+ * - the guardrail pods are counted, never named, as the gateway replicas are.
  *
  * The mode is the Guardrails page's own: the version in force, an ended
  * trial read as record, capped by the deployment ceiling (servedMode).
@@ -24,7 +29,11 @@ import {
   trialExpired,
 } from "@/src/features/acme-enhancements/server/acmeGuardrailSettings";
 import { utcDay } from "@/src/features/acme-enhancements/server/acmeApplicationScorecard";
-import { overviewMode } from "@/src/features/acme-enhancements/server/eyeonOverview";
+import {
+  type ModeChangeBy,
+  modeChangeBy,
+  overviewMode,
+} from "@/src/features/acme-enhancements/server/eyeonOverview";
 import {
   type ModeSplit,
   type RefusalType,
@@ -49,16 +58,18 @@ export type EnforcementMode = ReturnType<typeof overviewMode> & {
 /**
  * The mode EYEON serves now against its ceiling, as the Guardrails page and
  * the overview read it (overviewMode, servedMode), with the two cases where
- * the stored version and the served mode differ.
+ * the stored version and the served mode differ. `showEmail`: the viewer is
+ * one of the deployment's guardrail administrators (defaults to no).
  */
 export function enforcementMode(
   settings: GuardrailSettingsVersion | null,
   changes: readonly GuardrailModeChange[],
   now: Date,
   ceiling: GuardrailMode,
+  showEmail = false,
 ): EnforcementMode {
   return {
-    ...overviewMode(settings, changes, now, ceiling),
+    ...overviewMode(settings, changes, now, ceiling, showEmail),
     version: settings?.version ?? null,
     storedMode: settings?.mode ?? null,
     cappedByCeiling: settings
@@ -117,8 +128,12 @@ export function dailyModes(
 
 // ------------------------------------------------------------ mode history
 
-/** One recorded change of mode: when and to what, never who or why. */
-export type ModeChangeRow = {
+/**
+ * One recorded change of mode: when, to what, who and why (ModeChangeBy: an
+ * automatic switch-back says so; the email only for a guardrail
+ * administrator; never the user id).
+ */
+export type ModeChangeRow = ModeChangeBy & {
   version: number;
   at: string;
   /** The mode before; null for the first version stored. */
@@ -126,8 +141,6 @@ export type ModeChangeRow = {
   to: GuardrailMode;
   /** For an enforce trial: when it switches back to record. */
   switchBackAt: string | null;
-  /** Written by the automatic switch-back, not by a person. */
-  automatic: boolean;
   /** Made within the page's period. */
   inPeriod: boolean;
 };
@@ -135,12 +148,15 @@ export type ModeChangeRow = {
 /**
  * The recorded changes of mode, newest first, at most `limit` of them, and
  * how many fell in the period. `changes` is listModeChanges' output (oldest
- * first). Who made a change and the reason given are not passed on.
+ * first). Who made a change and the reason given are passed on as the
+ * Guardrails page shows them (modeChangeBy); `showEmail`: the viewer is one
+ * of the deployment's guardrail administrators (defaults to no).
  */
 export function modeHistory(
   changes: readonly GuardrailModeChange[],
   since: Date,
   limit: number,
+  showEmail = false,
 ): { shown: ModeChangeRow[]; inPeriod: number; total: number } {
   const rows = changes.map(
     (c): ModeChangeRow => ({
@@ -150,7 +166,7 @@ export function modeHistory(
       to: c.mode,
       switchBackAt:
         c.mode === "enforce" && c.revertAt ? c.revertAt.toISOString() : null,
-      automatic: c.automatic || c.createdBy === AUTOMATIC_CREATOR,
+      ...modeChangeBy(c, showEmail),
       inPeriod: c.createdAt.getTime() >= since.getTime(),
     }),
   );
@@ -224,34 +240,28 @@ export function lastTrial(
 
 // ------------------------------------------------------- guardrail pods
 
-/** A pod-status row: the pod's name, the version it applied, when it pulled. */
+/**
+ * A pod-status row as the page reads it: the version the pod applied and
+ * when it pulled. The pod's name is not read (owner decision, 2026-10-07).
+ */
 export type PodRow = {
-  pod: string;
   appliedVersion: number | null;
   lastSyncAt: Date;
 };
 
-export type PodStatus =
-  /** Reported within the stale window, on the version in force. */
-  | "current"
-  /** Reported within the stale window, on another version. */
-  | "older"
-  /** Reported within the stale window, before its first settings ("settings unknown"). */
-  | "unknown"
-  /** No report within the stale window: its settings cannot be confirmed. */
-  | "stale";
-
+/**
+ * The guardrail pods' agreement, as counts only: the pods are counted,
+ * never named, as the gateway replicas are.
+ */
 export type PodAgreement = {
-  pods: {
-    name: string;
-    appliedVersion: number | null;
-    lastReportAt: string;
-    status: PodStatus;
-  }[];
   /** Pods that reported within the stale window. */
   reporting: number;
   /** Of those, the pods on the version in force. */
   onCurrent: number;
+  /** Of those, the pods on another version. */
+  older: number;
+  /** Of those, the pods that reported before their first settings. */
+  unknown: number;
   /** Pods that stopped reporting; not counted in the agreement. */
   stale: number;
   currentVersion: number | null;
@@ -267,7 +277,7 @@ export type PodAgreement = {
  * Whether the guardrail pods agree: each pod reports the settings version it
  * applied, and is stale after POD_STALE_AFTER_SECONDS without a report, as
  * on the Guardrails page (listReportingPods). A pod reports a version, not a
- * mode. Reporting pods first, by name; then stale ones, the latest first.
+ * mode. Counts only: nothing that names a pod is passed on.
  */
 export function podAgreement(
   rows: readonly PodRow[],
@@ -275,44 +285,23 @@ export function podAgreement(
   now: Date,
 ): PodAgreement {
   const cutoff = now.getTime() - POD_STALE_AFTER_SECONDS * 1000;
-  const pods = rows
-    .map((r) => {
-      const status: PodStatus =
-        r.lastSyncAt.getTime() < cutoff
-          ? "stale"
-          : r.appliedVersion === null
-            ? "unknown"
-            : r.appliedVersion === currentVersion
-              ? "current"
-              : "older";
-      return {
-        name: r.pod,
-        appliedVersion: r.appliedVersion,
-        lastReportAt: r.lastSyncAt.toISOString(),
-        status,
-      };
-    })
-    .sort((a, b) => {
-      const staleA = a.status === "stale" ? 1 : 0;
-      const staleB = b.status === "stale" ? 1 : 0;
-      if (staleA !== staleB) return staleA - staleB;
-      return staleA === 1
-        ? b.lastReportAt.localeCompare(a.lastReportAt)
-        : a.name.localeCompare(b.name);
-    });
-  const reporting = pods.filter((p) => p.status !== "stale").length;
-  const onCurrent = pods.filter((p) => p.status === "current").length;
+  const counts = { onCurrent: 0, older: 0, unknown: 0, stale: 0 };
+  for (const r of rows) {
+    if (r.lastSyncAt.getTime() < cutoff) counts.stale += 1;
+    else if (r.appliedVersion === null) counts.unknown += 1;
+    else if (r.appliedVersion === currentVersion) counts.onCurrent += 1;
+    else counts.older += 1;
+  }
+  const reporting = rows.length - counts.stale;
   return {
-    pods,
     reporting,
-    onCurrent,
-    stale: pods.length - reporting,
+    ...counts,
     currentVersion,
     staleAfterSeconds: POD_STALE_AFTER_SECONDS,
     agree:
       currentVersion === null || reporting === 0
         ? null
-        : onCurrent === reporting,
+        : counts.onCurrent === reporting,
   };
 }
 

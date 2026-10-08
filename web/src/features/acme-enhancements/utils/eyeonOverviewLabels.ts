@@ -83,3 +83,18 @@ export function budgetPeriodLabel(duration: string | null): string {
   const n = Number(match[1]);
   return n === 1 ? `per ${unit[0]}` : `per ${n} ${unit[1]}`;
 }
+
+/**
+ * Who made a recorded change of mode, in the Guardrails page's words, to
+ * follow "by": the automatic switch-back says so instead of a person; a
+ * person is named by sign-in email only where the server returned it (to
+ * the deployment's guardrail administrators), and is otherwise "a guardrail
+ * administrator". Shared by the overview and the Enforcement page.
+ */
+export function changedByText(change: {
+  automatic: boolean;
+  createdByEmail: string | null;
+}): string {
+  if (change.automatic) return "the automatic switch-back";
+  return change.createdByEmail ?? "a guardrail administrator";
+}
