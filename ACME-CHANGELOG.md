@@ -6842,3 +6842,50 @@ Nothing else about the person is returned: no user id, and no email to anyone th
 **Release:** web image only; no migration, setting or flag change.
 
 **Tests:** the Enforcement router (38, from 28; they need the separate fix above, and were run with a temporary local stand-in for `refusalsByType`, since removed): who and why returned to Owner, Admin, Security Analyst and Auditor, with no email, no user id and no other field about the person; the email returned to a listed guardrail administrator in those roles, and not to anyone else or while open sign-up is on; who and why equal to the Guardrails page's mode changes for four role and viewer pairs; the pod query selects only the version and report time and never names the pod column; no pod name in the response for any of the four roles, although the test's rows carry names. The Enforcement figures (29, from 24): who and why in the history and the last change, the email only for an administrator and never for an automatic change, pod counts with no name even when a row carries one, the Guardrails page's wording of who. The overview router (29, from 20) and figures (24, from 22): the same checks for the last change, an automatic switch-back included, and equal to the Guardrails page's mode changes. Client: the Enforcement page (17, from 14) and 5 new tests added to CHG-2026-136's overview test file: who in the Guardrails page's words, the email only where returned, the reason in quotation marks, an HTML-looking reason shown as literal text with no element created, pods as four counts with no table or name. Existing tests unchanged: every role without access refused before any read on both pages. Content-free roles (25) and the allow-list (36) pass, with no allow-list change. Fresh typecheck: the 2 tolerated Enterprise-file errors, plus the 2 missing-export errors that the separate fix resolves, and nothing else. ESLint with no warnings and Prettier on every changed code file.
+
+## 2026-10-08 — A resizable sidebar (CHG-2026-142)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-142 · owner: Anees Ur Rahman · Tier 1 |
+| **ADR** | [ADR-0026](acme-governance/adr/ADR-0026-adopting-the-eyeon-prototype.md) §12.4 (addendum) |
+| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
+| **Impact** | Client-visible on desktop: the sidebar's inner edge can be dragged to make the sidebar wider (up to 24rem) and back, and the page reflows with it. Nothing changes until a person drags: the default width (11.5rem) is unchanged, and a click on the edge still collapses the sidebar. No downtime |
+| **Schema change** | None |
+| **Rollback** | Redeploy the previous image (a stored width is then ignored) |
+| **Feature flag** | None: the default is unchanged until a person drags |
+
+**What:** the owner's instruction of 2026-10-08: "Should be able to resize the sidebar."
+- **Dragging:** on desktop, the edge of the sidebar that faces the page is a drag handle, between 11.5rem (today's width, which stays the default) and 24rem. It shows the resize cursor and a line on hover, on keyboard focus and while dragging. Escape during a drag puts the width back.
+- **A click still collapses the sidebar,** as upstream's rail on that edge did: a press that moves less than 3 pixels is a click, anything further is a drag. Collapsed, the edge is upstream's rail again (a click expands the sidebar) and cannot resize.
+- **The keyboard:** the edge is a focusable window splitter (`role="separator"`, vertical, named "Resize sidebar", with its current, smallest and largest width). Left and Right arrows change the width by 0.5rem, Home and End go to the narrowest and widest, and Enter resets it to the default.
+- **Kept in this browser only,** per person as the personal theme is (CHG-2026-074): one versioned localStorage key, `cairo.sidebarWidth.v1`, never sent to the server. Every read and write is guarded; a stored value that is not a number within the limits is ignored. The default is stored as nothing, so a reset leaves no trace. If the browser refuses storage, the width lasts until the page is reloaded.
+- **Where it applies:** desktop only. The phone's sidebar sheet keeps its own width (12rem) and has no handle, nor does a phone held sideways. The collapsed (icon) sidebar keeps its own width. With the EYEON rail on (CHG-2026-135), the category list beside the rail resizes the same way and the rail keeps its own width; the drag is measured from where it started, so the rail's left offset does not change it.
+- **First load:** the stored width is read on the sidebar provider's first render, so the sidebar opens at it with no flash; the authenticated layout renders only in the browser, so there is no server render to reconcile.
+
+**Why it matters:** the owner wants to be able to resize the sidebar, so long names fit, without changing anyone's sidebar who does not.
+
+**Choices:**
+- **The limits:** the minimum is today's width, because narrower is what collapsing is for; it also makes "drag all the way in" an exact return to the default. The maximum, about twice the default, fits long names while the page keeps most of a laptop screen (about 800 pixels of a 1280-pixel window, with the rail).
+- **The reset gesture is Enter, not a double-click:** a click on the edge already collapses the sidebar, so the first click of a double-click would collapse it; telling them apart would delay every collapse click. With a pointer, dragging the edge all the way in resets it.
+- **One edge, not two:** upstream's rail already used the edge for click-to-collapse. Rather than two strips side by side that look the same, the rail becomes the handle while expanded on desktop: drag resizes, click toggles.
+
+**Upstream sync (CHG-2026-100):** `sidebar.tsx` gets two imports and one branch at the top of `SidebarRail` (the handle inside EYEON's provider, on desktop, while expanded); its provider, widths and structure are unchanged. `AuthenticatedLayout.tsx` renders `EyeonSidebarProvider`, which wraps upstream's `SidebarProvider` and sets `--sidebar-width` through its own `style` prop, in place of `SidebarProvider`. Both are marked "ACME (CHG-2026-142)". The logic is in new files under `features/acme-enhancements/components/eyeon/shell/`. Tests fail if a sync drops the rail's hand-off to the handle, changes `SIDEBAR_WIDTH` from 11.5rem, or puts upstream's provider back in the layout.
+
+**Release:** web image only; no setting, flag or migration.
+
+**Tests:** 26 new pure-function tests (`sidebarWidth`): the limits; clamping, rounding to a pixel and non-numbers; what is accepted from storage and what gives the default; the half-rem steps and their stops; every key, including a right-docked sidebar and keys that do nothing; the drag, with the root font size and its fallback; the spoken value; storage kept, read, removed at the default, clamped, and never throwing when refused.
+
+25 new handle tests (`EyeonSidebarResizeHandle`):
+- the separator's role, name, values, description and focus; its cursor and lines; sidebar.tsx's own width and nothing stored until someone resizes;
+- the arrow keys, Home and End with their stops, Enter's reset leaving nothing stored, and other keys and modified keys ignored;
+- a live drag kept on release, with transitions and text selection off only while dragging; the threshold; the limits; Escape; the click after a drag not collapsing; a click still collapsing, and upstream's rail expanding it again; a sidebar that opens collapsed with no handle; listeners removed if the handle goes mid-drag;
+- the stored width on the very first render, bad stored values ignored, storage refused, nothing sent over the network;
+- no handle on a phone (the sheet keeps 12rem) or a phone held sideways, and upstream's rail unchanged outside EYEON's provider;
+- with the rail on, the list resizes while the rail keeps its width, offset and classes; with it off, the sidebar resizes the same way;
+- the upstream lines it relies on, in `sidebar.tsx`, `AuthenticatedLayout.tsx` and `AppSidebar.tsx`.
+
+Existing tests pass unchanged: the top bar (18), the EYEON rail (11) and its model (25), the sidebar per role (22), the app shell chrome row (4) and the sidebar navigation (7).
+
+ESLint (no warnings) and Prettier pass on every changed code file. Fresh typecheck passed with only the 2 tolerated Enterprise-file errors.

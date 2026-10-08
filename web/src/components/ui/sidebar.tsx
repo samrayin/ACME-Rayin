@@ -20,6 +20,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/src/components/ui/tooltip";
+// ACME (CHG-2026-142): the resizable sidebar's handle.
+import { useEyeonSidebarWidth } from "@/src/features/acme-enhancements/components/eyeon/shell/eyeonSidebarWidthContext";
+import { EyeonSidebarResizeHandle } from "@/src/features/acme-enhancements/components/eyeon/shell/EyeonSidebarResizeHandle";
 
 const SIDEBAR_STORAGE_KEY = "sidebar:state";
 const SIDEBAR_WIDTH = "11.5rem";
@@ -327,7 +330,19 @@ const SidebarRail = React.forwardRef<
   HTMLButtonElement,
   React.ComponentProps<"button">
 >(({ className, ...props }, ref) => {
-  const { toggleSidebar } = useSidebar();
+  const { toggleSidebar, state, isMobile } = useSidebar();
+  // ACME (CHG-2026-142): inside EYEON's provider, on desktop while expanded,
+  // the rail is also the resize handle: a drag resizes, a click still
+  // toggles. Collapsed, on a phone or elsewhere it stays upstream's rail.
+  const acmeSidebarWidth = useEyeonSidebarWidth();
+  if (acmeSidebarWidth?.resizable && state === "expanded" && !isMobile) {
+    return (
+      <EyeonSidebarResizeHandle
+        control={acmeSidebarWidth}
+        onToggle={toggleSidebar}
+      />
+    );
+  }
 
   return (
     <button
