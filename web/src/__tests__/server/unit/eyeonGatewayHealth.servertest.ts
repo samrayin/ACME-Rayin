@@ -16,10 +16,18 @@ import {
   healthView,
   latestFailures,
   limitRefusals,
+  ROUTE_APPLICATIONS_SHOWN,
   mirrorView,
+  modelRoutes,
   newestArrival,
   windowRange,
 } from "@/src/features/acme-enhancements/server/eyeonGatewayHealth";
+import {
+  ROUTE_GAP_PX,
+  ROUTE_GATEWAY_PX,
+  ROUTE_ROW_PX,
+  routeLayout,
+} from "@/src/features/acme-enhancements/utils/eyeonGatewayRouteGeometry";
 import {
   ERROR_CLASS,
   ERROR_CLASS_ORDER,
@@ -27,7 +35,7 @@ import {
   failedDelta,
   formatCallShare,
   formatDurationMs,
-  healthHeadline,
+  routeHeadline,
   utcTime,
 } from "@/src/features/acme-enhancements/utils/eyeonGatewayHealthLabels";
 import {
@@ -542,26 +550,136 @@ describe("the page's wording", () => {
     );
   });
 
-  it("answers the health question in one line, never as a trend", () => {
-    const counts = (total: number, healthy: number, unhealthy: number) => ({
+  it("answers the health question in one line, never as a trend, and says right now only while the check is fresh (CHG-2026-139 follow-up)", () => {
+    const counts = (
+      total: number,
+      healthy: number,
+      unhealthy: number,
+      fresh = true,
+    ) => ({
       checkedAt: NOW.toISOString(),
+      fresh,
       counts: { total, healthy, unhealthy },
     });
-    expect(healthHeadline(null)).toMatch(/switched off/);
+    expect(routeHeadline(null).rest).toMatch(/switched off/);
     expect(
-      healthHeadline({ checkedAt: null, counts: counts(0, 0, 0).counts }),
-    ).toBe("No model health check is recorded yet.");
-    expect(healthHeadline(counts(6, 4, 2))).toBe(
-      "2 of 6 models failed the last health check.",
+      routeHeadline({
+        checkedAt: null,
+        fresh: false,
+        counts: counts(0, 0, 0).counts,
+      }),
+    ).toEqual({ lead: null, rest: "No model health check is recorded yet." });
+    expect(routeHeadline(counts(6, 4, 2))).toEqual({
+      lead: "2 of 6 models",
+      rest: "are failing right now.",
+    });
+    expect(routeHeadline(counts(6, 5, 1))).toEqual({
+      lead: "1 of 6 models",
+      rest: "is failing right now.",
+    });
+    expect(routeHeadline(counts(6, 4, 2, false))).toEqual({
+      lead: "2 of 6 models",
+      rest: "failed the last health check.",
+    });
+    expect(routeHeadline(counts(6, 6, 0))).toEqual({
+      lead: null,
+      rest: "All 6 models answered the last health check.",
+    });
+    expect(routeHeadline(counts(3, 2, 0))).toEqual({
+      lead: null,
+      rest: "2 of 3 models answered the last health check.",
+    });
+  });
+});
+
+describe("which applications may call each model (CHG-2026-139 follow-up)", () => {
+  const key = (
+    lineage: string,
+    generation: number,
+    status: AcmeLitellmKeyStatus,
+    models: string[],
+    team: string | null = null,
+  ) => ({
+    lineageId: lineage,
+    generation,
+    displayName: `App ${lineage}`,
+    litellmKeyAlias: `${lineage}-${generation}`,
+    status,
+    models,
+    litellmTeamId: team,
+  });
+  const ACTIVE = AcmeLitellmKeyStatus.ACTIVE;
+
+  it("uses the current key's own list, else its team's, else every model", () => {
+    const routes = modelRoutes(
+      [
+        key("own", 1, ACTIVE, ["gpt-4o"]),
+        key("team", 1, ACTIVE, [], "t1"),
+        key("all", 1, ACTIVE, []),
+        key("catch-all", 1, ACTIVE, ["all-proxy-models"]),
+        // A rotated generation's list does not count; the active one's does.
+        key("rotated", 1, AcmeLitellmKeyStatus.ROTATED, ["claude-sonnet"]),
+        key("rotated", 2, ACTIVE, ["llama"]),
+        // No active key: not an application.
+        key("revoked", 1, AcmeLitellmKeyStatus.REVOKED, []),
+      ],
+      [{ id: "t1", models: ["claude-sonnet"] }],
+      ["gpt-4o", "claude-sonnet", "llama", "gemini-judge"],
     );
-    expect(healthHeadline(counts(6, 6, 0))).toBe(
-      "All 6 models answered the last health check.",
+    const names = (m: string) =>
+      routes.get(m)!.applications.map((a) => a.lineageId);
+    expect(names("gpt-4o")).toEqual(["all", "catch-all", "own"]);
+    expect(names("claude-sonnet")).toEqual(["all", "catch-all", "team"]);
+    expect(names("llama")).toEqual(["all", "catch-all", "rotated"]);
+    expect(routes.get("gemini-judge")).toEqual({
+      count: 2,
+      applications: [
+        { lineageId: "all", name: "App all" },
+        { lineageId: "catch-all", name: "App catch-all" },
+      ],
+    });
+  });
+
+  it("says no application routes to a model no key may call", () => {
+    const routes = modelRoutes(
+      [key("own", 1, ACTIVE, ["gpt-4o"])],
+      [],
+      ["gemini-judge"],
     );
-    expect(healthHeadline(counts(6, 4, 1))).toBe(
-      "1 of 6 models failed the last health check; 1 was not in the check.",
+    expect(routes.get("gemini-judge")).toEqual({ count: 0, applications: [] });
+  });
+
+  it("counts every application but names at most the first few, by name", () => {
+    const keys = Array.from({ length: ROUTE_APPLICATIONS_SHOWN + 4 }, (_, i) =>
+      key(`app-${String(i).padStart(2, "0")}`, 1, ACTIVE, []),
     );
-    expect(healthHeadline(counts(3, 2, 0))).toBe(
-      "2 of 3 models answered the last health check; 1 was not in the check.",
+    const r = modelRoutes(keys, [], ["gpt-4o"]).get("gpt-4o")!;
+    expect(r.count).toBe(ROUTE_APPLICATIONS_SHOWN + 4);
+    expect(r.applications).toHaveLength(ROUTE_APPLICATIONS_SHOWN);
+    expect(r.applications[0]?.lineageId).toBe("app-00");
+  });
+});
+
+describe("the route map's geometry (CHG-2026-139 follow-up)", () => {
+  it("centres the models on the gateway and ends each wire at its row's middle", () => {
+    const six = routeLayout(6);
+    // 6 rows of 64 px with 5 gaps of 8 px.
+    expect(six.height).toBe(6 * ROUTE_ROW_PX + 5 * ROUTE_GAP_PX);
+    expect(six.gatewayY).toBe(six.height / 2);
+    expect(six.wires.map((w) => w.y)).toEqual([32, 104, 176, 248, 320, 392]);
+    expect(six.wires[0]!.path).toBe(
+      `M 0 ${six.gatewayY} C 56 ${six.gatewayY} 56 32 112 32`,
     );
+    expect(six.wires[0]!.mid).toEqual({ x: 56, y: (six.gatewayY + 32) / 2 });
+  });
+
+  it("is never shorter than the gateway card, and centres a short list", () => {
+    const one = routeLayout(1);
+    expect(one.height).toBe(ROUTE_GATEWAY_PX);
+    expect(one.wires[0]!.y).toBe(ROUTE_GATEWAY_PX / 2);
+    expect(one.wires[0]!.path).toBe(
+      `M 0 ${ROUTE_GATEWAY_PX / 2} C 56 ${ROUTE_GATEWAY_PX / 2} 56 ${ROUTE_GATEWAY_PX / 2} 112 ${ROUTE_GATEWAY_PX / 2}`,
+    );
+    expect(routeLayout(0).wires).toEqual([]);
   });
 });

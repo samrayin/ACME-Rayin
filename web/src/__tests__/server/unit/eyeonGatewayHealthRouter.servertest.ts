@@ -118,6 +118,7 @@ function keyRow(
   alias: string,
   generation: number,
   status: AcmeLitellmKeyStatus,
+  routing: { models?: string[]; team?: string } = {},
 ) {
   return {
     id: `key-${alias}`,
@@ -127,14 +128,26 @@ function keyRow(
     litellmKeyAlias: alias,
     tokenHash: TOKEN_HASH,
     status,
+    models: routing.models ?? [],
+    litellmTeamId: routing.team ?? null,
   };
 }
+// CHG-2026-139 follow-up: lineage-1's current key has no model list of its
+// own and takes its team's (gpt-4o); lineage-2's key names claude-sonnet;
+// lineage-3 has no active key, so it is no application.
 const KEY_ROWS = [
-  keyRow("lineage-1", "claims-bot-1", 1, AcmeLitellmKeyStatus.ROTATED),
-  keyRow("lineage-1", "claims-bot-1-r2", 2, AcmeLitellmKeyStatus.ACTIVE),
-  keyRow("lineage-2", "hr-bot-1", 1, AcmeLitellmKeyStatus.ACTIVE),
+  keyRow("lineage-1", "claims-bot-1", 1, AcmeLitellmKeyStatus.ROTATED, {
+    models: ["claude-sonnet"],
+  }),
+  keyRow("lineage-1", "claims-bot-1-r2", 2, AcmeLitellmKeyStatus.ACTIVE, {
+    team: "team-a",
+  }),
+  keyRow("lineage-2", "hr-bot-1", 1, AcmeLitellmKeyStatus.ACTIVE, {
+    models: ["claude-sonnet"],
+  }),
   keyRow("lineage-3", "old-bot-1", 1, AcmeLitellmKeyStatus.REVOKED),
 ];
+const TEAM_ROWS = [{ id: "team-a", models: ["gpt-4o"], maxBudget: 50 }];
 
 function snapshotRow(minutesAgo = 2) {
   return {
@@ -232,6 +245,14 @@ function fakePrisma(opts: { rows?: number; keys?: object[] } = {}) {
         }) => Promise<unknown[]>
       >(async () => opts.keys ?? KEY_ROWS),
     },
+    acmeLitellmTeam: {
+      findMany: vi.fn<
+        (args: {
+          where: Record<string, unknown>;
+          select: Record<string, unknown>;
+        }) => Promise<unknown[]>
+      >(async () => TEAM_ROWS),
+    },
     acmeLitellmRequestLog: {
       groupBy: vi.fn<(args: GroupByArgs) => Promise<unknown[]>>(async (args) =>
         args.by.includes("errorClass")
@@ -307,6 +328,7 @@ function readCounts(db: ReturnType<typeof fakePrisma>) {
   return {
     snapshot: db.acmeLitellmSpendSnapshot.findUnique.mock.calls.length,
     keys: db.acmeLitellmKey.findMany.mock.calls.length,
+    teams: db.acmeLitellmTeam.findMany.mock.calls.length,
     groupBy: db.acmeLitellmRequestLog.groupBy.mock.calls.length,
     failedCalls: db.acmeLitellmRequestLog.findMany.mock.calls.length,
     reconcile: db.acmeLitellmReconcileRun.findFirst.mock.calls.length,
@@ -317,6 +339,7 @@ function readCounts(db: ReturnType<typeof fakePrisma>) {
 const ALL_READS = {
   snapshot: 1,
   keys: 1,
+  teams: 1,
   groupBy: 2,
   failedCalls: 1,
   reconcile: 1,
@@ -470,7 +493,7 @@ describe("EYEON Gateway health: access and reads (CHG-2026-139)", () => {
     expect(result.health).toMatchObject({ checkedAt: null, models: [] });
   });
 
-  it("counts applications from the keys, reading lineage, name, alias and status only", async () => {
+  it("counts applications from the keys, reading lineage, name, alias, status, models and team only", async () => {
     const { result, db } = await enabledSummary("AUDITOR");
     expect(result.applications).toBe(2);
     const [args] = db.acmeLitellmKey.findMany.mock.calls[0]!;
@@ -481,10 +504,36 @@ describe("EYEON Gateway health: access and reads (CHG-2026-139)", () => {
         "generation",
         "lineageId",
         "litellmKeyAlias",
+        "litellmTeamId",
+        "models",
         "status",
       ].sort(),
     );
+    const [teams] = db.acmeLitellmTeam.findMany.mock.calls[0]!;
+    expect(teams.where).toEqual({ projectId: PROJECT });
+    expect(Object.keys(teams.select).sort()).toEqual(["id", "models"]);
     expect(JSON.stringify(result)).not.toContain(TOKEN_HASH);
+  });
+
+  it("names, with each model, the applications whose current key may call it (CHG-2026-139 follow-up)", async () => {
+    const { result } = await enabledSummary("OWNER");
+    const routes = Object.fromEntries(
+      result.health!.models.map((m) => [m.model, m.routes]),
+    );
+    // lineage-1's current key takes its team's list (gpt-4o); its rotated
+    // generation's own list no longer counts. lineage-2 names claude-sonnet.
+    expect(routes).toEqual({
+      "claude-sonnet": {
+        count: 1,
+        applications: [{ lineageId: "lineage-2", name: "App lineage-2" }],
+      },
+      "gpt-4o": {
+        count: 1,
+        applications: [{ lineageId: "lineage-1", name: "App lineage-1" }],
+      },
+    });
+    // The routes carry names and lineages only: no key alias, no team id.
+    expect(JSON.stringify(routes)).not.toMatch(/claims-bot|hr-bot|team-a/);
   });
 
   it("adds up the failure analysis from the request log", async () => {
@@ -578,6 +627,7 @@ describe("EYEON Gateway health: access and reads (CHG-2026-139)", () => {
     expect(readCounts(db)).toEqual({
       snapshot: 0,
       keys: 0,
+      teams: 0,
       groupBy: 0,
       failedCalls: 0,
       reconcile: 0,

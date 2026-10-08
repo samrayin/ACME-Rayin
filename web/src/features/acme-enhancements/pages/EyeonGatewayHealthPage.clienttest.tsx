@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { type ReactNode } from "react";
 import EyeonGatewayHealthPage from "@/src/features/acme-enhancements/pages/EyeonGatewayHealthPage";
@@ -63,18 +63,30 @@ function summary(opts: { canCheckHealth: boolean; latest: boolean }) {
           providers: ["anthropic"],
           status: "unhealthy",
           cause: "keyOrCredit",
+          routes: {
+            count: 3,
+            applications: [
+              { lineageId: "lineage-1", name: "Claims bot" },
+              { lineageId: "lineage-2", name: "HR assistant" },
+            ],
+          },
         },
         {
           model: "gemini-judge",
           providers: ["gemini"],
           status: "unknown",
           cause: null,
+          routes: { count: 0, applications: [] },
         },
         {
           model: "gpt-4o",
           providers: ["openai"],
           status: "healthy",
           cause: null,
+          routes: {
+            count: 1,
+            applications: [{ lineageId: "lineage-1", name: "Claims bot" }],
+          },
         },
       ],
       counts: { total: 3, healthy: 1, unhealthy: 1, unknown: 1 },
@@ -173,27 +185,111 @@ describe("EYEON Gateway health page (CHG-2026-139)", () => {
     ).toHaveAttribute("href", "/project/p1/acme-enhancements/llm-gateway");
   });
 
-  it("answers the health question as a point in time, with every model's state in words", () => {
+  it("answers the health question as a point in time, as the prototype's route map, with every model's state in words (CHG-2026-139 follow-up)", () => {
     render(<EyeonGatewayHealthPage />);
     expect(
       screen.getByRole("heading", {
-        name: "1 of 3 models failed the last health check; 1 was not in the check.",
+        name: "1 of 3 models is failing right now.",
       }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /claude-sonnet: key or credit refused\. 1 model was not in the check\. The gateway answered the last check, and the request-log mirror's newest row arrived 1 min ago\./,
+      ),
     ).toBeTruthy();
     expect(screen.getByText("Point in time, no history kept")).toBeTruthy();
     expect(
       screen.getByTitle(/Traffic that bypasses it is not seen/).textContent,
     ).toBe("Gateway traffic only");
+    expect(
+      screen.getByRole("group", {
+        name: /^Route map: applications, the gateway, 3 models/,
+      }),
+    ).toBeTruthy();
     const models = screen.getByRole("list", { name: "Models" });
     expect(within(models).getByText("Unhealthy")).toBeTruthy();
     expect(within(models).getByText("Healthy")).toBeTruthy();
     expect(within(models).getByText("Not in the check")).toBeTruthy();
+    expect(within(models).getByText("Key or credit refused")).toBeTruthy();
     expect(
-      within(models).getByText("Key or credit refused · anthropic"),
+      within(models).getByText("Checked 11:57 UTC · 3 application keys"),
+    ).toBeTruthy();
+    expect(
+      within(models).getByText(
+        "Checked 11:57 UTC · No application key routes here",
+      ),
     ).toBeTruthy();
     expect(
       screen.getAllByText(/Checked 2026-10-07 11:57 UTC, 3 min ago/).length,
     ).toBeGreaterThan(0);
+  });
+
+  it("opens a model's detail from its card: cause and steps, the applications that call it, its calls", () => {
+    render(<EyeonGatewayHealthPage />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /^claude-sonnet: Unhealthy/ }),
+    );
+    const sheet = screen.getByRole("dialog");
+    expect(within(sheet).getByText("claude-sonnet")).toBeTruthy();
+    expect(within(sheet).getByText("Key or credit refused")).toBeTruthy();
+    expect(
+      within(sheet).getByText(/check the provider account behind this model/i),
+    ).toBeTruthy();
+    expect(
+      within(sheet).getByRole("link", { name: "HR assistant" }),
+    ).toHaveAttribute(
+      "href",
+      "/project/p1/acme-enhancements/applications/lineage-2",
+    );
+    expect(within(sheet).getByText("and 1 more")).toBeTruthy();
+    expect(within(sheet).getByText("30 (10.0%)")).toBeTruthy();
+    expect(within(sheet).getByText("1.3 s")).toBeTruthy();
+    expect(
+      within(sheet).getByRole("link", { name: "Re-check on the LLM Gateway" }),
+    ).toHaveAttribute("href", "/project/p1/acme-enhancements/llm-gateway");
+  });
+
+  it("says when no application routes to a model", () => {
+    render(<EyeonGatewayHealthPage />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /^gemini-judge: Not in the check/ }),
+    );
+    const sheet = screen.getByRole("dialog");
+    expect(
+      within(sheet).getByText("No application's key routes to this model."),
+    ).toBeTruthy();
+  });
+
+  it("makes the applications, gateway and mirror cards open their own pages", () => {
+    render(<EyeonGatewayHealthPage />);
+    const map = screen.getByRole("group", { name: /^Route map/ });
+    const hrefs = within(map)
+      .getAllByRole("link")
+      .map((a) => a.getAttribute("href"));
+    expect(hrefs).toEqual([
+      "/project/p1/acme-enhancements/applications",
+      "/project/p1/acme-enhancements/llm-gateway",
+      "/project/p1/acme-enhancements/security-logs?tab=gateway-requests",
+    ]);
+  });
+
+  it("says a check that has expired failed, not that models are failing right now", () => {
+    const stale = summary({ canCheckHealth: true, latest: true });
+    h.result = {
+      isPending: false,
+      isError: false,
+      data: { ...stale, health: { ...stale.health, fresh: false } },
+    };
+    render(<EyeonGatewayHealthPage />);
+    expect(
+      screen.getByRole("heading", {
+        name: "1 of 3 models failed the last health check.",
+      }),
+    ).toBeTruthy();
+    expect(screen.getAllByText("Stale as of 11:57 UTC").length).toBeGreaterThan(
+      0,
+    );
+    expect(screen.getByText(/Health cache expired/)).toBeTruthy();
   });
 
   it("gives steps for an unhealthy model and points to where a check can run", () => {
@@ -209,9 +305,7 @@ describe("EYEON Gateway health page (CHG-2026-139)", () => {
     ).toBeTruthy();
     expect(screen.queryByText(/Read-only for your role/)).toBeNull();
     expect(
-      screen.getByRole("link", {
-        name: "Check health on the LLM Gateway page",
-      }),
+      screen.getByRole("link", { name: "Re-check on the LLM Gateway" }),
     ).toHaveAttribute("href", "/project/p1/acme-enhancements/llm-gateway");
   });
 
@@ -220,9 +314,7 @@ describe("EYEON Gateway health page (CHG-2026-139)", () => {
     render(<EyeonGatewayHealthPage />);
     expect(screen.getByText(/Read-only for your role/)).toBeTruthy();
     expect(
-      screen.queryByRole("link", {
-        name: "Check health on the LLM Gateway page",
-      }),
+      screen.queryByRole("link", { name: "Re-check on the LLM Gateway" }),
     ).toBeNull();
   });
 

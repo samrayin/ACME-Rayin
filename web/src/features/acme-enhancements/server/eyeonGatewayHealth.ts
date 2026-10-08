@@ -25,6 +25,7 @@ import {
   SCORECARD_THRESHOLDS,
   bandAbove,
 } from "@/src/features/acme-enhancements/server/acmeApplicationScorecard";
+import { currentGeneration } from "@/src/features/acme-enhancements/server/acmeApplicationDetail";
 import {
   type ApplicationRef,
   applicationsByAlias,
@@ -269,6 +270,115 @@ export function applicationIndex(keys: KeyRow[]): {
   const byAlias = applicationsByAlias(keys);
   const lineages = new Set([...byAlias.values()].map((a) => a.lineageId));
   return { count: lineages.size, byAlias };
+}
+
+// ---------------------------------------------------------------------------
+// Which applications' keys may call each model (CHG-2026-139 follow-up)
+// ---------------------------------------------------------------------------
+
+/** How many of the applications that may call a model the page names. */
+export const ROUTE_APPLICATIONS_SHOWN = 8;
+
+type RouteKeyRow = KeyRow & { models: string[]; litellmTeamId: string | null };
+type RouteTeamRow = { id: string; models: string[] };
+
+type ModelRoutes = {
+  /** Applications whose current key may call the model. */
+  count: number;
+  /** The first of them by name, at most ROUTE_APPLICATIONS_SHOWN. */
+  applications: ApplicationRef[];
+};
+
+/** A model list that allows every model: empty, or the gateway's catch-alls. */
+function allowsEveryModel(models: readonly string[]): boolean {
+  return (
+    models.length === 0 ||
+    models.includes("all-proxy-models") ||
+    models.includes("*")
+  );
+}
+
+/**
+ * For each model, the applications whose current key may call it, as the
+ * gateway decides: the key's own model list; with none, its team's list;
+ * with neither, every model. An application is a key lineage with an active
+ * key, as on the Applications page. Names in a list are matched exactly, so
+ * a model access group named in a list is not expanded: the count can then
+ * be lower than what the gateway allows, never higher.
+ */
+export function modelRoutes(
+  keys: RouteKeyRow[],
+  teams: RouteTeamRow[],
+  models: string[],
+): Map<string, ModelRoutes> {
+  const teamModels = new Map(teams.map((t) => [t.id, t.models]));
+  const lineages = new Map<string, RouteKeyRow[]>();
+  for (const k of keys) {
+    const list = lineages.get(k.lineageId) ?? [];
+    list.push(k);
+    lineages.set(k.lineageId, list);
+  }
+  const apps: { ref: ApplicationRef; allowed: readonly string[] | "all" }[] =
+    [];
+  for (const generations of lineages.values()) {
+    const current = currentGeneration(generations);
+    if (!current) continue;
+    const team = current.litellmTeamId
+      ? teamModels.get(current.litellmTeamId)
+      : undefined;
+    const allowed = !allowsEveryModel(current.models)
+      ? current.models
+      : team && !allowsEveryModel(team)
+        ? team
+        : "all";
+    apps.push({
+      ref: { lineageId: current.lineageId, name: current.displayName },
+      allowed,
+    });
+  }
+  apps.sort(
+    (a, b) =>
+      a.ref.name.localeCompare(b.ref.name) ||
+      a.ref.lineageId.localeCompare(b.ref.lineageId),
+  );
+  return new Map(
+    models.map((model) => {
+      const matching = apps.filter(
+        (a) => a.allowed === "all" || a.allowed.includes(model),
+      );
+      return [
+        model,
+        {
+          count: matching.length,
+          applications: matching
+            .slice(0, ROUTE_APPLICATIONS_SHOWN)
+            .map((a) => a.ref),
+        },
+      ];
+    }),
+  );
+}
+
+/** The health view with each model's routes beside it. */
+export function withRoutes(
+  health: HealthView,
+  keys: RouteKeyRow[],
+  teams: RouteTeamRow[],
+): Omit<HealthView, "models"> & {
+  models: (ModelHealth & { routes: ModelRoutes })[];
+} {
+  const routes = modelRoutes(
+    keys,
+    teams,
+    health.models.map((m) => m.model),
+  );
+  return {
+    ...health,
+    models: health.models.map((m) => ({
+      ...m,
+      routes: routes.get(m.model) ?? { count: 0, applications: [] },
+    })),
+  };
 }
 
 // ---------------------------------------------------------------------------

@@ -11,11 +11,13 @@
  * CAIRO_EYEON_GATEWAY_HEALTH_ENABLED, default off: then `summary` reads
  * nothing and says so, and the navigation entry is hidden.
  *
- * Point in time and metadata only, at most eight reads whatever the data:
+ * Point in time and metadata only, at most nine reads whatever the data:
  *  - model health: the last health check the LLM Gateway page stored (its
  *    catalogue snapshot). This page never calls the gateway or a provider;
- *  - the project's gateway keys' lineage, name, alias and status (how many
- *    applications, and whose key a failed call used);
+ *  - the project's gateway keys' lineage, name, alias, status, model list and
+ *    team (how many applications, whose key a failed call used, and, since
+ *    the CHG-2026-139 follow-up, which applications may call each model), and
+ *    the project's teams' model lists;
  *  - from the request-log mirror, for the chosen period: calls and failures
  *    per model with call durations (capped in the database), per time
  *    bucket, by error class (capped), and the previous period's totals; the
@@ -57,20 +59,33 @@ import {
   mirrorView,
   newestArrival,
   windowRange,
+  withRoutes,
 } from "@/src/features/acme-enhancements/server/eyeonGatewayHealth";
 import { GATEWAY_HEALTH_WINDOWS } from "@/src/features/acme-enhancements/utils/eyeonGatewayHealthLabels";
 
 /** How many distinct error classes the class query returns at most. */
 const CLASSES_READ = 50;
 
-/** A gateway key, as far as the application count and links need it. */
+/**
+ * A gateway key, as far as the application count, the links and the route
+ * map need it: CHG-2026-139 follow-up adds the models it may call and its
+ * team, so each model shows which applications route to it.
+ */
 const GATEWAY_HEALTH_KEY_SELECT = {
   lineageId: true,
   generation: true,
   displayName: true,
   litellmKeyAlias: true,
   status: true,
+  models: true,
+  litellmTeamId: true,
 } satisfies Prisma.AcmeLitellmKeySelect;
+
+/** A gateway team: its id and the models it allows, nothing else. */
+const GATEWAY_HEALTH_TEAM_SELECT = {
+  id: true,
+  models: true,
+} satisfies Prisma.AcmeLitellmTeamSelect;
 
 /** A newest failed call: when, which model, which key alias, which class. */
 const FAILED_CALL_SELECT = {
@@ -140,6 +155,7 @@ export const eyeonGatewayHealthRouter = createTRPCRouter({
       const [
         snapshot,
         keys,
+        teams,
         modelRows,
         bucketRows,
         classRows,
@@ -159,6 +175,14 @@ export const eyeonGatewayHealthRouter = createTRPCRouter({
           ? ctx.prisma.acmeLitellmKey.findMany({
               where: { projectId, status: { in: USED_STATUSES } },
               select: GATEWAY_HEALTH_KEY_SELECT,
+            })
+          : Promise.resolve(null),
+        // The project's teams' model lists: a key with no list of its own
+        // may call what its team allows (the route map).
+        gatewayOn
+          ? ctx.prisma.acmeLitellmTeam.findMany({
+              where: { projectId },
+              select: GATEWAY_HEALTH_TEAM_SELECT,
             })
           : Promise.resolve(null),
         // Calls, failures and durations per model, capped in the database
@@ -274,7 +298,14 @@ export const eyeonGatewayHealthRouter = createTRPCRouter({
         /** May check health now on the LLM Gateway page (Owner, Admin). */
         canCheckHealth: can("llmGateway:CUD"),
         // Null while gateway management is off: no models to report.
-        health: gatewayOn ? healthView(snapshot ?? null, now) : null,
+        // With each model, the applications whose key may call it.
+        health: gatewayOn
+          ? withRoutes(
+              healthView(snapshot ?? null, now),
+              keys ?? [],
+              teams ?? [],
+            )
+          : null,
         applications: apps ? apps.count : null,
         // Null while the request log is off.
         mirror: mirrorOn

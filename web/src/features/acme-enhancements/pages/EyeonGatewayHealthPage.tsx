@@ -1,6 +1,6 @@
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowDown, ArrowRight, Lock } from "lucide-react";
+import { Lock } from "lucide-react";
 import Page from "@/src/components/layouts/page";
 import { Card, CardContent } from "@/src/components/ui/card";
 import { Badge } from "@/src/components/ui/badge";
@@ -24,10 +24,7 @@ import {
   EyeonRatingChip,
   ratingFromBand,
 } from "@/src/features/acme-enhancements/components/eyeon/EyeonChips";
-import {
-  EyeonMirrorChip,
-  EyeonModelHealthChip,
-} from "@/src/features/acme-enhancements/components/eyeon/EyeonHealthChips";
+import { EyeonGatewayRouteMap } from "@/src/features/acme-enhancements/components/EyeonGatewayRouteMap";
 import { EyeonNotRecorded } from "@/src/features/acme-enhancements/components/eyeon/EyeonHonestLabels";
 import { EyeonKpiTile } from "@/src/features/acme-enhancements/components/eyeon/EyeonKpiTile";
 import {
@@ -41,7 +38,6 @@ import {
   failedDelta,
   formatCallShare,
   formatDurationMs,
-  healthHeadline,
   utcTime,
 } from "@/src/features/acme-enhancements/utils/eyeonGatewayHealthLabels";
 
@@ -50,7 +46,8 @@ import {
 // page as far as the console's data truthfully allows: which models answered
 // their last health check (point in time; no history is kept), and what is
 // failing, from the gateway request log. Metadata only; what EYEON does not
-// record says so, and nothing is estimated.
+// record says so, and nothing is estimated. Since the CHG-2026-139 follow-up
+// the hero is the prototype's clickable route map (EyeonGatewayRouteMap).
 
 type Summary = Extract<
   RouterOutputs["eyeonGatewayHealth"]["summary"],
@@ -146,7 +143,7 @@ function GatewayHealthContent({
   };
   return (
     <div className="flex flex-col gap-6">
-      <HealthHero data={data} links={links} />
+      <EyeonGatewayRouteMap data={data} links={links} />
       {data.health?.checkedAt ? (
         <WhatToDo health={data.health} data={data} links={links} />
       ) : null}
@@ -224,226 +221,6 @@ function checkedText(health: Health, now: string): string {
   return health.fresh
     ? `Checked ${when}`
     : `Stale as of ${when}: the ${health.cacheMinutes}-minute result has expired`;
-}
-
-function HealthHero({ data, links }: { data: Summary; links: Links }) {
-  const health = data.health;
-  const now = data.generatedAt;
-  const facts = [
-    {
-      key: "Last health check",
-      value: health ? checkedText(health, now) : "Not available",
-    },
-    {
-      key: "Models answering",
-      value:
-        health?.checkedAt && health.counts.total > 0
-          ? `${health.counts.healthy.toLocaleString()} of ${health.counts.total.toLocaleString()}`
-          : "Not available",
-    },
-    {
-      key: "Applications via gateway keys",
-      value:
-        data.applications === null
-          ? "Not available"
-          : data.applications.toLocaleString(),
-    },
-    {
-      key: "Request-log mirror",
-      value: data.mirror
-        ? MIRROR_STATE[data.mirror.state].label
-        : "Switched off",
-    },
-  ];
-  return (
-    <section aria-labelledby="gateway-health-now">
-      <Card>
-        <CardContent className="flex flex-col gap-4 p-4">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="flex min-w-0 flex-col gap-2">
-              <span className="text-muted-foreground text-xs">
-                Right now · point in time
-              </span>
-              <h2 id="gateway-health-now" className="text-lg font-bold">
-                {healthHeadline(health)}
-              </h2>
-              {health?.checkedAt ? (
-                <p className="text-muted-foreground text-sm">
-                  {checkedText(health, now)}.
-                </p>
-              ) : null}
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge
-                  variant="outline"
-                  title="Only the latest health check is kept, so no health trend can be drawn."
-                >
-                  Point in time, no history kept
-                </Badge>
-                <Badge
-                  variant="outline"
-                  title="Only traffic through the EYEON gateway is checked and logged. Traffic that bypasses it is not seen."
-                >
-                  Gateway traffic only
-                </Badge>
-                <Badge
-                  variant="outline"
-                  title="This page reads no prompt or answer text, error text, token hash or key secret."
-                >
-                  Metadata only
-                </Badge>
-              </div>
-            </div>
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-              {facts.map((f) => (
-                <div key={f.key} className="flex min-w-0 flex-col">
-                  <dt className="text-muted-foreground text-xs">{f.key}</dt>
-                  <dd className="font-bold">{f.value}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-          {health ? (
-            <RouteMap data={data} health={health} links={links} />
-          ) : null}
-          <div className="text-muted-foreground flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-xs">
-            <span>
-              Health is checked from the LLM Gateway page, at most once every{" "}
-              {health ? health.cacheMinutes : 5} minutes and only when that page
-              asks; this page never calls the gateway. Only the latest check is
-              kept, so no health trend is drawn.
-            </span>
-            {data.gatewayManagement ? (
-              <Link href={links.gateway} className="text-foreground underline">
-                {data.canCheckHealth
-                  ? "Check health on the LLM Gateway page"
-                  : "Open the LLM Gateway"}
-              </Link>
-            ) : null}
-          </div>
-        </CardContent>
-      </Card>
-    </section>
-  );
-}
-
-/**
- * The prototype's route map, without its drawn wires: applications send
- * traffic through the gateway to the models, and the gateway logs each call
- * to the request-log mirror.
- */
-function RouteMap({
-  data,
-  health,
-  links,
-}: {
-  data: Summary;
-  health: Health;
-  links: Links;
-}) {
-  return (
-    <div
-      role="group"
-      aria-label={`Route map: applications, the gateway, ${health.counts.total.toLocaleString()} models and the request-log mirror`}
-      className="grid grid-cols-1 items-start gap-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,2fr)]"
-    >
-      <Link
-        href={links.applications}
-        className="hover:bg-muted/50 flex flex-col gap-1 rounded-md border p-3"
-      >
-        <span className="text-2xl font-bold tabular-nums">
-          {data.applications === null
-            ? "–"
-            : data.applications.toLocaleString()}
-        </span>
-        <span className="text-muted-foreground text-xs">
-          applications via gateway keys
-        </span>
-      </Link>
-      <RouteArrow />
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-col gap-1 rounded-md border p-3">
-          <span className="font-bold">Gateway</span>
-          <span className="text-muted-foreground text-xs">
-            {health.checkedAt
-              ? `Answered the last health check, ${ageText(health.checkedAt, data.generatedAt)}`
-              : "No health check recorded"}
-          </span>
-        </div>
-        <div className="flex flex-col gap-1 rounded-md border p-3">
-          <span className="font-bold">Request-log mirror</span>
-          {data.mirror ? (
-            <>
-              <EyeonMirrorChip state={data.mirror.state} />
-              <span className="text-muted-foreground text-xs">
-                {mirrorLine(data.mirror, data.generatedAt)}
-              </span>
-            </>
-          ) : (
-            <span className="text-muted-foreground text-xs">
-              Switched off on this deployment
-            </span>
-          )}
-        </div>
-      </div>
-      <RouteArrow />
-      {health.models.length === 0 ? (
-        <p className="text-muted-foreground text-sm">
-          {health.checkedAt
-            ? "The last health check listed no models."
-            : "No health check is recorded yet. Opening the model list on the LLM Gateway page runs one."}
-        </p>
-      ) : (
-        <ul aria-label="Models" className="flex min-w-0 flex-col gap-2">
-          {health.models.map((m) => (
-            <li
-              key={m.model}
-              className="flex min-w-0 items-center justify-between gap-2 rounded-md border px-3 py-2"
-            >
-              <span className="flex min-w-0 flex-col">
-                <span className="truncate font-mono text-sm" title={m.model}>
-                  {m.model}
-                </span>
-                <span
-                  className="text-muted-foreground truncate text-xs"
-                  title={modelNote(m)}
-                >
-                  {modelNote(m)}
-                </span>
-              </span>
-              <EyeonModelHealthChip status={m.status} />
-            </li>
-          ))}
-          {health.more > 0 ? (
-            <li className="text-muted-foreground text-xs">
-              {health.more.toLocaleString()} more on the LLM Gateway page.
-            </li>
-          ) : null}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-function RouteArrow() {
-  return (
-    <span aria-hidden className="text-muted-foreground flex justify-center">
-      <ArrowDown className="size-4 md:hidden" />
-      <ArrowRight className="hidden size-4 md:block" />
-    </span>
-  );
-}
-
-function modelNote(m: Health["models"][number]): string {
-  const providers =
-    m.providers.length > 0 ? m.providers.join(", ") : "Provider not listed";
-  return m.cause ? `${HEALTH_CAUSE[m.cause].label} · ${providers}` : providers;
-}
-
-function mirrorLine(mirror: Mirror, now: string): string {
-  const lag = `expected lag up to about ${mirror.expectedLagMinutes} min`;
-  return mirror.completeTo
-    ? `Complete to ${utcTime(mirror.completeTo)} (${ageText(mirror.completeTo, now)}); ${lag}`
-    : `No successful reconciliation recorded; ${lag}`;
 }
 
 function WhatToDo({
