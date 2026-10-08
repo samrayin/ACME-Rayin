@@ -45,6 +45,7 @@ import { EyeonOverviewNavItem } from "@/src/components/nav/eyeon-overview-nav-it
 import { EyeonGuardrailDecisionsNavItem } from "@/src/components/nav/eyeon-guardrail-decisions-nav-item";
 import { EyeonEnforcementNavItem } from "@/src/components/nav/eyeon-enforcement-nav-item";
 import { EyeonGatewayHealthNavItem } from "@/src/components/nav/eyeon-gateway-health-nav-item";
+import { EyeonSpendNavItem } from "@/src/components/nav/eyeon-spend-nav-item";
 import { type ProductModule } from "@/src/ee/features/ui-customization/productModuleSchema";
 
 export enum RouteSection {
@@ -216,6 +217,19 @@ export const ROUTES: Route[] = [
     section: RouteSection.Main,
     group: RouteGroup.GovernanceControls,
     menuNode: <AcmeLitellmGatewayNavItem />,
+  },
+  {
+    // ACME (CHG-2026-143, ADR-0027): the EYEON Cost and usage page, "Spend"
+    // in the prototype's navigation, right after the LLM Gateway it
+    // summarises. Gated like the other EYEON entries, on
+    // CAIRO_EYEON_SPEND_ENABLED. The Spend tab's scope: Owner, Admin, Prompt
+    // Analyst, Viewer and Business Analyst.
+    title: "Spend",
+    pathname: `/project/[projectId]/acme-enhancements/spend`,
+    projectRbacScopes: ["llmGatewaySpend:read"],
+    section: RouteSection.Main,
+    group: RouteGroup.GovernanceControls,
+    menuNode: <EyeonSpendNavItem />,
   },
   {
     // ACME (CHG-2026-122, ADR-0023): one scorecard per connected application

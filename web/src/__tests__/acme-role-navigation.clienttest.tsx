@@ -94,6 +94,9 @@ const EXPECTED: Record<"SECURITY" | "ANALYST" | "AUDITOR", string[]> = {
     "Support",
     "UI Customization",
   ],
+  // CHG-2026-143: the EYEON Cost and usage page ("Spend",
+  // llmGatewaySpend:read); its entry renders nothing while
+  // CAIRO_EYEON_SPEND_ENABLED is off.
   ANALYST: [
     "Contact ACME Support",
     "Dashboards",
@@ -103,6 +106,7 @@ const EXPECTED: Record<"SECURITY" | "ANALYST" | "AUDITOR", string[]> = {
     "Projects",
     "Settings",
     "Settings",
+    "Spend",
     "Support",
     "UI Customization",
   ],
@@ -269,6 +273,29 @@ describe("sidebar sections (CHG-2026-073, CHG-2026-081)", () => {
         Role.VIEWER,
       ]) {
         expect(visibleTitles(other)).not.toContain("Gateway health");
+      }
+    },
+  );
+
+  it("the EYEON Cost and usage page, Spend, comes right after LLM Gateway (CHG-2026-143)", () => {
+    const governance = ROUTES.filter(
+      (r) => r.group === RouteGroup.GovernanceControls,
+    ).map((r) => r.title);
+    expect(governance.indexOf("Spend")).toBe(
+      governance.indexOf("LLM Gateway") + 1,
+    );
+    expect(groupsOf("Spend")).toEqual(["Governance Controls"]);
+    const entry = ROUTES.find((r) => r.title === "Spend");
+    expect(entry?.projectRbacScopes).toEqual(["llmGatewaySpend:read"]);
+    expect(entry?.menuNode).toBeDefined();
+  });
+
+  it.each([Role.OWNER, Role.ADMIN, Role.MEMBER, Role.VIEWER, Role.ANALYST])(
+    "%s sees the Spend entry; the Auditor and the Security Analyst do not (CHG-2026-143)",
+    (role) => {
+      expect(visibleTitles(role)).toContain("Spend");
+      for (const other of [Role.AUDITOR, Role.SECURITY]) {
+        expect(visibleTitles(other)).not.toContain("Spend");
       }
     },
   );
