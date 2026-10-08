@@ -54,6 +54,8 @@ import { useQueryProjectOrOrganization } from "@/src/features/projects/hooks";
 import { useHasOrganizationAccess } from "@/src/features/rbac/utils/checkOrganizationAccess";
 import { EyeonUserMenuProvider } from "@/src/features/acme-enhancements/components/eyeon/shell/EyeonUserMenuContext";
 import { AcmeThemeStyleInjector } from "@/src/features/acme-enhancements/components/AcmeThemeStyleInjector";
+import { EyeonRail } from "@/src/features/acme-enhancements/components/eyeon/rail/EyeonRail";
+import { useEyeonRail } from "@/src/features/acme-enhancements/components/eyeon/rail/useEyeonRail";
 import {
   PaymentBannerView,
   usePaymentBanner,
@@ -132,6 +134,10 @@ export function AuthenticatedLayout({
   // Account-level entry: use the raw flag (same as account settings tabs), not
   // project-scoped force-v3 suppression.
   const showV4Migration = useV4UpgradeUiFlag();
+  // ACME (CHG-2026-135): the EYEON navigation rail sorts the sidebar's own
+  // items into categories. Off (CAIRO_EYEON_RAIL_ENABLED unset), on a phone
+  // or outside a project, the sidebar gets its navigation unchanged.
+  const eyeonRail = useEyeonRail(navigation.mainNavigation);
 
   const regionMenuItems = getAvailableCloudRegionOptions(currentRegion).map(
     (region) => ({
@@ -292,8 +298,10 @@ export function AuthenticatedLayout({
               />
             )}
             <div className="pt-banner-offset flex min-h-0 flex-1">
+              {/* ACME (CHG-2026-135): the rail, left of the sidebar. */}
+              {eyeonRail.model && <EyeonRail model={eyeonRail.model} />}
               <ConnectedAppSidebar
-                navItems={navigation.mainNavigation}
+                navItems={eyeonRail.sidebarNavigation}
                 secondaryNavItems={navigation.secondaryNavigation}
                 user={sidebarUser}
                 userMenuItems={userMenuItems}

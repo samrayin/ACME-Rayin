@@ -28,6 +28,7 @@ import {
   THREAT_TYPE_LABEL,
   type ThreatType,
   threatType,
+  threatTypeBreakdown,
   utcDay,
 } from "@/src/features/acme-enhancements/server/acmeApplicationScorecard";
 import { currentGeneration } from "@/src/features/acme-enhancements/server/acmeApplicationDetail";
@@ -471,4 +472,70 @@ export function entityTypeCounts(
     const count = counts.get(type) ?? 0;
     return count > 0 ? [{ type, count }] : [];
   }).sort((a, b) => b.count - a.count);
+}
+
+// ----------------------------------------- refusals by type (CHG-2026-138)
+
+/**
+ * The refusals (block verdicts) grouped by policy label, direction and mode.
+ * CHG-2026-137 replaced this page's own use with policyByDirection; the
+ * Enforcement and policy page (CHG-2026-138) still counts what each policy
+ * refused through refusalsByType, so it stays here, unchanged.
+ */
+type RefusalGroup = {
+  policyTriggered: string | null;
+  direction: AcmeGuardrailEventDirection;
+  gatewayMode: string | null;
+  _count: { _all: number };
+};
+
+export type RefusalType = {
+  type: ThreatType;
+  label: string;
+  count: number;
+  /** Applied in enforce mode, and recorded only. */
+  split: ModeSplit;
+  /** Prompts refused, and answers withheld. */
+  prompts: number;
+  answers: number;
+};
+
+/**
+ * Refusals by type, most frequent first, from the guardrail's policy label
+ * only, through the Applications scorecard's mapping (threatTypeBreakdown):
+ * the label is caller-set text, so it is never shown as such, and an unknown
+ * or missing one counts as "Other". Types with none are left out.
+ */
+export function refusalsByType(groups: RefusalGroup[]): RefusalType[] {
+  const detail = new Map<
+    ThreatType,
+    { split: ModeSplit; prompts: number; answers: number }
+  >();
+  for (const g of groups) {
+    const type = threatType(g.policyTriggered);
+    const d = detail.get(type) ?? {
+      split: emptySplit(),
+      prompts: 0,
+      answers: 0,
+    };
+    const n = g._count._all;
+    addTo(d.split, isEnforced(g.gatewayMode), n);
+    if (g.direction === AcmeGuardrailEventDirection.INPUT) d.prompts += n;
+    else d.answers += n;
+    detail.set(type, d);
+  }
+  return threatTypeBreakdown(
+    groups.map((g) => ({
+      policyTriggered: g.policyTriggered,
+      count: g._count._all,
+    })),
+  ).map((t) => {
+    const d = detail.get(t.type);
+    return {
+      ...t,
+      split: d?.split ?? emptySplit(),
+      prompts: d?.prompts ?? 0,
+      answers: d?.answers ?? 0,
+    };
+  });
 }
