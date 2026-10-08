@@ -169,3 +169,39 @@ The CHG-2026-134 structural test now checks two things: the top bars and the lay
 **Turning it on:** set `CAIRO_ACME_AI_ENABLED=true` on the console, along with the three `RAYIN_CHAT_LLM_*` settings, then restart it. Without the gateway settings, ACME AI replies that it is not configured. `deploy/azure` does not declare the flag yet. Turning ACME AI on is a separate owner decision.
 
 **Flag:** `CAIRO_ACME_AI_ENABLED`, server-only, default off. **Rollback:** turn the flag off, or redeploy the previous console image. **Schema:** none.
+
+### 12.4 CHG-2026-142: a resizable sidebar (addendum)
+**Date:** 2026-10-08. **Change:** CHG-2026-142, Tier 1. **Approval:** pending; the owner reviews and merges, no self-approval. **Owner's instruction:** "Should be able to resize the sidebar."
+
+**What it does.**
+- **Dragging:** on desktop, the sidebar's inner edge (the edge facing the page) can be dragged wider or narrower, between 11.5rem and 24rem. The sidebar's gap in the page and its fixed panel both take their width from `--sidebar-width`, so the page reflows with it. The edge shows the resize cursor, and a line on hover, on keyboard focus (a wider line) and while dragging. While dragging, the sidebar's width transition is switched off so it follows the pointer, and text cannot be selected. Escape during a drag puts the width back.
+- **A click still collapses the sidebar,** as upstream's rail on that edge did. A press that moves less than 3 pixels is a click; a press that moves further is a drag, and the click that may end it does not collapse.
+- **The keyboard:** the edge is a window splitter, a focusable `separator` with `aria-orientation="vertical"`, named "Resize sidebar", with `aria-valuenow`, `aria-valuemin` and `aria-valuemax` in rem and a spoken value ("15.5 rem"; "11.5 rem, the default"). Left and Right arrows change the width by 0.5rem (8 pixels), Home and End go to the narrowest and the widest, and Enter resets it to the default. With Ctrl, Alt or Cmd held the keys are left to the browser and other shortcuts. A hidden description says all this.
+- **Kept per person in this browser,** as the personal theme is (CHG-2026-074): one versioned key, `cairo.sidebarWidth.v1`, in localStorage, never sent to the server. Every read and write is guarded, and what is read is used only if it is a number within the limits; anything else gives the default. The default is kept as nothing at all (the key is removed), so a reset leaves no trace and nothing is stored until a person resizes. If the browser refuses storage, the width still applies until the page is reloaded.
+
+**The limits.** The minimum is today's width, 11.5rem, which is also the default: anything narrower is what the collapsed (icon) sidebar is for, and labels would only truncate sooner. Because the minimum is the default, dragging the edge all the way in returns exactly to the default and clears the stored width. The maximum, 24rem, is about twice the default: long project and page names fit, and on a 1280-pixel window with the rail the page keeps about 800 pixels. On the narrowest desktop window (768 pixels) a 24rem sidebar with the rail leaves the page about 300 pixels; the person who widened it can drag it back, press Enter or collapse it.
+
+**The reset gesture: Enter, not a double-click.** The edge already collapses the sidebar on a click, so the first click of a double-click would collapse it before the second arrived. Telling the two apart would delay every collapse click by about a quarter of a second, which changes the rail's existing behaviour. So the reset is Enter on the focused edge, and with a pointer it is dragging the edge all the way in. WAI-ARIA's window-splitter pattern gives Enter to collapsing; here collapsing from the edge would remove the focused element itself (collapsed, the handle is gone), and the keyboard already collapses the sidebar with Ctrl/Cmd+B and the header's toggle.
+
+**Combined with upstream's rail.** sidebar.tsx's `SidebarRail` (rendered by `AppSidebar`) is a thin strip centred on the same edge that toggles the sidebar on a click. Two strips on one edge, one for clicking and one for dragging, could not be told apart on screen. So, on desktop while the sidebar is expanded, the rail is the handle: a drag resizes, a click toggles. Collapsed, upstream's rail renders unchanged (a click expands the sidebar) and there is no handle, so resizing is not possible there. The handle sits where the rail sat, a 16-pixel strip centred on the edge.
+
+**Where it applies.**
+- **Desktop, expanded:** the handle, as above.
+- **Collapsed (icon) sidebar:** keeps its own width (`--sidebar-width-icon`, 3rem) and upstream's rail; no handle.
+- **Phone:** the sidebar sheet keeps its own width (`SIDEBAR_WIDTH_MOBILE`, 12rem, set on the sheet itself) and has no handle. A phone held sideways (wider than the phone breakpoint but short, with a touch screen) keeps upstream's rail too, since a drag edge needs a precise pointer (`useIsHandheld`).
+- **With the EYEON rail on (CHG-2026-135):** the category list beside the rail resizes the same way and the rail keeps its own width (5.5rem). The rail moves the fixed panel right with its sibling selector (`left-22`); the drag is measured from where it started, not from the window's edge, so that offset does not change the result. The fixed panel's transition, which also animates `left`, is off only while dragging.
+- **Outside the authenticated layout** (the minimal and sign-in layouts, which render upstream's `SidebarProvider` directly) nothing changes.
+
+**First load.** The width is read from storage synchronously, in the provider's first render, so the sidebar opens at the person's width with no flash. The authenticated layout mounts only in the browser (the server renders the loading layout until the session is known), so there is no server render to reconcile. Until a person resizes, the provider sets no style and sidebar.tsx's own `SIDEBAR_WIDTH` applies.
+
+**Where the code is.** New files under `features/acme-enhancements/components/eyeon/shell/`: `sidebarWidth.ts` (pure functions: the limits, clamp, sanitise, step, the keys, the drag, the spoken value, and the guarded storage), `eyeonSidebarWidthContext.ts`, `EyeonSidebarResizeHandle.tsx`, and `EyeonSidebarProvider.tsx`, which renders upstream's `SidebarProvider` and sets `--sidebar-width` through that provider's own `style` prop, on its existing wrapper. The width lives in this provider rather than in the layout, so a drag re-renders the provider, not the page inside it.
+
+**Upstream files touched,** each marked "ACME (CHG-2026-142)":
+- `sidebar.tsx`: two imports, and one branch at the top of `SidebarRail` that renders the handle inside EYEON's provider, on desktop, while expanded. `SidebarProvider`, `Sidebar` and the width constants are unchanged.
+- `AuthenticatedLayout.tsx`: `<SidebarProvider>` becomes `<EyeonSidebarProvider>` (one import added, `SidebarProvider` dropped from another).
+
+Both are on the CHG-2026-100 conflict list. Tests read them and fail if a sync drops the rail's hand-off to the handle, changes `SIDEBAR_WIDTH` from 11.5rem, or puts upstream's provider back in the layout; CHG-2026-135's test still guards the structure the rail shifts.
+
+**Not built:** a double-click reset (see above); a reset entry in the user menu; following a resize made in another open tab (the other tab takes it up when reloaded); a key per signed-in person (the width belongs to the screen it was set on, so it is kept per browser, as the personal theme is).
+
+**Flag:** none; the default is unchanged until a person drags. **Rollback:** redeploy the previous console image (a stored width is then ignored). **Schema:** none.

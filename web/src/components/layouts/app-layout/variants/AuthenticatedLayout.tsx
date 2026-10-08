@@ -12,11 +12,7 @@ import {
 } from "react";
 import Head from "next/head";
 import { useRouter, type NextRouter } from "next/router";
-import {
-  SidebarProvider,
-  SidebarInset,
-  useSidebar,
-} from "@/src/components/ui/sidebar";
+import { SidebarInset, useSidebar } from "@/src/components/ui/sidebar";
 import { AppSidebar } from "@/src/components/nav/AppSidebar/AppSidebar";
 import { SidebarPresenceProvider } from "@/src/components/nav/sidebar-presence";
 import { Toaster } from "@/src/components/ui/sonner";
@@ -57,6 +53,7 @@ import { EyeonUserMenuProvider } from "@/src/features/acme-enhancements/componen
 import { AcmeThemeStyleInjector } from "@/src/features/acme-enhancements/components/AcmeThemeStyleInjector";
 import { EyeonRail } from "@/src/features/acme-enhancements/components/eyeon/rail/EyeonRail";
 import { useEyeonRail } from "@/src/features/acme-enhancements/components/eyeon/rail/useEyeonRail";
+import { EyeonSidebarProvider } from "@/src/features/acme-enhancements/components/eyeon/shell/EyeonSidebarProvider";
 import {
   PaymentBannerView,
   usePaymentBanner,
@@ -273,7 +270,9 @@ export function AuthenticatedLayout({
       </Head>
 
       <SidebarPresenceProvider>
-        <SidebarProvider>
+        {/* ACME (CHG-2026-142): upstream's SidebarProvider, with the width
+            this person gave the sidebar by dragging its edge. */}
+        <EyeonSidebarProvider>
           <div className="flex h-dvh w-full flex-col">
             <div
               ref={topBannerRef}
@@ -362,7 +361,7 @@ export function AuthenticatedLayout({
               />
             ) : null}
           </div>
-        </SidebarProvider>
+        </EyeonSidebarProvider>
       </SidebarPresenceProvider>
     </>
   );
