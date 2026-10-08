@@ -6957,3 +6957,50 @@ ESLint (no warnings) and Prettier pass on every changed code file. Fresh typeche
 - **Existing tests:** the filters (27), the overview (24) and content-free roles (25) pass.
 
 Fresh typecheck passed with only the 2 tolerated Enterprise-file errors. ESLint (no warnings) and Prettier pass on every changed code file, the story included.
+
+## 2026-10-08 — CHG-2026-139 follow-up: the Gateway health route map, clickable
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-139 (follow-up) · owner: Anees Ur Rahman · Tier 1 |
+| **ADR** | [ADR-0027](acme-governance/adr/ADR-0027-eyeon-native-pages.md) (no new ADR) |
+| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
+| **Impact** | Client-visible as soon as it is released, because the Gateway health flag is on in dev. The page's hero becomes the prototype's route map. No downtime |
+| **Schema change** | None |
+| **Rollback** | Redeploy the previous image |
+| **Feature flag** | Unchanged: `CAIRO_EYEON_GATEWAY_HEALTH_ENABLED` |
+
+**What:** the owner saw the live page and asked: "my Gateway health should be similar to this and clickable", with a screenshot of the prototype's hero. The first slice had left out the prototype's drawn route wires, its drawers and its clickable cards.
+- **Headline:** "2 of 6 models are failing right now", with the count in the block colour, while the last check is fresh. An expired check reads "failed the last health check", so a stale result is never presented as now. Under it, each failing model's likely cause and the mirror's newest row.
+- **Facts:** gateway, models answering, last health check (amber once stale), and the mirror's newest row.
+- **The route map:** the applications, wired to the gateway, wired to each model. A model that passed its last check gets a solid green wire. One that failed gets a dashed red wire with a cross; one not in the check, a dashed grey one. The request-log mirror sits below the gateway, with its newest row's age against the expected lag of about 7 minutes. The wires are drawn from fixed sizes (64 px rows, a 176 px gateway card), so nothing is measured in the browser and the geometry is a tested pure module.
+- **Model cards:** the status icon, the name, the likely cause in red for a failing model, when it was checked, how many application keys may call it ("No application key routes here" when none may), and the status chip.
+- **Clickable:** a model card opens its detail in a side sheet. The applications card opens Applications, the gateway card opens the LLM Gateway, and the mirror card opens the Gateway requests log. The footer links to the LLM Gateway, where health is re-checked.
+  - **The sheet:** the model's state and provider; for a failing model, the likely cause, what it means and the steps (read-only for a role that cannot act); the applications that may call it, linked; and its calls, failures and durations in the chosen period.
+- **On a phone** the map stacks and the wires are hidden.
+
+**New data: which applications may call each model.** An application is a key lineage with an active key, as on the Applications page. Its current key may call:
+- the models in its own list;
+- with no list of its own, the models in its team's list;
+- with neither, every model. An empty list and the gateway's catch-alls (`all-proxy-models`, `*`) count as every model.
+- Names are matched exactly, so a model access group named in a list is not expanded. A count can then be lower than what the gateway allows, never higher.
+
+To do this, the router reads each key's model list and team, and the project's teams' id and model list: one more bounded read, nine in all. The response carries application names and lineages only, never a key alias or team id. The guardrail's judge model is not labelled as such: the console holds no setting that names it, so it shows as a model no application routes to.
+
+**Changed wording:** `healthHeadline` is replaced by `routeHeadline`, which splits the failing count from the rest of the sentence and says "right now" only while the check is fresh. Models left out of the check are named in the sentence under the headline.
+
+**Release:** web image only.
+
+**Tests:**
+- **Router** (28, from 27): the key and team selects, column by column; each model's applications, with a rotated generation's list ignored and a key taking its team's list; no alias or team id in the routes. The read count is now nine, with few or many rows.
+- **Figures and wording** (53, from 48):
+  - which applications may call each model: own list, team list, every model, the catch-alls, a model no key may call, and at most 8 named, sorted by name;
+  - the route geometry: rows centred on the gateway, wires ending at each row's middle, a short list centred, no wires for no models;
+  - the headline: fresh, stale, one failing model, all healthy.
+- **Page** (19, from 15): the route map's headline and sentence; the cards' causes and application-key counts; a model's sheet with its steps, linked applications, calls and durations; a model no application routes to; the three cards' links; an expired check's wording; the re-check link only for roles that may check.
+- **Story:** `EyeonGatewayRouteMap.stories.tsx`, three stories: the owner's screenshot (six models, two failing, stale), all healthy, one model.
+- **Checked in a real browser:** the story, at 1440 and 1100 px, at phone width, and with a model's sheet open. Measured: the model list's middle and the gateway card's middle are at the same height (430 px), and the wire band is 112 by 424 px.
+- **Existing tests:** the allow-list (36), the kit (19), the sidebar per role (28) and the rail model (25) pass unchanged.
+
+Fresh typecheck passed with only the 2 tolerated Enterprise-file errors.

@@ -289,26 +289,47 @@ export function failedDelta(
   };
 }
 
-/** The page's one-line answer about model health now. */
-export function healthHeadline(
+/**
+ * The page's one-line answer about model health, split as the prototype
+ * draws it: the failing count (`lead`, drawn in the block colour) and the
+ * rest. "Right now" only while the last check is fresh; an expired check
+ * says what it found. Models left out of the check are named in the
+ * sentence below the headline, not here (CHG-2026-139 follow-up).
+ */
+export function routeHeadline(
   health: {
     checkedAt: string | null;
+    fresh: boolean;
     counts: { total: number; healthy: number; unhealthy: number };
   } | null,
-): string {
+): { lead: string | null; rest: string } {
   if (!health)
-    return "Gateway management is switched off on this deployment, so EYEON holds no model health.";
-  if (!health.checkedAt) return "No model health check is recorded yet.";
+    return {
+      lead: null,
+      rest: "Gateway management is switched off on this deployment, so EYEON holds no model health.",
+    };
+  if (!health.checkedAt)
+    return { lead: null, rest: "No model health check is recorded yet." };
   const { total, healthy, unhealthy } = health.counts;
-  if (total === 0) return "The last health check listed no models.";
-  const notChecked = total - healthy - unhealthy;
-  const rest =
-    notChecked > 0
-      ? `; ${notChecked.toLocaleString()} ${notChecked === 1 ? "was" : "were"} not in the check`
-      : "";
+  if (total === 0)
+    return { lead: null, rest: "The last health check listed no models." };
+  const models = total === 1 ? "model" : "models";
   if (unhealthy > 0)
-    return `${unhealthy.toLocaleString()} of ${total.toLocaleString()} ${total === 1 ? "model" : "models"} failed the last health check${rest}.`;
+    return {
+      lead: `${unhealthy.toLocaleString()} of ${total.toLocaleString()} ${models}`,
+      rest: !health.fresh
+        ? "failed the last health check."
+        : unhealthy === 1
+          ? "is failing right now."
+          : "are failing right now.",
+    };
   if (healthy === total)
-    return `All ${total.toLocaleString()} ${total === 1 ? "model" : "models"} answered the last health check.`;
-  return `${healthy.toLocaleString()} of ${total.toLocaleString()} models answered the last health check${rest}.`;
+    return {
+      lead: null,
+      rest: `All ${total.toLocaleString()} ${models} answered the last health check.`,
+    };
+  return {
+    lead: null,
+    rest: `${healthy.toLocaleString()} of ${total.toLocaleString()} models answered the last health check.`,
+  };
 }
