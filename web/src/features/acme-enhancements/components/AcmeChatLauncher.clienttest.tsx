@@ -2,12 +2,19 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AcmeChatLauncher,
+  AcmeChatTopbarLauncher,
   useIsAcmeChatLauncherVisible,
 } from "./AcmeChatLauncher";
-import { AcmeChatWidget } from "./AcmeChatWidget";
+import { AcmeChatPanelHost, AcmeChatWidget } from "./AcmeChatWidget";
 import { useAcmeChatPanel } from "./acmeChatPanelStore";
 
-const h = vi.hoisted(() => ({ canUse: true }));
+// switchedOn: acmeChat.status's answer (CHG-2026-141); undefined while it is
+// loading or after it failed.
+const h = vi.hoisted(() => ({
+  canUse: true,
+  switchedOn: undefined as boolean | undefined,
+  statusQuery: vi.fn(),
+}));
 
 vi.mock("next/router", () => ({
   useRouter: () => ({ query: { projectId: "p1" } }),
@@ -20,6 +27,17 @@ vi.mock("@/src/utils/api", () => ({
     acmeChat: {
       sendMessage: {
         useMutation: () => ({ mutate: vi.fn(), isPending: false }),
+      },
+      status: {
+        useQuery: (...args: unknown[]) => {
+          h.statusQuery(...args);
+          return {
+            data:
+              h.switchedOn === undefined
+                ? undefined
+                : { enabled: h.switchedOn },
+          };
+        },
       },
     },
   },
@@ -86,5 +104,68 @@ describe("ACME AI launcher and panel", () => {
     h.canUse = false;
     renderBoth();
     expect(screen.queryByRole("button", { name: /ACME AI/ })).toBeNull();
+  });
+});
+
+// CHG-2026-141: the top bars mount AcmeChatTopbarLauncher and the layout
+// AcmeChatPanelHost; both follow CAIRO_ACME_AI_ENABLED, as acmeChat.status
+// reports it.
+const renderAsTheAppMountsThem = () =>
+  render(
+    <>
+      <AcmeChatTopbarLauncher />
+      <AcmeChatPanelHost projectId="p1" />
+    </>,
+  );
+
+describe("ACME AI behind CAIRO_ACME_AI_ENABLED (CHG-2026-141)", () => {
+  beforeEach(() => {
+    h.canUse = true;
+    h.switchedOn = undefined;
+    h.statusQuery.mockClear();
+    useAcmeChatPanel.setState({ open: false });
+  });
+
+  it.each([false, undefined])(
+    "switch %s: no launcher and no panel, even with the panel's state open",
+    (switchedOn) => {
+      h.switchedOn = switchedOn;
+      useAcmeChatPanel.setState({ open: true });
+      renderAsTheAppMountsThem();
+
+      expect(screen.queryByRole("button", { name: /ACME AI/ })).toBeNull();
+      expect(screen.queryByRole("dialog", { name: "ACME AI" })).toBeNull();
+      expect(screen.queryByPlaceholderText("Ask ACME AI…")).toBeNull();
+    },
+  );
+
+  it("switch on: the launcher opens the panel the layout hosts", () => {
+    h.switchedOn = true;
+    renderAsTheAppMountsThem();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open ACME AI" }));
+    expect(screen.getByRole("dialog", { name: "ACME AI" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Ask ACME AI…")).toHaveFocus();
+  });
+
+  it("switch on, a role that can't use ACME AI sees nothing and never asks", () => {
+    h.switchedOn = true;
+    h.canUse = false;
+    useAcmeChatPanel.setState({ open: true });
+    renderAsTheAppMountsThem();
+
+    expect(screen.queryByRole("button", { name: /ACME AI/ })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "ACME AI" })).toBeNull();
+    expect(h.statusQuery).not.toHaveBeenCalled();
+  });
+
+  it("asks the server for the switch with no input", () => {
+    h.switchedOn = true;
+    renderAsTheAppMountsThem();
+
+    expect(h.statusQuery).toHaveBeenCalled();
+    for (const [input] of h.statusQuery.mock.calls) {
+      expect(input).toBeUndefined();
+    }
   });
 });

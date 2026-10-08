@@ -10,6 +10,7 @@ import { EnvLabelBadge } from "@/src/components/EnvLabelBadge";
 import { useEnvLabel } from "@/src/hooks/useEnvLabel";
 import { useEyeonUserMenu } from "@/src/features/acme-enhancements/components/eyeon/shell/EyeonUserMenuContext";
 import { EyeonTopbarUserMenu } from "@/src/features/acme-enhancements/components/eyeon/shell/EyeonTopbarUserMenu";
+import { AcmeChatTopbarLauncher } from "@/src/features/acme-enhancements/components/AcmeChatLauncher";
 
 /**
  * Slim mobile top chrome for the minimal-chrome shell: hamburger · centered
@@ -63,11 +64,14 @@ export const MobileTopBar = ({
       {hasAppSidebar && <TopbarBrand variant="wordmark" />}
 
       {/* Right: the account. Balances the left slot so the brand stays
-          centered. ACME (CHG-2026-134): the ACME AI and assistant launchers
-          are removed from EYEON; the full user menu (every item the sidebar
-          footer had) replaces the short account menu wherever the
-          authenticated layout provides it. */}
+          centered. ACME (CHG-2026-134): the assistant launcher is removed
+          from EYEON; the full user menu (every item the sidebar footer had)
+          replaces the short account menu wherever the authenticated layout
+          provides it. */}
       <div className="flex min-w-0 flex-1 items-center justify-end gap-1">
+        {/* ACME (CHG-2026-141): the ACME AI launcher, icon only, left of the
+            user menu, only while CAIRO_ACME_AI_ENABLED is on. */}
+        <AcmeChatTopbarLauncher compact />
         {eyeonUserMenu ? (
           <EyeonTopbarUserMenu {...eyeonUserMenu} compact />
         ) : (

@@ -31,6 +31,7 @@ import {
 import { useAcmeHeaderBackgroundClassName } from "@/src/features/acme-enhancements/theme/useAcmeHeaderBackgroundClassName";
 import { useEyeonUserMenu } from "@/src/features/acme-enhancements/components/eyeon/shell/EyeonUserMenuContext";
 import { EyeonTopbarUserMenu } from "@/src/features/acme-enhancements/components/eyeon/shell/EyeonTopbarUserMenu";
+import { AcmeChatTopbarLauncher } from "@/src/features/acme-enhancements/components/AcmeChatLauncher";
 
 const containerLayoutClassName =
   "lg:mx-auto lg:w-full lg:max-w-screen-lg lg:px-8 xl:max-w-screen-xl 2xl:max-w-[1400px]";
@@ -156,9 +157,11 @@ const PageHeader = ({
                 Empty on pages that don't use it. */}
             <div className="flex flex-wrap items-center gap-2">
               <PageHeaderControlsSlotTarget />
+              {/* ACME (CHG-2026-141): the ACME AI launcher, just left of the
+                  user menu, only while CAIRO_ACME_AI_ENABLED is on. */}
+              <AcmeChatTopbarLauncher />
               {/* ACME (CHG-2026-134): the user menu at the right edge, where
-                  the ACME AI and assistant launchers were; both are removed
-                  from EYEON. */}
+                  the assistant launcher was; it is removed from EYEON. */}
               {eyeonUserMenu && <EyeonTopbarUserMenu {...eyeonUserMenu} />}
             </div>
           </div>

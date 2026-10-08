@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { Home, Settings } from "lucide-react";
+import { Role } from "@langfuse/shared";
 import PageHeader from "@/src/components/layouts/page-header";
 import { MobileTopBar } from "@/src/components/layouts/mobile-top-bar";
 import { AppSidebar } from "@/src/components/nav/AppSidebar/AppSidebar";
@@ -14,10 +15,35 @@ import { EyeonUserMenuProvider } from "@/src/features/acme-enhancements/componen
 // launcher or its Ctrl/Cmd+I shortcut any more, even where upstream's
 // assistant would be available; the sidebar footer no longer holds the user
 // menu; on a phone the full menu is in the mobile top bar.
+//
+// CHG-2026-141: ACME AI is back behind CAIRO_ACME_AI_ENABLED (default off).
+// Off, the top bars are as above; on, its launcher sits just left of the user
+// menu for roles that may use it. Upstream's assistant stays removed.
 
 const assistant = vi.hoisted(() => ({
   setOpen: vi.fn(),
   openAssistant: vi.fn(),
+}));
+
+// CHG-2026-141: the person's role in project p1 (none by default, as in the
+// CHG-2026-134 tests) and ACME AI's switch, as acmeChat.status answers it.
+const acmeAi = vi.hoisted(() => ({
+  role: undefined as string | undefined,
+  switchedOn: false,
+  statusQuery: vi.fn(),
+}));
+
+vi.mock("@/src/utils/api", () => ({
+  api: {
+    acmeChat: {
+      status: {
+        useQuery: (...args: unknown[]) => {
+          acmeAi.statusQuery(...args);
+          return { data: { enabled: acmeAi.switchedOn } };
+        },
+      },
+    },
+  },
 }));
 
 vi.mock("next/router", () => ({
@@ -33,7 +59,29 @@ vi.mock("next/router", () => ({
 vi.mock("next-auth/react", () => ({
   useSession: () => ({
     data: {
-      user: { name: "Ada Lovelace", email: "ada-email", organizations: [] },
+      user: {
+        name: "Ada Lovelace",
+        email: "ada-email",
+        organizations: acmeAi.role
+          ? [
+              {
+                id: "o1",
+                name: "org",
+                role: acmeAi.role,
+                plan: "oss",
+                projects: [
+                  {
+                    id: "p1",
+                    name: "p",
+                    role: acmeAi.role,
+                    deletedAt: null,
+                    retentionDays: null,
+                  },
+                ],
+              },
+            ]
+          : [],
+      },
       // As if upstream's assistant were switched on for this instance.
       environment: { inAppAgentEnabled: true },
     },
@@ -133,7 +181,13 @@ function Shell({ mobile = false }: { mobile?: boolean }) {
       <SidebarPresenceProvider>
         <SidebarProvider>
           <AppSidebar {...sidebarArgs} />
-          {mobile ? <MobileTopBar /> : <PageHeader title="Tracing" />}
+          {mobile ? (
+            <div data-testid="mobile-top-bar">
+              <MobileTopBar />
+            </div>
+          ) : (
+            <PageHeader title="Tracing" />
+          )}
         </SidebarProvider>
       </SidebarPresenceProvider>
     </EyeonUserMenuProvider>
@@ -169,20 +223,34 @@ describe("ACME AI is gone from the top bar (CHG-2026-134)", () => {
     },
   );
 
-  it("no top bar, panel host or layout mounts ACME AI or the assistant launcher", () => {
-    for (const file of [
-      "src/components/layouts/page-header.tsx",
-      "src/components/layouts/mobile-top-bar.tsx",
-      "src/components/layouts/app-layout/variants/AuthenticatedLayout.tsx",
-    ]) {
-      const source = readFileSync(join(process.cwd(), file), "utf8");
-      for (const name of [
-        "AcmeChatLauncher",
-        "AcmeChatWidget",
-        "InAppAiAgentButton",
+  // CHG-2026-141 narrowed this check: ACME AI may be mounted only through its
+  // switched entry points (AcmeChatTopbarLauncher, AcmeChatPanelHost), never
+  // directly; upstream's assistant launcher stays out entirely.
+  it("no top bar or layout mounts the assistant launcher, or ACME AI except behind its switch", () => {
+    const pageHeader = "src/components/layouts/page-header.tsx";
+    const mobileTopBar = "src/components/layouts/mobile-top-bar.tsx";
+    const layout =
+      "src/components/layouts/app-layout/variants/AuthenticatedLayout.tsx";
+    const sources = new Map(
+      [pageHeader, mobileTopBar, layout].map((file) => [
+        file,
+        readFileSync(join(process.cwd(), file), "utf8"),
+      ]),
+    );
+    expect(sources.get(pageHeader)).toContain("<AcmeChatTopbarLauncher />");
+    expect(sources.get(mobileTopBar)).toContain(
+      "<AcmeChatTopbarLauncher compact />",
+    );
+    expect(sources.get(layout)).toContain("<AcmeChatPanelHost");
+    for (const [file, source] of sources) {
+      for (const pattern of [
+        /InAppAiAgentButton/,
+        /<AcmeChatLauncher\b/,
+        /<AcmeChatWidget\b/,
+        /useIsAcmeChatLauncherVisible/,
       ]) {
-        expect(`${file} uses ${name}: ${source.includes(name)}`).toBe(
-          `${file} uses ${name}: false`,
+        expect(`${file} matches ${pattern}: ${pattern.test(source)}`).toBe(
+          `${file} matches ${pattern}: false`,
         );
       }
     }
@@ -253,4 +321,83 @@ describe("the user menu sits in the top bar (CHG-2026-134)", () => {
     expect(screen.getByRole("button", { name: "Account menu" })).toBeVisible();
     expect(screen.queryByRole("button", { name: /User menu/ })).toBeNull();
   });
+});
+
+// The buttons of the top bar on screen, left to right.
+function topBarControls(mobile: boolean) {
+  const bar = mobile
+    ? screen.getByTestId("mobile-top-bar")
+    : document.getElementById("page-header");
+  expect(bar).not.toBeNull();
+  return within(bar!).getAllByRole("button");
+}
+
+describe("ACME AI behind CAIRO_ACME_AI_ENABLED (CHG-2026-141)", () => {
+  beforeEach(() => {
+    acmeAi.role = Role.OWNER;
+    acmeAi.switchedOn = false;
+    acmeAi.statusQuery.mockClear();
+  });
+
+  afterEach(() => {
+    acmeAi.role = undefined;
+    acmeAi.switchedOn = false;
+  });
+
+  it.each([false, true])(
+    "switched off: no launcher even for an Owner, and the user menu stays last (mobile: %s)",
+    (mobile) => {
+      render(<Shell mobile={mobile} />);
+
+      expect(screen.queryByRole("button", { name: /ACME AI/ })).toBeNull();
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(topBarControls(mobile).at(-1)).toHaveAccessibleName(
+        "User menu, Ada Lovelace, ada-email",
+      );
+    },
+  );
+
+  it.each([false, true])(
+    "switched on: the launcher sits just left of the user menu (mobile: %s)",
+    (mobile) => {
+      acmeAi.switchedOn = true;
+      render(<Shell mobile={mobile} />);
+
+      const controls = topBarControls(mobile);
+      expect(controls.at(-1)).toHaveAccessibleName(
+        "User menu, Ada Lovelace, ada-email",
+      );
+      expect(controls.at(-2)).toHaveAccessibleName("Open ACME AI");
+      // Upstream's assistant is not part of this change: still no launcher.
+      expect(screen.queryByRole("button", { name: /assistant/i })).toBeNull();
+    },
+  );
+
+  it.each([Role.ADMIN, Role.MEMBER])(
+    "switched on, %s gets the launcher too",
+    (role) => {
+      acmeAi.role = role;
+      acmeAi.switchedOn = true;
+      render(<Shell />);
+
+      expect(
+        screen.getByRole("button", { name: "Open ACME AI" }),
+      ).toBeInTheDocument();
+    },
+  );
+
+  // Content-free roles and Viewers do not hold projectAiAssistant:use, so
+  // their top bars never ask acmeChat.status, whatever the switch.
+  it.each([Role.VIEWER, Role.SECURITY, Role.ANALYST, Role.AUDITOR])(
+    "switched on, %s gets no launcher and never asks for the switch",
+    (role) => {
+      acmeAi.role = role;
+      acmeAi.switchedOn = true;
+      render(<Shell />);
+      render(<Shell mobile />);
+
+      expect(screen.queryByRole("button", { name: /ACME AI/ })).toBeNull();
+      expect(acmeAi.statusQuery).not.toHaveBeenCalled();
+    },
+  );
 });

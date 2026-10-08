@@ -74,6 +74,15 @@ export const env = createEnv({
     // RAYIN_CHAT_LLM_MODEL: the LiteLLM model_name alias to call (must be
     // one of that virtual key's allowed models), e.g. "nvidia-nemotron".
     RAYIN_CHAT_LLM_MODEL: z.string().optional(),
+    // ACME addition (CHG-2026-141, ADR-0026 §12.3): the switch for ACME AI,
+    // the chat above. SERVER-ONLY, no NEXT_PUBLIC_ form; the console asks
+    // acmeChat.status. Default off, as CHG-2026-134 left it: no launcher, no
+    // panel, and acmeChat.sendMessage refuses every caller first. "true"
+    // restores ACME AI as it was before CHG-2026-134, with all its checks.
+    CAIRO_ACME_AI_ENABLED: z
+      .enum(["true", "false"])
+      .optional()
+      .default("false"),
     // ACME addition: in-cluster URL of the rayin-guardrails service (see
     // https://github.com/samrayin/rayin-guardrails), read only by
     // acmeGuardrailsRouter.ts. Left unset, the Guardrails dashboard reports
@@ -950,6 +959,7 @@ export const env = createEnv({
     RAYIN_CHAT_LLM_BASE_URL: process.env.RAYIN_CHAT_LLM_BASE_URL,
     RAYIN_CHAT_LLM_API_KEY: process.env.RAYIN_CHAT_LLM_API_KEY,
     RAYIN_CHAT_LLM_MODEL: process.env.RAYIN_CHAT_LLM_MODEL,
+    CAIRO_ACME_AI_ENABLED: process.env.CAIRO_ACME_AI_ENABLED,
     RAYIN_GUARDRAILS_URL: process.env.RAYIN_GUARDRAILS_URL,
     RAYIN_GUARDRAILS_CONFIG_SECRET: process.env.RAYIN_GUARDRAILS_CONFIG_SECRET,
     CAIRO_GUARDRAIL_ADMINS: process.env.CAIRO_GUARDRAIL_ADMINS,

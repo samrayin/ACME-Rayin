@@ -1,9 +1,11 @@
+import { type ReactNode } from "react";
 import { useRouter } from "next/router";
 import { MessageCircle } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import { useHasProjectAccess } from "@/src/features/rbac";
 import { cn } from "@/src/utils/tailwind";
 import { useAcmeChatPanel } from "@/src/features/acme-enhancements/components/acmeChatPanelStore";
+import { AcmeAiSwitchedOnGate } from "@/src/features/acme-enhancements/components/AcmeAiSwitchedOnGate";
 
 /**
  * Whether to show the ACME AI launcher: inside a project, to roles that may
@@ -50,5 +52,31 @@ export function AcmeChatLauncher({ compact = false }: { compact?: boolean }) {
       <MessageCircle className="h-4 w-4" />
       {!compact && <span className="hidden sm:inline">ACME AI</span>}
     </Button>
+  );
+}
+
+/** Headless gate: passes its children through while the launcher may show. */
+function AcmeChatLauncherVisibleGate({ children }: { children: ReactNode }) {
+  return useIsAcmeChatLauncherVisible() ? children : null;
+}
+
+/**
+ * ACME (CHG-2026-141): the launcher as the top bars mount it, just left of
+ * the user menu. It shows when useIsAcmeChatLauncherVisible() is true and
+ * ACME AI is switched on (CAIRO_ACME_AI_ENABLED); otherwise nothing shows, as
+ * CHG-2026-134 left the top bars. The switch is asked for only once the
+ * person may use ACME AI in this project.
+ */
+export function AcmeChatTopbarLauncher({
+  compact = false,
+}: {
+  compact?: boolean;
+}) {
+  return (
+    <AcmeChatLauncherVisibleGate>
+      <AcmeAiSwitchedOnGate>
+        <AcmeChatLauncher compact={compact} />
+      </AcmeAiSwitchedOnGate>
+    </AcmeChatLauncherVisibleGate>
   );
 }

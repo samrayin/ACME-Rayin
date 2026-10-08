@@ -46,6 +46,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import {
+  authenticatedProcedure,
   createTRPCRouter,
   protectedProjectProcedure,
 } from "@/src/server/api/trpc";
@@ -64,15 +65,19 @@ import { ACME_KNOWLEDGE_BASE } from "@/src/features/acme-enhancements/server/acm
 import { pickChatPromptVariant } from "@/src/features/acme-enhancements/server/acmePromptVariant";
 
 /**
- * ACME (CHG-2026-134): ACME AI is removed from EYEON on the owner's decision
- * (2026-10-07: "Remove ACME AI completely from EYEON. we will plan for it
- * sometime later"). Its launcher and panel are gone from the console, and
- * this, its only procedure, refuses every caller first: before the access
- * check, the gateway settings, the prompt, any project data or the gateway
- * itself. The code stays for that later plan, which turns it back on here.
+ * ACME (CHG-2026-141, ADR-0026 §12.3): whether ACME AI is switched on,
+ * from CAIRO_ACME_AI_ENABLED (server-only, default off). CHG-2026-134 took
+ * ACME AI out of EYEON with a code switch (owner, 2026-10-07: "Remove ACME AI
+ * completely from EYEON. we will plan for it sometime later"); the flag lets
+ * it return for that later plan without a code change.
+ *
+ * Off (the default), ACME AI is exactly as CHG-2026-134 left it: no launcher
+ * or panel in the console, and sendMessage refuses every caller first, before
+ * the access check, the gateway settings, the prompt, any project data or the
+ * gateway itself. On, sendMessage runs every check it had before.
  */
 function acmeAiEnabled(): boolean {
-  return false;
+  return env.CAIRO_ACME_AI_ENABLED === "true";
 }
 
 function wrapUntrusted(text: string, toolName: string): string {
@@ -289,6 +294,22 @@ async function callGateway(messages: ChatCompletionMessage[]) {
 }
 
 export const acmeChatRouter = createTRPCRouter({
+  /**
+   * ACME (CHG-2026-141): whether ACME AI is switched on, for its launcher and
+   * panel. The flag is server-only, so the console has to ask. Sign-in only:
+   * the switch is the deployment's, not a project's, so there is no project
+   * or scope to check. It returns that one boolean and reads nothing else.
+   *
+   * Not a project procedure, so the content-free roles' allow-lists, which
+   * guard project procedures, do not apply and it needs no entry on them;
+   * sendMessage stays off every list. The console asks only for people who
+   * may use ACME AI in the current project (projectAiAssistant:use), which no
+   * content-free role holds.
+   */
+  status: authenticatedProcedure.query(() => ({
+    enabled: acmeAiEnabled(),
+  })),
+
   sendMessage: protectedProjectProcedure
     .input(
       z.object({

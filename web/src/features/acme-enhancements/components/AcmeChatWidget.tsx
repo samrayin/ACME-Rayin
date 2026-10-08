@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { type ReactNode, useState, useRef, useEffect } from "react";
 import { MessageCircle, X, Send } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import { Textarea } from "@/src/components/ui/textarea";
@@ -9,6 +9,7 @@ import { api } from "@/src/utils/api";
 import { cn } from "@/src/utils/tailwind";
 import { useHasProjectAccess } from "@/src/features/rbac";
 import { useAcmeChatPanel } from "@/src/features/acme-enhancements/components/acmeChatPanelStore";
+import { AcmeAiSwitchedOnGate } from "@/src/features/acme-enhancements/components/AcmeAiSwitchedOnGate";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -174,5 +175,41 @@ export function AcmeChatWidget({ projectId }: { projectId: string }) {
         ) : null}
       </div>
     </Layer>
+  );
+}
+
+/**
+ * Headless gate: passes its children through for people who may use ACME AI
+ * in this project (projectAiAssistant:use, the launcher's and the server's
+ * rule).
+ */
+function AcmeChatAccessGate({
+  projectId,
+  children,
+}: {
+  projectId: string;
+  children: ReactNode;
+}) {
+  const canUse = useHasProjectAccess({
+    projectId,
+    scope: "projectAiAssistant:use",
+  });
+  return canUse ? children : null;
+}
+
+/**
+ * ACME (CHG-2026-141): the panel as the authenticated layout mounts it. It
+ * hosts AcmeChatWidget while ACME AI is switched on (CAIRO_ACME_AI_ENABLED)
+ * for someone who may use it in this project; otherwise nothing is hosted,
+ * as CHG-2026-134 left the layout. The switch is asked for only once the
+ * person may use ACME AI here.
+ */
+export function AcmeChatPanelHost({ projectId }: { projectId: string }) {
+  return (
+    <AcmeChatAccessGate projectId={projectId}>
+      <AcmeAiSwitchedOnGate>
+        <AcmeChatWidget projectId={projectId} />
+      </AcmeAiSwitchedOnGate>
+    </AcmeChatAccessGate>
   );
 }
