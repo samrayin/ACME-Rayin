@@ -9,9 +9,11 @@ import {
 
 // CHG-2026-138 (ADR-0027): the EYEON Enforcement and policy page on fixed
 // figures. Display only: no switch, a link to Guardrails; the mode always
-// with its ceiling; changes told by when and to what, never who; pods in
-// versions; what is not recorded says so; the switched-off page links to
-// Guardrails. And the kit's mode-against-ceiling scale.
+// with its ceiling; changes told by when, to what, who and why (owner
+// decision, 2026-10-07: who as on the Guardrails page, the reason as plain
+// text, never HTML); pods in versions and counts, never named; what is not
+// recorded says so; the switched-off page links to Guardrails. And the kit's
+// mode-against-ceiling scale.
 
 const h = vi.hoisted(() => ({ result: {} as unknown }));
 
@@ -55,6 +57,8 @@ function summary(overrides: Record<string, unknown> = {}) {
         at: "2026-10-06T09:00:00.000Z",
         to: "record",
         automatic: true,
+        createdByEmail: null,
+        reason: "Automatic switch-back to record: the trial ended.",
       },
       version: 14,
       storedMode: "record",
@@ -98,6 +102,8 @@ function summary(overrides: Record<string, unknown> = {}) {
           to: "record",
           switchBackAt: null,
           automatic: true,
+          createdByEmail: null,
+          reason: "Automatic switch-back to record: the trial ended.",
           inPeriod: true,
         },
         {
@@ -107,6 +113,8 @@ function summary(overrides: Record<string, unknown> = {}) {
           to: "enforce",
           switchBackAt: "2026-10-06T09:00:00.000Z",
           automatic: false,
+          createdByEmail: null,
+          reason: "Half-hour enforce trial for the claims bot",
           inPeriod: true,
         },
         {
@@ -116,6 +124,8 @@ function summary(overrides: Record<string, unknown> = {}) {
           to: "enforce",
           switchBackAt: null,
           automatic: false,
+          createdByEmail: "EDITOR-EMAIL",
+          reason: "First enforce version",
           inPeriod: false,
         },
       ],
@@ -136,28 +146,10 @@ function summary(overrides: Record<string, unknown> = {}) {
       options: [5, 15, 30, 60, 120],
     },
     pods: {
-      pods: [
-        {
-          name: "guard-pod-a",
-          appliedVersion: 14,
-          lastReportAt: "2026-10-07T11:59:40.000Z",
-          status: "current",
-        },
-        {
-          name: "guard-pod-b",
-          appliedVersion: 13,
-          lastReportAt: "2026-10-07T11:59:50.000Z",
-          status: "older",
-        },
-        {
-          name: "guard-pod-old",
-          appliedVersion: 13,
-          lastReportAt: "2026-10-07T11:00:00.000Z",
-          status: "stale",
-        },
-      ],
       reporting: 2,
       onCurrent: 1,
+      older: 1,
+      unknown: 0,
       stale: 1,
       currentVersion: 14,
       staleAfterSeconds: 120,
@@ -272,7 +264,7 @@ describe("EYEON Enforcement and policy page (CHG-2026-138)", () => {
     ).toBeTruthy();
   });
 
-  it("lists changes by when and to what, never by who", () => {
+  it("lists changes by when, to what, who and why, as the Guardrails page words who", () => {
     show();
     const list = screen.getByRole("list", {
       name: "Recorded changes of mode",
@@ -281,14 +273,36 @@ describe("EYEON Enforcement and policy page (CHG-2026-138)", () => {
     expect(items).toHaveLength(3);
     expect(within(items[0]!).getByText("Enforce to Record")).toBeTruthy();
     expect(within(items[0]!).getByText("Automatic switch-back")).toBeTruthy();
+    // An automatic switch-back says so instead of a person.
+    expect(
+      within(items[0]!).getByText("Settings v14, by the automatic switch-back"),
+    ).toBeTruthy();
+    expect(
+      within(items[0]!).getByText(
+        "Reason: “Automatic switch-back to record: the trial ended.”",
+      ),
+    ).toBeTruthy();
     expect(within(items[1]!).getByText("Record to Enforce")).toBeTruthy();
     expect(within(items[1]!).getByText(/^Trial, switches back/)).toBeTruthy();
+    // No email returned: the Guardrails page's words for the person.
+    expect(
+      within(items[1]!).getByText("Settings v13, by a guardrail administrator"),
+    ).toBeTruthy();
+    expect(
+      within(items[1]!).getByText(
+        "Reason: “Half-hour enforce trial for the claims bot”",
+      ),
+    ).toBeTruthy();
     expect(
       within(items[2]!).getByText("Enforce, the first version stored"),
     ).toBeTruthy();
     expect(within(items[2]!).getByText("Before this period")).toBeTruthy();
+    // An email only where the server returned one (a guardrail administrator).
     expect(
-      screen.getByText(/Who made a change is not shown here/),
+      within(items[2]!).getByText("Settings v9, by EDITOR-EMAIL"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/a person's email shows only to the deployment's/),
     ).toBeTruthy();
     for (const link of screen.getAllByRole("link", {
       name: "Open the audit log",
@@ -299,6 +313,47 @@ describe("EYEON Enforcement and policy page (CHG-2026-138)", () => {
       );
   });
 
+  it("shows the last change's person and reason beside the mode", () => {
+    show({
+      mode: {
+        ...summary().mode,
+        lastChange: {
+          at: "2026-10-06T08:30:00.000Z",
+          to: "enforce",
+          automatic: false,
+          createdByEmail: null,
+          reason: "Half-hour enforce trial for the claims bot",
+        },
+      },
+    });
+    expect(
+      screen.getByText(/^To Enforce, .*, by a guardrail administrator$/),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("“Half-hour enforce trial for the claims bot”"),
+    ).toBeTruthy();
+  });
+
+  it("shows a reason as plain text, never as HTML", () => {
+    const html =
+      '<i data-reason-html="1">bold</i> <img src="x" data-reason-html="2"> & <script>window.x=1</script>';
+    const base = summary();
+    show({
+      mode: {
+        ...base.mode,
+        lastChange: { ...base.mode.lastChange, reason: html },
+      },
+      history: {
+        ...base.history,
+        shown: base.history.shown.map((c) => ({ ...c, reason: html })),
+      },
+    });
+    expect(document.querySelector("[data-reason-html]")).toBeNull();
+    expect(document.querySelector("main script")).toBeNull();
+    expect(screen.getByText(`“${html}”`)).toBeTruthy();
+    expect(screen.getAllByText(`Reason: “${html}”`)).toHaveLength(3);
+  });
+
   it("tells the last trial and how it ended", () => {
     show();
     expect(screen.getByText("No trial is running.")).toBeTruthy();
@@ -306,7 +361,7 @@ describe("EYEON Enforcement and policy page (CHG-2026-138)", () => {
     expect(screen.getByText(/Default switch-back: 30 minutes\./)).toBeTruthy();
   });
 
-  it("tells pod agreement in versions, stale pods apart, and gateway replicas by mode", () => {
+  it("tells pod agreement in versions and counts, stale pods apart, and gateway replicas by mode", () => {
     show();
     expect(
       screen.getByText(
@@ -314,18 +369,49 @@ describe("EYEON Enforcement and policy page (CHG-2026-138)", () => {
       ),
     ).toBeTruthy();
     expect(screen.getAllByText("Pods disagree").length).toBeGreaterThan(0);
-    const table = screen.getByRole("table", {
-      name: "Guardrail pods and the settings version each reported",
+    const counts = screen.getByRole("list", {
+      name: "Guardrail pods by settings version",
     });
-    expect(within(table).getByText("On the version in force")).toBeTruthy();
-    expect(within(table).getByText("Older version")).toBeTruthy();
-    expect(within(table).getByText("Stale, not counted")).toBeTruthy();
-    expect(within(table).getByText("20 s ago")).toBeTruthy();
+    expect(
+      within(counts)
+        .getAllByRole("listitem")
+        .map((li) => li.textContent),
+    ).toEqual([
+      "On the version in force: 1",
+      "Older version: 1",
+      "Settings unknown: 0",
+      "Stale, not counted: 1",
+    ]);
+    // Counted, never named: no pod table, no name column.
+    expect(screen.queryByRole("table", { name: /Guardrail pods/ })).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "Pod" })).toBeNull();
     expect(
       screen.getByText(
         /2 gateway replicas reported with their latest decision: 2 Record mode/,
       ),
     ).toBeTruthy();
+  });
+
+  it("says when no pod reported, without naming any", () => {
+    show({
+      pods: {
+        ...summary().pods,
+        reporting: 0,
+        onCurrent: 0,
+        older: 0,
+        unknown: 0,
+        stale: 0,
+        agree: null,
+      },
+    });
+    expect(
+      screen.getByText("No guardrail pod reported in the last 24 hours."),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("list", {
+        name: "Guardrail pods by settings version",
+      }),
+    ).toBeNull();
   });
 
   it("shows the policies in force with what each flagged, in Would block words", () => {
@@ -361,7 +447,7 @@ describe("EYEON Enforcement and policy page (CHG-2026-138)", () => {
     expect(screen.getAllByText("Not reported").length).toBeGreaterThan(0);
   });
 
-  it("lists what is not recorded, never as a number, and who changed it as not shown", () => {
+  it("lists what is not recorded, never as a number, and the pods' names as not shown", () => {
     show();
     const list = screen
       .getByText("The mode each guardrail pod applies")
@@ -369,7 +455,14 @@ describe("EYEON Enforcement and policy page (CHG-2026-138)", () => {
     // Five not recorded here, plus the policy tile for the size limit.
     expect(within(list).getAllByText("Not recorded")).toHaveLength(5);
     expect(screen.getAllByText("Not recorded")).toHaveLength(6);
+    expect(
+      within(list).getByText(
+        "The names of the guardrail pods and gateway replicas",
+      ),
+    ).toBeTruthy();
     expect(within(list).getByText("Not shown here")).toBeTruthy();
+    // Who changed the mode and why are shown now, so not listed here.
+    expect(list.textContent).not.toMatch(/Who changed the mode/);
     expect(list.textContent).not.toMatch(/\d/);
   });
 });

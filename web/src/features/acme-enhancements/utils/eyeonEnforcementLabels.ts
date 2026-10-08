@@ -3,11 +3,12 @@
  * wording.
  *
  * The mode is always named with its ceiling: "Enforce mode", "Record mode"
- * or "Not reported" (prototype README §10). A change of mode is told by when
- * and to what, never by who. A pod reports the settings version it applied,
- * not a mode, so its agreement is told in versions; a gateway replica
- * reports its mode with each decision. Pure functions, tested without a
- * browser.
+ * or "Not reported" (prototype README §10). A change of mode is told by
+ * when, to what, who and why; who is worded as on the Guardrails page
+ * (changedByText). A pod reports the settings version it applied, not a
+ * mode, so its agreement is told in versions and counts, never by pod name;
+ * a gateway replica reports its mode with each decision. Pure functions,
+ * tested without a browser.
  */
 import { type GatewayMode } from "@/src/features/acme-enhancements/utils/guardrailVerdictLabel";
 
@@ -49,15 +50,6 @@ export function formatMinutes(minutes: number): string {
     return hours === 1 ? "1 hour" : `${hours} hours`;
   }
   return minutes === 1 ? "1 minute" : `${minutes} minutes`;
-}
-
-/** How long ago, from seconds: "40 s ago", "3 min ago", "2 h ago", "1 d ago". */
-export function ageText(seconds: number): string {
-  const s = Math.max(0, Math.floor(seconds));
-  if (s < 90) return `${s} s ago`;
-  if (s < 5400) return `${Math.round(s / 60)} min ago`;
-  if (s < 172_800) return `${Math.round(s / 3600)} h ago`;
-  return `${Math.round(s / 86_400)} d ago`;
 }
 
 type PodSummary = {

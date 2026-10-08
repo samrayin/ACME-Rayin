@@ -37,12 +37,12 @@ import { EyeonNotRecorded } from "@/src/features/acme-enhancements/components/ey
 import { EyeonKpiTile } from "@/src/features/acme-enhancements/components/eyeon/EyeonKpiTile";
 import { EyeonModeScale } from "@/src/features/acme-enhancements/components/eyeon/EyeonModeScale";
 import {
+  changedByText,
   formatRate,
   formatShare,
 } from "@/src/features/acme-enhancements/utils/eyeonOverviewLabels";
 import { splitText } from "@/src/features/acme-enhancements/utils/eyeonGuardrailDecisionsLabels";
 import {
-  ageText,
   changeTitle,
   enforcementHeadline,
   formatMinutes,
@@ -61,10 +61,14 @@ import {
 // ACME (CHG-2026-138, ADR-0027): the EYEON Enforcement and policy page,
 // composed from the EYEON kit (components/eyeon). It follows the prototype's
 // enforcement page as far as the data truthfully allows: the mode EYEON
-// serves against its ceiling, when and to what it changed, whether the
-// guardrail pods and gateway replicas agree, and the policies in force.
-// Display only: there is no switch here; the mode is changed on the
-// Guardrails page. Who changed the mode is not shown. Metadata only.
+// serves against its ceiling, when and to what it changed, who changed it
+// and why, whether the guardrail pods and gateway replicas agree, and the
+// policies in force. Display only: there is no switch here; the mode is
+// changed on the Guardrails page. Metadata only.
+//
+// Owner decisions of 2026-10-07: who changed the mode is shown as on the
+// Guardrails page (changedByText), and the reason as plain text, never as
+// HTML; the guardrail pods are counted, never named.
 
 type Summary = Extract<
   RouterOutputs["eyeonEnforcement"]["summary"],
@@ -78,10 +82,11 @@ const headerProps = {
   help: {
     description:
       "Whether EYEON records or enforces on gateway traffic: the mode it " +
-      "serves against the deployment ceiling, when the mode changed and to " +
-      "what, an enforce trial's switch-back, whether the guardrail pods and " +
-      "gateway replicas agree, and the guardrail policies in force. Display " +
-      "only: the mode is changed on the Guardrails page. Metadata only.",
+      "serves against the deployment ceiling, when the mode changed, to " +
+      "what, by whom and why, an enforce trial's switch-back, whether the " +
+      "guardrail pods and gateway replicas agree, and the guardrail policies " +
+      "in force. Display only: the mode is changed on the Guardrails page. " +
+      "Metadata only.",
   },
 };
 
@@ -380,9 +385,15 @@ function ModeCard({ data, href }: { data: Summary; href: string }) {
         <dt className="text-muted-foreground">Last change</dt>
         <dd>
           {m.lastChange
-            ? `To ${m.lastChange.to === "enforce" ? "Enforce" : "Record"}, ${when(m.lastChange.at)}${m.lastChange.automatic ? " (automatic switch-back)" : ""}`
+            ? `To ${m.lastChange.to === "enforce" ? "Enforce" : "Record"}, ${when(m.lastChange.at)}, by ${changedByText(m.lastChange)}`
             : "No change of mode recorded"}
         </dd>
+        {m.lastChange ? (
+          <>
+            <dt className="text-muted-foreground">Reason</dt>
+            <dd className="min-w-0 break-words">“{m.lastChange.reason}”</dd>
+          </>
+        ) : null}
       </dl>
       {m.cappedByCeiling ? (
         <p className="text-xs">
@@ -424,9 +435,9 @@ function HistoryCard({
   return (
     <EyeonCard
       title="Mode over time"
-      subtitle={`The mode the gateway reported with each check, per UTC day, ${period}, and each recorded change of mode: when, and to what.`}
+      subtitle={`The mode the gateway reported with each check, per UTC day, ${period}, and each recorded change of mode: when, to what, by whom and why.`}
       link={{ href, label: "Open the audit log" }}
-      footnote="Changes are recorded in the settings history and the audit log. Who made a change is not shown here."
+      footnote="Changes are recorded in the settings history and the audit log. As on the Guardrails page, a person's email shows only to the deployment's guardrail administrators."
     >
       <EyeonStackedBars
         label="Guardrail checks per UTC day, by the mode the gateway reported"
@@ -494,7 +505,10 @@ function HistoryCard({
                     )}
                   </span>
                   <span className="text-muted-foreground text-xs">
-                    Settings v{c.version}
+                    Settings v{c.version}, by {changedByText(c)}
+                  </span>
+                  <span className="text-xs break-words">
+                    Reason: “{c.reason}”
                   </span>
                 </span>
                 <time
@@ -564,49 +578,45 @@ function TrialCard({ data, href }: { data: Summary; href: string }) {
   );
 }
 
-const POD_STATUS: Record<
-  Summary["pods"]["pods"][number]["status"],
+/** The pods' agreement in counts: the pods are counted, never named. */
+const POD_COUNTS: {
+  key: "onCurrent" | "older" | "unknown" | "stale";
+  label: string;
+  variant: "success" | "warning" | "secondary" | "outline";
+  icon: LucideIcon;
+}[] = [
   {
-    label: string;
-    variant: "success" | "warning" | "secondary" | "outline";
-    icon: LucideIcon;
-  }
-> = {
-  current: {
+    key: "onCurrent",
     label: "On the version in force",
     variant: "success",
     icon: CheckCircle2,
   },
-  older: { label: "Older version", variant: "warning", icon: AlertTriangle },
-  unknown: {
+  {
+    key: "older",
+    label: "Older version",
+    variant: "warning",
+    icon: AlertTriangle,
+  },
+  {
+    key: "unknown",
     label: "Settings unknown",
     variant: "secondary",
     icon: MinusCircle,
   },
-  stale: { label: "Stale, not counted", variant: "outline", icon: Clock },
-};
-
-function PodStatusBadge({
-  status,
-}: {
-  status: Summary["pods"]["pods"][number]["status"];
-}) {
-  const { label, variant, icon: Icon } = POD_STATUS[status];
-  return (
-    <Badge variant={variant} className="gap-1">
-      <Icon aria-hidden className="size-3" />
-      {label}
-    </Badge>
-  );
-}
+  {
+    key: "stale",
+    label: "Stale, not counted",
+    variant: "outline",
+    icon: Clock,
+  },
+];
 
 function PodsCard({ data, href }: { data: Summary; href: string }) {
   const { pods, gateways } = data;
-  const now = new Date(data.generatedAt).getTime();
   return (
     <EyeonCard
       title="Pod agreement"
-      subtitle={`Each guardrail pod reports the settings version it applied; a pod is stale after ${pods.staleAfterSeconds} seconds without a report. Each gateway replica reports its mode with every decision.`}
+      subtitle={`Each guardrail pod reports the settings version it applied; a pod is stale after ${pods.staleAfterSeconds} seconds without a report. Each gateway replica reports its mode with every decision. Pods and replicas are counted, not named.`}
       link={{ href, label: "Open Guardrails" }}
       footnote="A pod reports a version, not a mode: a pod on the version in force serves its mode."
     >
@@ -614,59 +624,24 @@ function PodsCard({ data, href }: { data: Summary; href: string }) {
         <span className="text-sm font-bold">{podsHeadline(pods)}</span>
         <StatusBadge status={podsStatus(pods)} />
       </div>
-      {pods.pods.length === 0 ? (
+      {pods.reporting + pods.stale === 0 ? (
         <p className="text-muted-foreground text-sm">
           No guardrail pod reported in the last 24 hours.
         </p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <caption className="sr-only">
-              Guardrail pods and the settings version each reported
-            </caption>
-            <thead>
-              <tr className="text-muted-foreground border-b text-xs">
-                <th scope="col" className="py-1 text-left font-bold">
-                  Pod
-                </th>
-                <th scope="col" className="py-1 text-left font-bold">
-                  Settings
-                </th>
-                <th scope="col" className="py-1 text-left font-bold">
-                  Last report
-                </th>
-                <th scope="col" className="py-1 text-left font-bold">
-                  Status
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {pods.pods.map((p) => (
-                <tr key={p.name} className="border-b last:border-0">
-                  <td className="max-w-48 py-1.5 pr-2">
-                    <span className="block truncate font-mono" title={p.name}>
-                      {p.name}
-                    </span>
-                  </td>
-                  <td className="py-1.5 pr-2 tabular-nums">
-                    {p.appliedVersion === null
-                      ? "None yet"
-                      : `v${p.appliedVersion}`}
-                  </td>
-                  <td
-                    className="text-muted-foreground py-1.5 pr-2"
-                    title={when(p.lastReportAt)}
-                  >
-                    {ageText((now - new Date(p.lastReportAt).getTime()) / 1000)}
-                  </td>
-                  <td className="py-1.5">
-                    <PodStatusBadge status={p.status} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ul
+          aria-label="Guardrail pods by settings version"
+          className="flex flex-wrap gap-2"
+        >
+          {POD_COUNTS.map(({ key, label, variant, icon: Icon }) => (
+            <li key={key}>
+              <Badge variant={variant} className="gap-1 tabular-nums">
+                <Icon aria-hidden className="size-3" />
+                {label}: {pods[key].toLocaleString()}
+              </Badge>
+            </li>
+          ))}
+        </ul>
       )}
       <div className="flex flex-col gap-2 border-t pt-3">
         <div className="flex flex-wrap items-center gap-2">
@@ -1016,7 +991,7 @@ const NOT_RECORDED = [
 ] as const;
 
 const NOT_SHOWN_REASON =
-  "Recorded in the settings history and the audit log, which show them under their own rules. Whether this page shows them is an open decision.";
+  "This page counts the guardrail pods and the gateway replicas; it does not name them. The Guardrails page shows them under its own rules.";
 
 function NotOnPageCard({ href }: { href: string }) {
   return (
@@ -1037,7 +1012,7 @@ function NotOnPageCard({ href }: { href: string }) {
           </li>
         ))}
         <li className="flex flex-wrap items-baseline justify-between gap-2">
-          <span>Who changed the mode, and the reason given</span>
+          <span>The names of the guardrail pods and gateway replicas</span>
           <span
             className="text-muted-foreground inline-flex items-center gap-1 font-bold"
             title={NOT_SHOWN_REASON}

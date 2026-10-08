@@ -9,6 +9,13 @@ import EyeonOverviewPage from "@/src/features/acme-enhancements/pages/EyeonOverv
 // "Done" end it. Focus follows the widget moved. The arrangement is kept in
 // this browser per person and per project, and only orders what the server
 // sent: a role without spend never gets a spend card to show.
+//
+// CHG-2026-138 follow-up (owner decision, 2026-10-07): the enforcement card
+// says who made the last change of mode and the reason given, in the
+// Guardrails page's words: an automatic switch-back says so, a person is
+// named by email only where the server returned one (to guardrail
+// administrators), otherwise "a guardrail administrator". The reason is
+// plain text, never HTML.
 
 const h = vi.hoisted(() => ({
   result: {} as unknown,
@@ -410,5 +417,84 @@ describe("EYEON Home: arrange mode (CHG-2026-136)", () => {
     expect(
       screen.getByRole("group", { name: "Applications" }).className,
     ).toContain("lg:col-span-3");
+  });
+});
+
+type LastChange = {
+  at: string;
+  to: "record" | "enforce";
+  automatic: boolean;
+  createdByEmail: string | null;
+  reason: string;
+};
+
+const PERSON: LastChange = {
+  at: "2026-10-06T08:30:00.000Z",
+  to: "enforce",
+  automatic: false,
+  createdByEmail: null,
+  reason: "Half-hour enforce trial for the claims bot",
+};
+
+/** The overview with this last change of mode on its enforcement card. */
+function showLastChange(lastChange: LastChange | null) {
+  const base = summary(false);
+  h.result = {
+    isPending: false,
+    isError: false,
+    data: { ...base, mode: { ...base.mode, lastChange } },
+  };
+  render(<EyeonOverviewPage />);
+}
+
+describe("EYEON overview: the last change of mode, who and why (CHG-2026-138 follow-up)", () => {
+  it("names a person as the Guardrails page does, with the reason given", () => {
+    showLastChange(PERSON);
+    expect(
+      screen.getByText(/^To Enforce, .*, by a guardrail administrator$/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Reason")).toBeInTheDocument();
+    expect(
+      screen.getByText("“Half-hour enforce trial for the claims bot”"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the email only where the server returned it", () => {
+    showLastChange({ ...PERSON, createdByEmail: "EDITOR-EMAIL" });
+    expect(
+      screen.getByText(/^To Enforce, .*, by EDITOR-EMAIL$/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/a guardrail administrator/)).toBeNull();
+  });
+
+  it("says an automatic switch-back made the change, instead of a person", () => {
+    showLastChange({
+      at: "2026-10-06T09:00:00.000Z",
+      to: "record",
+      automatic: true,
+      createdByEmail: null,
+      reason: "Automatic switch-back to record: the trial ended.",
+    });
+    expect(
+      screen.getByText(/^To Record, .*, by the automatic switch-back$/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("“Automatic switch-back to record: the trial ended.”"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the reason as plain text, never as HTML", () => {
+    const html =
+      '<i data-reason-html="1">bold</i> <img src="x" data-reason-html="2"> & <script>window.x=1</script>';
+    showLastChange({ ...PERSON, reason: html });
+    expect(document.querySelector("[data-reason-html]")).toBeNull();
+    expect(document.querySelector("main script")).toBeNull();
+    expect(screen.getByText(`“${html}”`)).toBeInTheDocument();
+  });
+
+  it("says no change is recorded, with no person or reason", () => {
+    showLastChange(null);
+    expect(screen.getByText("No change of mode recorded")).toBeInTheDocument();
+    expect(screen.queryByText("Reason")).toBeNull();
   });
 });

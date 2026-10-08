@@ -13,15 +13,20 @@ import {
   MODE_CHANGES_SHOWN,
   eyeonEnforcementRouter,
 } from "@/src/features/acme-enhancements/server/eyeonEnforcementRouter";
+import { acmeGuardrailsRouter } from "@/src/features/acme-enhancements/server/acmeGuardrailsRouter";
 import { MAX_LISTED_PODS } from "@/src/features/acme-enhancements/server/acmeGuardrailSettings";
 
 // CHG-2026-138 (ADR-0027): the EYEON Enforcement and policy page's access
 // rules and reads, against a mocked Prisma. A role without
 // projectGuardrails:read is refused before the database is touched; with the
 // flag off nothing is read; no content column is ever selected, grouped or
-// queried; who changed the mode, and the reason given, never reach the page;
-// gateway replicas are counted, not named; the number of reads does not grow
-// with the data.
+// queried; the number of reads does not grow with the data.
+//
+// Follow-up (owner decisions, 2026-10-07): who changed the mode and the
+// reason given reach every role that may open the page, exactly as the
+// Guardrails page shows them (the email to guardrail administrators only,
+// never the user id); the guardrail pods are counted, never named, as the
+// gateway replicas are, and the pod name column is not read.
 
 const PROJECT = "proj-eyeon-enforcement";
 const ORG = "org-eyeon-enforcement";
@@ -34,7 +39,10 @@ const CONTENT_COLUMNS = [
 const CONTENT_SQL =
   /redacted_text|pii_findings|raw_content_encrypted|token_hash/;
 
-const router = createTRPCRouter({ eyeonEnforcement: eyeonEnforcementRouter });
+const router = createTRPCRouter({
+  eyeonEnforcement: eyeonEnforcementRouter,
+  acmeGuardrails: acmeGuardrailsRouter,
+});
 
 function sessionFor(role: string, email: string | null = null): Session {
   return {
@@ -88,7 +96,10 @@ const MIN = 60_000;
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
 
-/** A settings version as the table holds it, with who and why. */
+/**
+ * A settings version as the table holds it, with who and why. The user id
+ * must never reach the page; the email only a guardrail administrator.
+ */
 function version(
   v: number,
   at: number,
@@ -107,9 +118,10 @@ function version(
     piiEntities: ["BH_CPR", "EMAIL_ADDRESS"],
     jailbreakEnabled: true,
     topicalEnabled: extra.topicalEnabled ?? false,
-    reason: `SECRET-REASON-${v} for this change`,
+    reason: `Reason typed for version ${v}`,
     createdBy: extra.createdBy ?? `SECRET-USER-ID-${v}`,
-    createdByEmail: `SECRET-EMAIL-${v}`,
+    // The automatic switch-back stores no email (applyExpiredRevert).
+    createdByEmail: extra.automatic ? null : `EDITOR-EMAIL-${v}`,
     projectId: PROJECT,
     createdAt: new Date(at),
     revertAt: extra.revertAt ?? null,
@@ -196,22 +208,35 @@ function gatewayGroups(count = 3) {
   }));
 }
 
-function podRows(count = 3) {
+/**
+ * Pod-status rows as a careless read would return them, with each pod's
+ * name, so the tests prove the page never passes one on.
+ */
+function podRows(count = 4) {
   const rows = [
     {
-      pod: "guard-pod-a",
+      pod: "guard-pod-SECRET-a",
       appliedVersion: 5,
       lastSyncAt: new Date(NOW - 10_000),
     },
     {
-      pod: "guard-pod-b",
+      pod: "guard-pod-SECRET-b",
       appliedVersion: 4,
       lastSyncAt: new Date(NOW - 20_000),
     },
-    { pod: "guard-pod-c", appliedVersion: 4, lastSyncAt: new Date(NOW - HOUR) },
+    {
+      pod: "guard-pod-SECRET-c",
+      appliedVersion: null,
+      lastSyncAt: new Date(NOW - 30_000),
+    },
+    {
+      pod: "guard-pod-SECRET-d",
+      appliedVersion: 4,
+      lastSyncAt: new Date(NOW - HOUR),
+    },
   ];
-  const extra = Array.from({ length: Math.max(0, count - 3) }, (_, i) => ({
-    pod: `guard-pod-x${i}`,
+  const extra = Array.from({ length: Math.max(0, count - 4) }, (_, i) => ({
+    pod: `guard-pod-SECRET-x${i}`,
     appliedVersion: 5,
     lastSyncAt: new Date(NOW - 5_000),
   }));
@@ -261,6 +286,7 @@ function fakePrisma(
         (args: {
           where: Record<string, unknown>;
           select: Record<string, unknown>;
+          orderBy: unknown;
           take: number;
         }) => Promise<unknown[]>
       >(async () => pods),
@@ -289,7 +315,7 @@ function fakePrisma(
   };
 }
 
-function callerFor(
+function rootCallerFor(
   role: string,
   db: object = explodingPrisma,
   email: string | null = null,
@@ -301,7 +327,15 @@ function callerFor(
   return router.createCaller({
     ...ctx,
     prisma: db as typeof ctx.prisma,
-  }).eyeonEnforcement;
+  });
+}
+
+function callerFor(
+  role: string,
+  db: object = explodingPrisma,
+  email: string | null = null,
+) {
+  return rootCallerFor(role, db, email).eyeonEnforcement;
 }
 
 const INPUT_7 = { projectId: PROJECT, windowDays: 7 as const };
@@ -431,6 +465,8 @@ describe("EYEON Enforcement and policy: access and reads (CHG-2026-138)", () => 
         at: CURRENT.createdAt.toISOString(),
         to: "enforce",
         automatic: false,
+        createdByEmail: null,
+        reason: "Reason typed for version 5",
       },
       version: 5,
       storedMode: "enforce",
@@ -539,7 +575,7 @@ describe("EYEON Enforcement and policy: access and reads (CHG-2026-138)", () => 
     expect(sqlValues(first)).toContain(PROJECT);
   });
 
-  it("lists the changes of mode, newest first: when and to what, never who or why", async () => {
+  it("lists the changes of mode, newest first: when, to what, who and why", async () => {
     const { result } = await enabledSummary("AUDITOR");
     expect(result.history).toEqual({
       shown: [
@@ -550,6 +586,8 @@ describe("EYEON Enforcement and policy: access and reads (CHG-2026-138)", () => 
           to: "enforce",
           switchBackAt: null,
           automatic: false,
+          createdByEmail: null,
+          reason: "Reason typed for version 5",
           inPeriod: true,
         },
         {
@@ -559,6 +597,8 @@ describe("EYEON Enforcement and policy: access and reads (CHG-2026-138)", () => 
           to: "record",
           switchBackAt: null,
           automatic: true,
+          createdByEmail: null,
+          reason: "Reason typed for version 3",
           inPeriod: false,
         },
         {
@@ -568,6 +608,8 @@ describe("EYEON Enforcement and policy: access and reads (CHG-2026-138)", () => 
           to: "enforce",
           switchBackAt: new Date(TRIAL_AT + 30 * MIN).toISOString(),
           automatic: false,
+          createdByEmail: null,
+          reason: "Reason typed for version 2",
           inPeriod: false,
         },
       ],
@@ -589,54 +631,140 @@ describe("EYEON Enforcement and policy: access and reads (CHG-2026-138)", () => 
     });
   });
 
-  it.each(["OWNER", "SECURITY", "AUDITOR"])(
-    "never returns who changed a setting, their email or the reason, to %s",
+  it.each(["OWNER", "ADMIN", "SECURITY", "AUDITOR"])(
+    "returns who changed the mode and the reason given to %s, and nothing else about the person",
     async (role) => {
       const { result } = await enabledSummary(role);
+      // The reason typed at save time, for each change and the last one.
+      expect(result.history.shown.map((c) => c.reason)).toEqual([
+        "Reason typed for version 5",
+        "Reason typed for version 3",
+        "Reason typed for version 2",
+      ]);
+      expect(result.mode.lastChange).toMatchObject({
+        automatic: false,
+        createdByEmail: null,
+        reason: "Reason typed for version 5",
+      });
+      // Not a guardrail administrator: no email, as on the Guardrails page,
+      // so the page says "a guardrail administrator".
+      expect(result.history.shown.map((c) => c.createdByEmail)).toEqual([
+        null,
+        null,
+        null,
+      ]);
+      // The automatic switch-back says so instead of a person.
+      expect(result.history.shown[1]).toMatchObject({
+        automatic: true,
+        createdByEmail: null,
+      });
       const json = JSON.stringify(result);
-      expect(json).not.toContain("SECRET-");
-      expect(json).not.toMatch(/createdBy|createdByEmail|"reason"/);
+      expect(json).not.toContain("SECRET-USER-ID");
+      expect(json).not.toContain("EDITOR-EMAIL");
+      expect(json).not.toMatch(/"createdBy"|"userId"|"name"/);
       expect(json).not.toContain("migration");
     },
   );
 
-  it("tells pod agreement in settings versions, stale pods apart", async () => {
+  it("gives a guardrail administrator the person's email, as the Guardrails page does, never the user id", async () => {
+    envRecord.CAIRO_GUARDRAIL_ADMINS = "guardrail-admin";
+    envRecord.AUTH_DISABLE_SIGNUP = "true";
+    // A listed administrator sees the email in any role that may open the
+    // page, the content-free Security Analyst and Auditor included, as on
+    // the Guardrails page (getConfig and modeChanges).
+    for (const role of ["OWNER", "SECURITY", "AUDITOR"]) {
+      const { result } = await enabledSummary(
+        role,
+        fakePrisma(),
+        "guardrail-admin",
+      );
+      expect(result.history.shown.map((c) => c.createdByEmail)).toEqual([
+        "EDITOR-EMAIL-5",
+        // The automatic switch-back: no person.
+        null,
+        "EDITOR-EMAIL-2",
+      ]);
+      expect(result.mode.lastChange?.createdByEmail).toBe("EDITOR-EMAIL-5");
+      expect(JSON.stringify(result)).not.toMatch(/SECRET-USER-ID|"createdBy"/);
+    }
+    // Someone else, and a listed address while open sign-up is on, get none.
+    const other = await enabledSummary("OWNER", fakePrisma(), "someone-else");
+    expect(JSON.stringify(other.result)).not.toContain("EDITOR-EMAIL");
+    envRecord.AUTH_DISABLE_SIGNUP = undefined;
+    const signupOpen = await enabledSummary(
+      "OWNER",
+      fakePrisma(),
+      "guardrail-admin",
+    );
+    expect(JSON.stringify(signupOpen.result)).not.toContain("EDITOR-EMAIL");
+  });
+
+  it.each([
+    ["OWNER", null],
+    ["AUDITOR", null],
+    ["OWNER", "guardrail-admin"],
+    ["SECURITY", "guardrail-admin"],
+  ] as const)(
+    "shows %s (email %s) who and why exactly as the Guardrails page's mode changes do",
+    async (role, email) => {
+      envRecord.CAIRO_GUARDRAIL_ADMINS = "guardrail-admin";
+      envRecord.AUTH_DISABLE_SIGNUP = "true";
+      const { result } = await enabledSummary(role, fakePrisma(), email);
+      const guardrails = await rootCallerFor(
+        role,
+        fakePrisma(),
+        email,
+      ).acmeGuardrails.modeChanges({ projectId: PROJECT });
+      const pick = (c: {
+        version: number;
+        automatic: boolean;
+        createdByEmail: string | null;
+        reason: string;
+      }) => ({
+        version: c.version,
+        automatic: c.automatic,
+        createdByEmail: c.createdByEmail,
+        reason: c.reason,
+      });
+      expect(result.history.shown.map(pick)).toEqual(
+        guardrails.slice(0, result.history.shown.length).map(pick),
+      );
+    },
+  );
+
+  it("tells pod agreement in counts, stale pods apart, without reading a pod's name", async () => {
     const { result, db } = await enabledSummary("SECURITY");
     expect(result.pods).toEqual({
-      pods: [
-        {
-          name: "guard-pod-a",
-          appliedVersion: 5,
-          lastReportAt: new Date(NOW - 10_000).toISOString(),
-          status: "current",
-        },
-        {
-          name: "guard-pod-b",
-          appliedVersion: 4,
-          lastReportAt: new Date(NOW - 20_000).toISOString(),
-          status: "older",
-        },
-        {
-          name: "guard-pod-c",
-          appliedVersion: 4,
-          lastReportAt: new Date(NOW - HOUR).toISOString(),
-          status: "stale",
-        },
-      ],
-      reporting: 2,
+      reporting: 3,
       onCurrent: 1,
+      older: 1,
+      unknown: 1,
       stale: 1,
       currentVersion: 5,
       staleAfterSeconds: 120,
       agree: false,
     });
     const [args] = db.acmeGuardrailSettingsPod.findMany.mock.calls[0]!;
+    // The name column is neither selected nor used to order.
     expect(Object.keys(args.select).sort()).toEqual(
-      ["appliedVersion", "lastSyncAt", "pod"].sort(),
+      ["appliedVersion", "lastSyncAt"].sort(),
     );
+    expect(JSON.stringify(args)).not.toMatch(/"pod"/);
     expect(args.take).toBe(MAX_LISTED_PODS);
     expect(args.where).toMatchObject({ lastSyncAt: { gte: expect.any(Date) } });
   });
+
+  it.each(["OWNER", "ADMIN", "SECURITY", "AUDITOR"])(
+    "never returns a guardrail pod's name, live or stale, to %s",
+    async (role) => {
+      // The rows carry names, as a careless read would return them.
+      const { result } = await enabledSummary(role);
+      const json = JSON.stringify(result);
+      expect(json).not.toContain("guard-pod");
+      expect(json).not.toContain("SECRET-");
+      expect(result.pods).not.toHaveProperty("pods");
+    },
+  );
 
   it("counts gateway replicas by reported mode, never by name", async () => {
     const { result, db } = await enabledSummary("SECURITY");

@@ -6808,3 +6808,37 @@ ESLint (no warnings) and Prettier pass on every changed file.
 Fresh typecheck:
 - On the base before CHG-2026-136, -137 and -139 merged, it passed with only the 2 tolerated Enterprise-file errors.
 - On the current main it reports 2 more errors, neither in this change's files. They are in `eyeonEnforcement.ts` and `eyeonEnforcementRouter.ts` (CHG-2026-138), which import `RefusalType` and `refusalsByType`; CHG-2026-137 removed both from `eyeonGuardrailDecisions.ts`.
+
+## 2026-10-08 — CHG-2026-138 follow-up (owner decisions)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-138 follow-up · owner: Anees Ur Rahman · Tier 1 |
+| **ADR** | [ADR-0027](acme-governance/adr/ADR-0027-eyeon-native-pages.md) (the EYEON-native page pattern; no ADR change) |
+| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
+| **Impact** | Client-visible once each page's flag is on: the Enforcement & policy page (CHG-2026-138, not yet released) and the EYEON overview (CHG-2026-132), also shown as EYEON Home (CHG-2026-136). With the flags off (the default) nothing changes on screen. No downtime |
+| **Schema change** | None |
+| **Rollback** | Flags off, or redeploy the previous image |
+| **Feature flag** | `CAIRO_EYEON_ENFORCEMENT_ENABLED`, `CAIRO_EYEON_OVERVIEW_ENABLED` and `CAIRO_EYEON_HOME_ENABLED`, unchanged, server-only, default off |
+
+**What:** applies the owner's two decisions of 2026-10-07 on CHG-2026-138, before its release.
+- **"No.. remove pod names."** The Enforcement page no longer returns or shows any guardrail pod's name, live or stale. Pod agreement is counts only: on the version in force, older version, settings unknown, and stale (not counted). The pod query no longer reads the name column: it selects the settings version and the report time only, and orders by report time, not by name. The pods are now counted, never named, as the gateway replicas already were. On the page, the pod table gives way to the four counts, and "Not on this page" lists the names of the pods and replicas as not shown here.
+- **"yes.. capture it."** Who changed the guardrail mode, and the reason they gave, now show in the Enforcement page's mode history (each change) and beside its mode (the last change).
+
+**Also the overview:** the second decision changes the EYEON overview too, whose change was CHG-2026-132 (and which CHG-2026-136 also shows as EYEON Home). Its enforcement card showed the last change of mode by when and to what; it now also says who made it and gives the reason, on the overview and on Home alike.
+
+**How the person shows:** exactly as the Guardrails page shows them to the same viewer (its mode changes and its last change):
+- an automatic switch-back reads "by the automatic switch-back", instead of a person;
+- a person is named by sign-in email only to a viewer who is one of the deployment's named guardrail administrators (with self sign-up closed), as on the Guardrails page (security review SF-2026-018). Every other viewer sees "by a guardrail administrator". The Guardrails page shows no display name, so neither page adds one;
+- the reason is the text typed at save time (for an automatic switch-back, its own recorded text), shown in quotation marks as plain text, never rendered as HTML.
+
+Nothing else about the person is returned: no user id, and no email to anyone the Guardrails page does not show it to. An automatic switch-back is also recognised by its creator marker, as on the Guardrails page; the overview read only the automatic column before.
+
+**Access:** unchanged. Who and why reach every role that passes each page's existing check (Enforcement: Owner, Admin, Security Analyst, Auditor; overview: Owner, Admin, Auditor), all of whom already see the reason on the Guardrails page. Roles without access are still refused before any read. No allow-list change.
+
+**Builds on #380:** CHG-2026-137 removed `refusalsByType` and `RefusalType` from `eyeonGuardrailDecisions.ts`, which the Enforcement page imports; #380 (merged 2026-10-08) restored them unchanged, and this follow-up uses them as before.
+
+**Release:** web image only; no migration, setting or flag change.
+
+**Tests:** the Enforcement router (38, from 28; they need the separate fix above, and were run with a temporary local stand-in for `refusalsByType`, since removed): who and why returned to Owner, Admin, Security Analyst and Auditor, with no email, no user id and no other field about the person; the email returned to a listed guardrail administrator in those roles, and not to anyone else or while open sign-up is on; who and why equal to the Guardrails page's mode changes for four role and viewer pairs; the pod query selects only the version and report time and never names the pod column; no pod name in the response for any of the four roles, although the test's rows carry names. The Enforcement figures (29, from 24): who and why in the history and the last change, the email only for an administrator and never for an automatic change, pod counts with no name even when a row carries one, the Guardrails page's wording of who. The overview router (29, from 20) and figures (24, from 22): the same checks for the last change, an automatic switch-back included, and equal to the Guardrails page's mode changes. Client: the Enforcement page (17, from 14) and 5 new tests added to CHG-2026-136's overview test file: who in the Guardrails page's words, the email only where returned, the reason in quotation marks, an HTML-looking reason shown as literal text with no element created, pods as four counts with no table or name. Existing tests unchanged: every role without access refused before any read on both pages. Content-free roles (25) and the allow-list (36) pass, with no allow-list change. Fresh typecheck: the 2 tolerated Enterprise-file errors, plus the 2 missing-export errors that the separate fix resolves, and nothing else. ESLint with no warnings and Prettier on every changed code file.
