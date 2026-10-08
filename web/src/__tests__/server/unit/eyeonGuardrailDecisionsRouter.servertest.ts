@@ -12,8 +12,10 @@ import {
 } from "@/src/server/api/trpc";
 import {
   BUSIEST_SHOWN,
+  CALLERS_LISTED,
   eyeonGuardrailDecisionsRouter,
 } from "@/src/features/acme-enhancements/server/eyeonGuardrailDecisionsRouter";
+import { ENTITY_TYPES_SHOWN } from "@/src/features/acme-enhancements/server/eyeonGuardrailDecisions";
 
 // CHG-2026-133 (ADR-0027): the EYEON Guardrail decisions page's access rules
 // and reads, against a mocked Prisma. A role without projectGuardrails:read
@@ -21,6 +23,9 @@ import {
 // read; keys are read only for a viewer who may open Applications; no content
 // column is ever selected, grouped or queried; only a reported "enforce"
 // counts as applied; the number of reads does not grow with the data.
+// CHG-2026-137: the page filters are validated, applied in the same reads,
+// and never change how many reads there are; the personal-data types leave
+// the database as (type, count) only, and no finding reaches the page.
 
 const PROJECT = "proj-eyeon-decisions";
 const ORG = "org-eyeon-decisions";
@@ -38,6 +43,9 @@ const CONTENT_COLUMNS = [
 ];
 const CONTENT_SQL =
   /redacted_text|pii_findings|raw_content_encrypted|token_hash/;
+/** What a finding holds besides its type, and what no SQL here may name. */
+const NEVER_SQL =
+  /redacted_text|raw_content_encrypted|token_hash|user_id|client_host|'start'|'end'|'score'|'text'/;
 
 const router = createTRPCRouter({
   eyeonGuardrailDecisions: eyeonGuardrailDecisionsRouter,
@@ -134,61 +142,65 @@ const SETTINGS_ROW = {
 const { INPUT, OUTPUT } = AcmeGuardrailEventDirection;
 const { ALLOW, BLOCK, REDACT, UNAVAILABLE } = AcmeGuardrailEventAction;
 
-/** The project's decisions by direction, verdict and the reported mode. */
+/** The decisions by direction, verdict, the reported mode and policy label. */
 const PROJECT_GROUPS = [
-  { direction: INPUT, action: ALLOW, gatewayMode: "enforce", n: 15 },
-  { direction: INPUT, action: ALLOW, gatewayMode: null, n: 5 },
-  { direction: OUTPUT, action: ALLOW, gatewayMode: "record", n: 4 },
-  { direction: INPUT, action: BLOCK, gatewayMode: "enforce", n: 2 },
-  { direction: INPUT, action: BLOCK, gatewayMode: "record", n: 1 },
-  // No mode reported: nothing says it was applied, so a Would block.
-  { direction: INPUT, action: BLOCK, gatewayMode: null, n: 1 },
-  { direction: OUTPUT, action: BLOCK, gatewayMode: "record", n: 1 },
-  { direction: OUTPUT, action: BLOCK, gatewayMode: "enforce", n: 1 },
-  { direction: INPUT, action: REDACT, gatewayMode: "record", n: 3 },
-  { direction: OUTPUT, action: REDACT, gatewayMode: "enforce", n: 2 },
-  { direction: INPUT, action: UNAVAILABLE, gatewayMode: null, n: 1 },
-].map(({ n, ...g }) => ({ ...g, _count: { _all: n } }));
+  { d: INPUT, a: ALLOW, m: "enforce", p: null, n: 15 },
+  { d: INPUT, a: ALLOW, m: null, p: null, n: 5 },
+  { d: OUTPUT, a: ALLOW, m: "record", p: null, n: 4 },
+  { d: INPUT, a: BLOCK, m: "enforce", p: "Jailbreak Detection", n: 2 },
+  { d: INPUT, a: BLOCK, m: "record", p: "Jailbreak Detection", n: 1 },
+  // No mode reported: nothing says it was applied, so a Would block. No
+  // label either: Other.
+  { d: INPUT, a: BLOCK, m: null, p: null, n: 1 },
+  { d: OUTPUT, a: BLOCK, m: "record", p: "Topical Rail", n: 1 },
+  { d: OUTPUT, a: BLOCK, m: "enforce", p: "Topical Rail", n: 1 },
+  { d: INPUT, a: REDACT, m: "record", p: "PII Redaction", n: 3 },
+  { d: OUTPUT, a: REDACT, m: "enforce", p: "PII Redaction", n: 2 },
+  { d: INPUT, a: UNAVAILABLE, m: null, p: null, n: 1 },
+].map(({ d, a, m, p, n }) => ({
+  direction: d,
+  action: a,
+  gatewayMode: m,
+  policyTriggered: p,
+  _count: { _all: n },
+}));
 
-/** The same refusals by policy label, direction and mode. */
-const REFUSAL_GROUPS = [
-  {
-    policyTriggered: "Jailbreak Detection",
-    direction: INPUT,
-    gatewayMode: "enforce",
-    n: 2,
-  },
-  {
-    policyTriggered: "Jailbreak Detection",
-    direction: INPUT,
-    gatewayMode: "record",
-    n: 1,
-  },
-  { policyTriggered: null, direction: INPUT, gatewayMode: null, n: 1 },
-  {
-    policyTriggered: "Topical Rail",
-    direction: OUTPUT,
-    gatewayMode: "record",
-    n: 1,
-  },
-  {
-    policyTriggered: "Topical Rail",
-    direction: OUTPUT,
-    gatewayMode: "enforce",
-    n: 1,
-  },
-].map(({ n, ...g }) => ({ ...g, _count: { _all: n } }));
+/** The callers in the period, busiest first, as the capped read returns them. */
+const CALLER_ROWS = [
+  { agentId: V2, _count: { _all: 30 } },
+  { agentId: OLD, _count: { _all: 12 } },
+  { agentId: PROBE, _count: { _all: 4 } },
+];
 
-/** The agents with the most refusals, as the capped query returns them. */
+/** The agents ranked by the counted verdict, as the capped query returns them. */
 function busiestRows(count = 4) {
   const rows = [
-    { alias: V2, checks: 30, refusals: 4, refusalsEnforced: 2 },
-    { alias: OLD, checks: 12, refusals: 1, refusalsEnforced: 0 },
-    { alias: PROBE, checks: 4, refusals: 1, refusalsEnforced: 0 },
-    { alias: V1, checks: 2, refusals: 1, refusalsEnforced: 1 },
+    { alias: V2, checks: 30, matched: 4, matchedEnforced: 2 },
+    { alias: OLD, checks: 12, matched: 1, matchedEnforced: 0 },
+    { alias: PROBE, checks: 4, matched: 1, matchedEnforced: 0 },
+    { alias: V1, checks: 2, matched: 1, matchedEnforced: 1 },
   ].slice(0, count);
-  return rows.map((r) => ({ ...r, withRefusals: count }));
+  return rows.map((r) => ({ ...r, withMatches: count }));
 }
+
+/**
+ * Entity-type rows as a careless query might return them: with a finding's
+ * position, score and text, and a type that is not a known name. None of it
+ * may reach the page.
+ */
+const ENTITY_ROWS = [
+  {
+    type: "EMAIL_ADDRESS",
+    count: 4,
+    start: 3,
+    end: 20,
+    score: 0.91,
+    text: "SECRET-PII-value",
+  },
+  { type: "SECRET-PII-type-text", count: 1 },
+  { type: "PHONE_NUMBER", count: 2 },
+  { type: "OTHER", count: 1 },
+];
 
 type GroupByArgs = {
   by: string[];
@@ -196,8 +208,9 @@ type GroupByArgs = {
   [key: string]: unknown;
 };
 
-function groupsFor(args: GroupByArgs) {
-  if (args.by.includes("policyTriggered")) return REFUSAL_GROUPS;
+function groupsFor(args: GroupByArgs, callers: object[]) {
+  if (args.by.includes("policyTriggered")) return PROJECT_GROUPS;
+  if (args.by.length === 1 && args.by[0] === "agentId") return callers;
   if (args.by.length === 1 && args.by[0] === "action") {
     // The judge's no-verdict rate over 24 hours.
     return [
@@ -205,7 +218,7 @@ function groupsFor(args: GroupByArgs) {
       { action: "UNAVAILABLE", _count: { _all: 1 } },
     ];
   }
-  return PROJECT_GROUPS;
+  throw new Error(`unexpected groupBy: ${JSON.stringify(args.by)}`);
 }
 
 /** The SQL text of a raw query, whether tagged or built with Prisma.sql. */
@@ -222,10 +235,15 @@ function sqlValues(first: unknown): unknown[] {
   return [];
 }
 
+const isDaily = (sql: string) => sql.includes('"wouldBlock"');
+const isBusiest = (sql: string) => sql.includes('"withMatches"');
+const isEntities = (sql: string) => sql.includes("jsonb_array_elements");
+
 const today = () => new Date().toISOString().slice(0, 10);
 
 const DAILY_ROW = {
   checks: 36,
+  enforcedChecks: 20,
   allowed: 24,
   blocked: 3,
   wouldBlock: 3,
@@ -234,9 +252,18 @@ const DAILY_ROW = {
   noVerdict: 1,
 };
 
-function fakePrisma(opts: { keys?: object[]; busiest?: object[] } = {}) {
+function fakePrisma(
+  opts: {
+    keys?: object[];
+    busiest?: object[];
+    callers?: object[];
+    entities?: object[];
+  } = {},
+) {
   const keys = opts.keys ?? KEY_ROWS;
   const busiest = opts.busiest ?? busiestRows();
+  const callers = opts.callers ?? CALLER_ROWS;
+  const entities = opts.entities ?? ENTITY_ROWS;
   return {
     acmeLitellmKey: {
       findMany: vi.fn<
@@ -252,14 +279,15 @@ function fakePrisma(opts: { keys?: object[]; busiest?: object[] } = {}) {
     },
     acmeGuardrailEvent: {
       groupBy: vi.fn<(args: GroupByArgs) => Promise<unknown[]>>(async (args) =>
-        groupsFor(args),
+        groupsFor(args, callers),
       ),
       findMany: vi.fn(async () => []),
     },
     $queryRaw: vi.fn(async (first: unknown) => {
       const sql = sqlText(first);
-      if (sql.includes('"wouldBlock"')) return [{ day: today(), ...DAILY_ROW }];
-      if (sql.includes('"withRefusals"')) return busiest;
+      if (isDaily(sql)) return [{ day: today(), ...DAILY_ROW }];
+      if (isBusiest(sql)) return busiest;
+      if (isEntities(sql)) return entities;
       throw new Error(`unexpected SQL: ${sql}`);
     }),
   };
@@ -278,8 +306,14 @@ function callerFor(role: string, db: object = explodingPrisma) {
 
 const INPUT_7 = { projectId: PROJECT, windowDays: 7 as const };
 
-async function enabledSummary(role: string, db = fakePrisma()) {
-  const result = await callerFor(role, db).summary(INPUT_7);
+type SummaryInput = Parameters<ReturnType<typeof callerFor>["summary"]>[0];
+
+async function enabledSummary(
+  role: string,
+  db = fakePrisma(),
+  input: SummaryInput = INPUT_7,
+) {
+  const result = await callerFor(role, db).summary(input);
   if (!result.enabled) throw new Error("expected the page to be enabled");
   return { result, db };
 }
@@ -296,7 +330,40 @@ function readCounts(db: ReturnType<typeof fakePrisma>) {
   };
 }
 
-describe("EYEON Guardrail decisions: access and reads (CHG-2026-133)", () => {
+function rawQuery(
+  db: ReturnType<typeof fakePrisma>,
+  which: (sql: string) => boolean,
+) {
+  const call = db.$queryRaw.mock.calls.find(([q]) => which(sqlText(q)));
+  if (!call) throw new Error("query not made");
+  return { sql: sqlText(call[0]), values: sqlValues(call[0]) };
+}
+
+function mainGroupBy(db: ReturnType<typeof fakePrisma>) {
+  return db.acmeGuardrailEvent.groupBy.mock.calls
+    .map(([args]) => args)
+    .find((args) => args.by.includes("policyTriggered"))!;
+}
+
+/** Every filter at once, and each alone: none may change the reads. */
+const FILTER_SETS = [
+  {},
+  { direction: "prompts" as const },
+  { verdict: "redact" as const },
+  { caller: V2 },
+  { policyType: "jailbreak" as const },
+  { policyType: "other" as const },
+  { applied: "recorded" as const },
+  {
+    direction: "answers" as const,
+    verdict: "block" as const,
+    caller: PROBE,
+    policyType: "offTopic" as const,
+    applied: "applied" as const,
+  },
+];
+
+describe("EYEON Guardrail decisions: access and reads (CHG-2026-133, CHG-2026-137)", () => {
   const envRecord = env as unknown as Record<string, string | undefined>;
   const original = {
     page: envRecord.CAIRO_EYEON_GUARDRAIL_DECISIONS_ENABLED,
@@ -321,11 +388,17 @@ describe("EYEON Guardrail decisions: access and reads (CHG-2026-133)", () => {
   // the Viewer, no role, and the Business Analyst (content-free, not on the
   // list either).
   it.each(["MEMBER", "VIEWER", "NONE", "ANALYST"])(
-    "refuses %s before the database is touched, on both queries",
+    "refuses %s before the database is touched, on both queries, with or without filters",
     async (role) => {
       await expect(callerFor(role).summary(INPUT_7)).rejects.toMatchObject({
         code: "FORBIDDEN",
       });
+      await expect(
+        callerFor(role).summary({
+          ...INPUT_7,
+          filters: FILTER_SETS[FILTER_SETS.length - 1],
+        }),
+      ).rejects.toMatchObject({ code: "FORBIDDEN" });
       await expect(
         callerFor(role).status({ projectId: PROJECT }),
       ).rejects.toMatchObject({ code: "FORBIDDEN" });
@@ -362,6 +435,12 @@ describe("EYEON Guardrail decisions: access and reads (CHG-2026-133)", () => {
       enabled: false,
     });
     await expect(
+      callerFor("SECURITY").summary({
+        ...INPUT_7,
+        filters: { verdict: "block", caller: V2 },
+      }),
+    ).resolves.toEqual({ enabled: false });
+    await expect(
       callerFor("AUDITOR").status({ projectId: PROJECT }),
     ).resolves.toEqual({ enabled: false });
     envRecord.CAIRO_EYEON_GUARDRAIL_DECISIONS_ENABLED = undefined;
@@ -387,6 +466,26 @@ describe("EYEON Guardrail decisions: access and reads (CHG-2026-133)", () => {
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
+  it.each([
+    ["an unknown direction", { direction: "sideways" }],
+    ["an unknown verdict", { verdict: "blocked" }],
+    ["a verdict in another case", { verdict: "BLOCK" }],
+    ["an unknown policy type", { policyType: "Jailbreak Detection" }],
+    ["an unknown mode", { applied: "enforce" }],
+    ["an empty caller", { caller: "   " }],
+    ["an over-long caller", { caller: "x".repeat(201) }],
+    ["a caller that is not text", { caller: ["a", "b"] }],
+    ["a filter the page does not know", { policyLabel: "Topical Rail" }],
+  ])("refuses %s before any read", async (_name, filters) => {
+    await expect(
+      callerFor("OWNER").summary({
+        ...INPUT_7,
+        filters: filters as SummaryInput["filters"],
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(touched).not.toHaveBeenCalled();
+  });
+
   it("counts by verdict and direction; only a reported enforce is applied", async () => {
     const { result, db } = await enabledSummary("SECURITY");
     expect(result.totals).toMatchObject({
@@ -399,6 +498,11 @@ describe("EYEON Guardrail decisions: access and reads (CHG-2026-133)", () => {
       redactions: { enforced: 2, notEnforced: 3 },
       noVerdict: 1,
       enforcedChecks: 20,
+    });
+    expect(result.scope).toEqual({
+      checks: 36,
+      promptChecks: 28,
+      answerChecks: 8,
     });
     expect(result.byDirection).toEqual({
       prompts: {
@@ -416,15 +520,7 @@ describe("EYEON Guardrail decisions: access and reads (CHG-2026-133)", () => {
         noVerdict: 0,
       },
     });
-    const projectGroupBy = db.acmeGuardrailEvent.groupBy.mock.calls
-      .map(([args]) => args)
-      .find(
-        (args) =>
-          args.by.includes("direction") &&
-          args.by.length === 3 &&
-          args.by.includes("action"),
-      );
-    expect(projectGroupBy?.where).toMatchObject({
+    expect(mainGroupBy(db).where).toEqual({
       projectId: PROJECT,
       eventTime: { gte: expect.any(Date), lte: expect.any(Date) },
     });
@@ -435,84 +531,216 @@ describe("EYEON Guardrail decisions: access and reads (CHG-2026-133)", () => {
     expect(result.daily).toHaveLength(7);
     expect(result.daily[6]).toEqual({ day: today(), ...DAILY_ROW });
     expect(result.daily[0]).toMatchObject({ checks: 0, wouldBlock: 0 });
-    const daily = db.$queryRaw.mock.calls
-      .map(([first]) => sqlText(first))
-      .find((sql) => sql.includes('"wouldBlock"'));
-    expect(daily).toMatch(
+    const { sql } = rawQuery(db, isDaily);
+    expect(sql).toMatch(
+      /FILTER \(WHERE gateway_mode = 'enforce'\)\)::int AS "enforcedChecks"/,
+    );
+    expect(sql).toMatch(
       /action = 'block' AND gateway_mode = 'enforce'\)\)::int AS blocked/,
     );
-    expect(daily).toMatch(
+    expect(sql).toMatch(
       /action = 'block' AND gateway_mode IS DISTINCT FROM 'enforce'\)\)::int AS "wouldBlock"/,
     );
-    expect(daily).toMatch(
+    expect(sql).toMatch(
       /action = 'redact' AND gateway_mode IS DISTINCT FROM 'enforce'\)\)::int AS "wouldRedact"/,
     );
+    // Without a filter, the condition on what was decided is just TRUE.
+    expect(sql).toMatch(/FILTER \(WHERE TRUE AND action = 'allow'\)/);
   });
 
-  it("names refusals by type from the policy label only, split by the reported mode", async () => {
-    const { result, db } = await enabledSummary("SECURITY");
-    expect(result.refusalsByType).toEqual([
+  it("names refusals and redactions by policy type and direction, from the label only", async () => {
+    const { result } = await enabledSummary("SECURITY");
+    expect(result.policyByDirection).toEqual([
+      {
+        type: "personalData",
+        label: "Personal data",
+        count: 5,
+        prompts: {
+          blocked: { enforced: 0, notEnforced: 0 },
+          redacted: { enforced: 0, notEnforced: 3 },
+        },
+        answers: {
+          blocked: { enforced: 0, notEnforced: 0 },
+          redacted: { enforced: 2, notEnforced: 0 },
+        },
+      },
       {
         type: "jailbreak",
         label: "Jailbreak or misuse",
         count: 3,
-        split: { enforced: 2, notEnforced: 1 },
-        prompts: 3,
-        answers: 0,
+        prompts: {
+          blocked: { enforced: 2, notEnforced: 1 },
+          redacted: { enforced: 0, notEnforced: 0 },
+        },
+        answers: {
+          blocked: { enforced: 0, notEnforced: 0 },
+          redacted: { enforced: 0, notEnforced: 0 },
+        },
       },
       {
         type: "offTopic",
         label: "Off-topic or outside policy",
         count: 2,
-        split: { enforced: 1, notEnforced: 1 },
-        prompts: 0,
-        answers: 2,
+        prompts: {
+          blocked: { enforced: 0, notEnforced: 0 },
+          redacted: { enforced: 0, notEnforced: 0 },
+        },
+        answers: {
+          blocked: { enforced: 1, notEnforced: 1 },
+          redacted: { enforced: 0, notEnforced: 0 },
+        },
       },
       {
         type: "other",
         label: "Other",
         count: 1,
-        split: { enforced: 0, notEnforced: 1 },
-        prompts: 1,
-        answers: 0,
+        prompts: {
+          blocked: { enforced: 0, notEnforced: 1 },
+          redacted: { enforced: 0, notEnforced: 0 },
+        },
+        answers: {
+          blocked: { enforced: 0, notEnforced: 0 },
+          redacted: { enforced: 0, notEnforced: 0 },
+        },
       },
     ]);
-    const refusals = db.acmeGuardrailEvent.groupBy.mock.calls
-      .map(([args]) => args)
-      .find((args) => args.by.includes("policyTriggered"));
-    expect(refusals?.where).toMatchObject({
-      projectId: PROJECT,
-      action: BLOCK,
-      eventTime: { gte: expect.any(Date), lte: expect.any(Date) },
-    });
     // The caller-set label itself is never returned.
     expect(JSON.stringify(result)).not.toMatch(
-      /Jailbreak Detection|Topical Rail/,
+      /Jailbreak Detection|Topical Rail|PII Redaction/,
     );
   });
 
-  it("lists the busiest callers, capped in the database, with applied and recorded refusals", async () => {
+  it("applies the filters on what was decided to the grouped read, keeping every check as the base", async () => {
+    const { result, db } = await enabledSummary("SECURITY", fakePrisma(), {
+      ...INPUT_7,
+      filters: { direction: "prompts", verdict: "block", applied: "recorded" },
+    });
+    // Prompts with a block verdict, in record mode or with no mode.
+    expect(result.totals).toMatchObject({
+      checks: 2,
+      promptsRefused: { enforced: 0, notEnforced: 2 },
+      answersWithheld: { enforced: 0, notEnforced: 0 },
+      redactions: { enforced: 0, notEnforced: 0 },
+      allowed: 0,
+    });
+    expect(result.scope).toEqual({
+      checks: 36,
+      promptChecks: 28,
+      answerChecks: 8,
+    });
+    // Same read, same scope: the filters are applied to its groups.
+    expect(mainGroupBy(db).where).toEqual({
+      projectId: PROJECT,
+      eventTime: { gte: expect.any(Date), lte: expect.any(Date) },
+    });
+    for (const which of [isDaily, isBusiest, isEntities]) {
+      const { sql } = rawQuery(db, which);
+      expect(sql).toContain("(direction = 'input')");
+      expect(sql).toContain("(action = 'block')");
+      expect(sql).toContain("(gateway_mode IS DISTINCT FROM 'enforce')");
+    }
+  });
+
+  it("counts only a reported enforce as applied when filtering by mode", async () => {
+    const applied = await enabledSummary("SECURITY", fakePrisma(), {
+      ...INPUT_7,
+      filters: { applied: "applied" },
+    });
+    // Only the rows reported as "enforce": a missing mode is not applied.
+    expect(applied.result.totals.checks).toBe(20);
+    expect(applied.result.totals.enforcedChecks).toBe(20);
+    expect(rawQuery(applied.db, isDaily).sql).toContain(
+      "(gateway_mode = 'enforce')",
+    );
+    const recorded = await enabledSummary("SECURITY", fakePrisma(), {
+      ...INPUT_7,
+      filters: { applied: "recorded" },
+    });
+    expect(recorded.result.totals.checks).toBe(16);
+    expect(recorded.result.totals.enforcedChecks).toBe(0);
+  });
+
+  it("narrows every read to one caller, as a bound parameter", async () => {
+    const { db } = await enabledSummary("SECURITY", fakePrisma(), {
+      ...INPUT_7,
+      filters: { caller: V2 },
+    });
+    expect(mainGroupBy(db).where).toMatchObject({ agentId: V2 });
+    for (const which of [isDaily, isBusiest, isEntities]) {
+      const { sql, values } = rawQuery(db, which);
+      expect(sql).toMatch(/AND agent_id = \?/);
+      expect(sql).not.toContain(V2);
+      expect(values).toContain(V2);
+    }
+    // The caller list stays the whole period's, so another can be chosen.
+    const callers = db.acmeGuardrailEvent.groupBy.mock.calls
+      .map(([args]) => args)
+      .find((args) => args.by[0] === "agentId")!;
+    expect(callers.where).toEqual({
+      projectId: PROJECT,
+      eventTime: { gte: expect.any(Date), lte: expect.any(Date) },
+    });
+  });
+
+  it("matches a policy type through the scorecard's mapping, then by its labels in SQL", async () => {
+    const { result, db } = await enabledSummary("SECURITY", fakePrisma(), {
+      ...INPUT_7,
+      filters: { policyType: "jailbreak" },
+    });
+    expect(result.totals).toMatchObject({
+      checks: 3,
+      promptsRefused: { enforced: 2, notEnforced: 1 },
+      allowed: 0,
+      noVerdict: 0,
+    });
+    for (const which of [isDaily, isBusiest, isEntities]) {
+      const { sql, values } = rawQuery(db, which);
+      expect(sql).toContain(
+        "(action IN ('block', 'redact') AND policy_triggered = ANY(?::text[]))",
+      );
+      expect(values).toContainEqual(["Jailbreak Detection"]);
+      expect(sql).not.toContain("Jailbreak Detection");
+    }
+    // Other: an unknown or missing label; here only missing ones exist.
+    const other = await enabledSummary("SECURITY", fakePrisma(), {
+      ...INPUT_7,
+      filters: { policyType: "other" },
+    });
+    expect(other.result.totals.checks).toBe(1);
+    expect(rawQuery(other.db, isDaily).sql).toContain(
+      "(action IN ('block', 'redact') AND policy_triggered IS NULL)",
+    );
+    // A type with no label in the period matches nothing.
+    const none = await enabledSummary("SECURITY", fakePrisma(), {
+      ...INPUT_7,
+      filters: { policyType: "sectorRules" },
+    });
+    expect(none.result.totals.checks).toBe(0);
+    expect(rawQuery(none.db, isDaily).sql).toContain("(FALSE)");
+  });
+
+  it("lists the busiest callers by refusals, capped in the database, with applied and recorded ones", async () => {
     const { result, db } = await enabledSummary("OWNER");
     expect(result.busiest).toEqual({
       shown: [
         {
           alias: V2,
           application: { lineageId: "lineage-1", name: "App lineage-1" },
-          refusals: { enforced: 2, notEnforced: 2 },
+          matched: { enforced: 2, notEnforced: 2 },
           checks: 30,
           per100: (100 * 4) / 30,
         },
         {
           alias: OLD,
           application: null,
-          refusals: { enforced: 0, notEnforced: 1 },
+          matched: { enforced: 0, notEnforced: 1 },
           checks: 12,
           per100: (100 * 1) / 12,
         },
         {
           alias: PROBE,
           application: null,
-          refusals: { enforced: 0, notEnforced: 1 },
+          matched: { enforced: 0, notEnforced: 1 },
           checks: 4,
           per100: null,
         },
@@ -520,26 +748,61 @@ describe("EYEON Guardrail decisions: access and reads (CHG-2026-133)", () => {
           // A rotated key's alias still belongs to its application.
           alias: V1,
           application: { lineageId: "lineage-1", name: "App lineage-1" },
-          refusals: { enforced: 1, notEnforced: 0 },
+          matched: { enforced: 1, notEnforced: 0 },
           checks: 2,
           per100: null,
         },
       ],
       total: 4,
+      verdict: "block",
       limit: BUSIEST_SHOWN,
       linksApplications: true,
     });
-    const [first] = db.$queryRaw.mock.calls.find(([q]) =>
-      sqlText(q).includes('"withRefusals"'),
-    )!;
-    expect(sqlText(first)).toMatch(
-      /ORDER BY refusals DESC, alias ASC\s+LIMIT \?/,
+    const { sql, values } = rawQuery(db, isBusiest);
+    expect(sql).toMatch(/ORDER BY matched DESC, alias ASC\s+LIMIT \?/);
+    expect(sql).toMatch(/WHERE project_id = \?/);
+    expect(sql).toMatch(
+      /FILTER \(WHERE action = 'block' AND TRUE AND gateway_mode = 'enforce'\)\)::int AS "matchedEnforced"/,
     );
-    expect(sqlText(first)).toMatch(/WHERE project_id = \?/);
-    expect(sqlValues(first)).toContain(PROJECT);
-    expect(sqlValues(first)).toContain(BUSIEST_SHOWN);
+    expect(values).toContain(PROJECT);
+    expect(values).toContain(BUSIEST_SHOWN);
     const [keysArgs] = db.acmeLitellmKey.findMany.mock.calls[0]!;
     expect(keysArgs.where).toMatchObject({ projectId: PROJECT });
+  });
+
+  it("ranks the busiest callers by the verdict chosen", async () => {
+    const { result, db } = await enabledSummary("OWNER", fakePrisma(), {
+      ...INPUT_7,
+      filters: { verdict: "redact" },
+    });
+    expect(result.busiest.verdict).toBe("redact");
+    expect(rawQuery(db, isBusiest).sql).toMatch(
+      /FILTER \(WHERE action = 'redact' AND \(action = 'redact'\)\)\)::int AS matched/,
+    );
+  });
+
+  it("offers the period's callers for the filter, busiest first, capped in the database", async () => {
+    const { result, db } = await enabledSummary("OWNER");
+    expect(result.callers).toEqual({
+      listed: [
+        {
+          alias: V2,
+          checks: 30,
+          application: { lineageId: "lineage-1", name: "App lineage-1" },
+        },
+        { alias: OLD, checks: 12, application: null },
+        { alias: PROBE, checks: 4, application: null },
+      ],
+      limit: CALLERS_LISTED,
+    });
+    const callers = db.acmeGuardrailEvent.groupBy.mock.calls
+      .map(([args]) => args)
+      .find((args) => args.by[0] === "agentId")!;
+    expect(callers).toMatchObject({
+      by: ["agentId"],
+      take: CALLERS_LISTED,
+      orderBy: [{ _count: { agentId: "desc" } }, { agentId: "asc" }],
+    });
   });
 
   it.each(["SECURITY"])(
@@ -549,6 +812,11 @@ describe("EYEON Guardrail decisions: access and reads (CHG-2026-133)", () => {
       expect(result.busiest.linksApplications).toBe(false);
       expect(result.busiest.shown.map((b) => b.application)).toEqual([
         null,
+        null,
+        null,
+        null,
+      ]);
+      expect(result.callers.listed.map((c) => c.application)).toEqual([
         null,
         null,
         null,
@@ -575,12 +843,13 @@ describe("EYEON Guardrail decisions: access and reads (CHG-2026-133)", () => {
     expect(result.busiest.shown).toHaveLength(4);
   });
 
-  it("reads no key when no caller had a refusal", async () => {
+  it("reads no key when no caller is in the period", async () => {
     const { result, db } = await enabledSummary(
       "OWNER",
-      fakePrisma({ busiest: [] }),
+      fakePrisma({ busiest: [], callers: [] }),
     );
     expect(result.busiest).toMatchObject({ shown: [], total: 0 });
+    expect(result.callers.listed).toEqual([]);
     expect(db.acmeLitellmKey.findMany).not.toHaveBeenCalled();
   });
 
@@ -602,50 +871,118 @@ describe("EYEON Guardrail decisions: access and reads (CHG-2026-133)", () => {
     expect(result.mode).toEqual({ mode: null, ceiling: "enforce" });
   });
 
-  it("reports the judge's no-verdict rate over 24 hours against the 1% alert", async () => {
-    const { result } = await enabledSummary("SECURITY");
-    expect(result.judge).toEqual({
-      windowHours: 24,
-      checks: 100,
-      noVerdict: 1,
-      rate: 0.01,
-      alertRate: 0.01,
-      alert: true,
-    });
+  it("reports the judge's no-verdict rate over 24 hours against the 1% alert, whatever the filters", async () => {
+    for (const filters of FILTER_SETS) {
+      const { result } = await enabledSummary("SECURITY", fakePrisma(), {
+        ...INPUT_7,
+        filters,
+      });
+      expect(result.judge).toEqual({
+        windowHours: 24,
+        checks: 100,
+        noVerdict: 1,
+        rate: 0.01,
+        alertRate: 0.01,
+        alert: true,
+      });
+    }
   });
 
-  it("selects, groups and queries no content column and no token hash, anywhere", async () => {
-    const { result, db } = await enabledSummary("OWNER");
-    expect(db.acmeLitellmKey.findMany).toHaveBeenCalledTimes(1);
-    for (const [args] of db.acmeLitellmKey.findMany.mock.calls) {
-      expect(Object.keys(args.select).sort()).toEqual(
-        [
-          "displayName",
-          "generation",
-          "lineageId",
-          "litellmKeyAlias",
-          "status",
-        ].sort(),
-      );
-    }
-    for (const [args] of db.acmeGuardrailEvent.groupBy.mock.calls) {
-      for (const column of CONTENT_COLUMNS) {
-        expect(args.by).not.toContain(column);
-        expect(JSON.stringify(args)).not.toContain(column);
-      }
-    }
-    expect(db.acmeGuardrailEvent.findMany).not.toHaveBeenCalled();
-    expect(db.$queryRaw).toHaveBeenCalledTimes(2);
-    for (const [first] of db.$queryRaw.mock.calls) {
-      expect(sqlText(first)).not.toMatch(CONTENT_SQL);
-      expect(sqlText(first)).toMatch(/WHERE project_id = \?/);
-    }
+  it("counts redactions per personal-data type in SQL, and only a known type and a count reach the page", async () => {
+    const { result, db } = await enabledSummary("SECURITY");
+    expect(result.entityTypes).toEqual([
+      { type: "EMAIL_ADDRESS", count: 4 },
+      { type: "PHONE_NUMBER", count: 2 },
+      // The unknown type and the database's own OTHER, together.
+      { type: "OTHER", count: 2 },
+    ]);
     const json = JSON.stringify(result);
-    expect(json).not.toContain(TOKEN_HASH);
-    expect(json).not.toMatch(/tokenHash|token_hash/);
+    expect(json).not.toContain("SECRET-PII");
+    expect(json).not.toMatch(/"start"|"end"|"score"|"text"/);
+
+    const { sql, values } = rawQuery(db, isEntities);
+    // The select list is the type and the count, nothing else.
+    const select = sql.slice(
+      sql.indexOf("SELECT") + "SELECT".length,
+      sql.indexOf("FROM acme_guardrail_events"),
+    );
+    expect(select.match(/\bAS\b/g)).toHaveLength(2);
+    expect(select).toMatch(
+      /END AS type,\s+COUNT\(DISTINCT e\.id\)::int AS count\s*$/,
+    );
+    // A finding is read for its entity type only.
+    const findingUses = sql
+      .replace("findings(finding)", "")
+      .match(/\bfinding\b.{0,20}/g);
+    expect(findingUses).not.toBeNull();
+    for (const use of findingUses ?? [])
+      expect(use).toMatch(/^finding ->> 'entity_type'/);
+    expect(sql.replace(/->> 'entity_type'/g, "")).not.toContain("->");
+    // The findings column only feeds the array of findings.
+    expect(sql.match(/pii_findings/g)).toHaveLength(2);
+    expect(sql).toContain("jsonb_typeof(e.pii_findings) = 'array'");
+    expect(sql).toContain("THEN e.pii_findings ELSE '[]'::jsonb END");
+    expect(sql).not.toMatch(NEVER_SQL);
+    // Unknown types become OTHER inside the database; the known ones are
+    // bound parameters.
+    expect(sql).toMatch(
+      /IN \(\?(,\s*\?)+\)\s+THEN finding ->> 'entity_type'\s+ELSE 'OTHER' END/,
+    );
+    expect(values).toEqual(
+      expect.arrayContaining(["EMAIL_ADDRESS", "BH_CPR", ENTITY_TYPES_SHOWN]),
+    );
+    expect(sql).toMatch(/AND action = 'redact'/);
+    expect(sql).toMatch(/LIMIT \?$/);
   });
 
-  it("reads a fixed number of times, with few events or many", async () => {
+  it("selects, groups and queries no content column and no token hash, anywhere else", async () => {
+    for (const filters of FILTER_SETS) {
+      const { result, db } = await enabledSummary("OWNER", fakePrisma(), {
+        ...INPUT_7,
+        filters,
+      });
+      expect(db.acmeLitellmKey.findMany).toHaveBeenCalledTimes(1);
+      for (const [args] of db.acmeLitellmKey.findMany.mock.calls) {
+        expect(Object.keys(args.select).sort()).toEqual(
+          [
+            "displayName",
+            "generation",
+            "lineageId",
+            "litellmKeyAlias",
+            "status",
+          ].sort(),
+        );
+      }
+      for (const [args] of db.acmeGuardrailEvent.groupBy.mock.calls) {
+        for (const column of CONTENT_COLUMNS) {
+          expect(args.by).not.toContain(column);
+          expect(JSON.stringify(args)).not.toContain(column);
+        }
+      }
+      expect(db.acmeGuardrailEvent.findMany).not.toHaveBeenCalled();
+      expect(db.$queryRaw).toHaveBeenCalledTimes(3);
+      for (const [first] of db.$queryRaw.mock.calls) {
+        const sql = sqlText(first);
+        expect(sql).toMatch(/WHERE project_id = \?/);
+        expect(sql).not.toMatch(NEVER_SQL);
+        // Only the entity-type count may name the findings column (above).
+        if (!isEntities(sql)) expect(sql).not.toMatch(CONTENT_SQL);
+      }
+      const json = JSON.stringify(result);
+      expect(json).not.toContain(TOKEN_HASH);
+      expect(json).not.toMatch(/tokenHash|token_hash/);
+    }
+  });
+
+  it("reads a fixed number of times, with few events or many, and whatever the filters", async () => {
+    const expected = {
+      keys: 1,
+      settings: 1,
+      settingsHistory: 0,
+      groupBy: 3,
+      events: 0,
+      sql: 3,
+    };
     const few = await enabledSummary(
       "OWNER",
       fakePrisma({ busiest: busiestRows(1), keys: KEY_ROWS.slice(0, 2) }),
@@ -653,24 +990,32 @@ describe("EYEON Guardrail decisions: access and reads (CHG-2026-133)", () => {
     const manyKeys = Array.from({ length: 40 }, (_, i) =>
       keyRow(`lineage-x${i}`, `cairo-app-${i}`, 1, AcmeLitellmKeyStatus.ACTIVE),
     );
+    const manyCallers = Array.from({ length: CALLERS_LISTED }, (_, i) => ({
+      agentId: `cairo-app-${i}`,
+      _count: { _all: 100 - i },
+    }));
     const many = await enabledSummary(
       "OWNER",
-      fakePrisma({ busiest: busiestRows(4), keys: [...KEY_ROWS, ...manyKeys] }),
+      fakePrisma({
+        busiest: busiestRows(4),
+        keys: [...KEY_ROWS, ...manyKeys],
+        callers: manyCallers,
+      }),
     );
-    const expected = {
-      keys: 1,
-      settings: 1,
-      settingsHistory: 0,
-      groupBy: 3,
-      events: 0,
-      sql: 2,
-    };
     expect(readCounts(few.db)).toEqual(expected);
     expect(readCounts(many.db)).toEqual(expected);
+    for (const filters of FILTER_SETS) {
+      const filtered = await enabledSummary("OWNER", fakePrisma(), {
+        ...INPUT_7,
+        filters,
+      });
+      expect(readCounts(filtered.db)).toEqual(expected);
+    }
     // Without the right to open Applications, one read fewer.
     const security = await enabledSummary(
       "SECURITY",
       fakePrisma({ busiest: busiestRows(4) }),
+      { ...INPUT_7, filters: FILTER_SETS[FILTER_SETS.length - 1] },
     );
     expect(readCounts(security.db)).toEqual({ ...expected, keys: 0 });
   });

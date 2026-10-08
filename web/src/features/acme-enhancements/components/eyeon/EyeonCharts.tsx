@@ -334,11 +334,18 @@ export function EyeonStackedBars({
   label,
   series,
   points,
+  legendValues,
 }: {
   label: string;
   series: EyeonStackSeries[];
   /** One value per series, in the series' order. */
   points: { label: string; values: number[] }[];
+  /**
+   * CHG-2026-137: what the legend and the accessible name state for each
+   * series, where a sum over the bars means nothing (e.g. rates per day).
+   * By default, each series' total.
+   */
+  legendValues?: string[];
 }) {
   const width = 300;
   const height = 96;
@@ -346,6 +353,9 @@ export function EyeonStackedBars({
   const band = points.length > 0 ? width / points.length : width;
   const barWidth = band * 0.7;
   const totals = series.map((_, j) => sum(points.map((p) => p.values[j] ?? 0)));
+  const legend = series.map(
+    (_, j) => legendValues?.[j] ?? (totals[j] ?? 0).toLocaleString(),
+  );
   const named = (values: readonly number[]) =>
     series
       .map((s, j) => `${s.name} ${(values[j] ?? 0).toLocaleString()}`)
@@ -353,7 +363,7 @@ export function EyeonStackedBars({
   const summary =
     points.length === 0
       ? `${label}: no data.`
-      : `${label}, ${points.length} bars from ${points[0]!.label} to ${points[points.length - 1]!.label}: ${named(totals)}; at most ${max.toLocaleString()} in one bar.`;
+      : `${label}, ${points.length} bars from ${points[0]!.label} to ${points[points.length - 1]!.label}: ${series.map((s, j) => `${s.name} ${legend[j]}`).join(", ")}; at most ${max.toLocaleString()} in one bar.`;
   return (
     <div className="flex flex-col gap-2">
       <svg
@@ -412,7 +422,7 @@ export function EyeonStackedBars({
             <EyeonSwatch series={s} />
             <span>{s.name}</span>
             <span className="text-muted-foreground tabular-nums">
-              {(totals[j] ?? 0).toLocaleString()}
+              {legend[j]}
             </span>
           </li>
         ))}

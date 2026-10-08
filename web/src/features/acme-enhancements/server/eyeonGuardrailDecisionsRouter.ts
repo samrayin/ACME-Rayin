@@ -1,7 +1,9 @@
 /**
  * ACME (CHG-2026-133, ADR-0027): the EYEON Guardrail decisions page. One
  * query for the page (`summary`) and one for its navigation entry
- * (`status`), both read-only.
+ * (`status`), both read-only. CHG-2026-137 adds the page filters, the
+ * decision flow's figures, the policy type by direction breakdown, the
+ * callers a filter can choose and the personal-data types.
  *
  * Who sees it: the guardrail decision log's rule, projectGuardrails:read
  * (Owner, Admin, Security Analyst, Auditor), checked before any read. The
@@ -12,19 +14,30 @@
  * then `summary` reads nothing and says so, and the navigation entry is
  * hidden.
  *
- * Metadata only, at most seven reads whatever the data: the decisions
- * grouped by direction, verdict and the mode the gateway reported; one daily
- * series by verdict; the refusals grouped by policy label, direction and
- * mode; the agents with the most refusals (capped in the database); the
- * judge's no-verdict rate over 24 hours; the guardrail settings in force (for
- * the mode); and, for a viewer who may open Applications, the project's
+ * Filters (validated here, from utils/eyeonDecisionFilters.ts): direction,
+ * verdict, caller, policy type and applied or recorded. They are applied in
+ * the same reads, never by reading more: the caller narrows every read's
+ * scope; the other four are dimensions of the grouped read, so they are
+ * applied to its groups here, and the SQL reads take them as conditions. The
+ * policy type of a label is decided by the scorecard's mapping on the
+ * grouped read, and the SQL matches those labels. Rates per 100 checks keep
+ * every check of the period and caller as their base.
+ *
+ * Metadata only, at most eight reads whatever the data and the filters: the
+ * decisions grouped by direction, verdict, mode and policy label; the
+ * callers with the most checks (capped in the database); the judge's
+ * no-verdict rate over 24 hours; the guardrail settings in force (for the
+ * mode); one daily series by verdict; the agents ranked by refusals or the
+ * chosen verdict (capped in the database); redactions per personal-data
+ * entity type (counted in the database: only a known type name and a count
+ * leave it); and, for a viewer who may open Applications, the project's
  * gateway keys' lineage, name and status. No prompt or answer text, redacted
- * text, personal-data findings, encrypted content or token hash is read; the
- * tests assert on every select, group and SQL statement. The figures are
- * shaped in eyeonGuardrailDecisions.ts.
+ * text, finding position, score or matched text, encrypted content or token
+ * hash is read; the tests assert on every select, group and SQL statement.
+ * The figures are shaped in eyeonGuardrailDecisions.ts.
  */
 import { z } from "zod";
-import { AcmeGuardrailEventAction, Prisma } from "@langfuse/shared/src/db";
+import { type Prisma } from "@langfuse/shared/src/db";
 import {
   createTRPCRouter,
   protectedProjectProcedure,
@@ -52,13 +65,35 @@ import {
   type DailyVerdicts,
   applicationsByAlias,
   busiestApplications,
+  callerOptions,
   dailyVerdicts,
   decisionsByDirection,
-  refusalsByType,
+  entityTypeCounts,
+  matchesFilters,
+  policyByDirection,
+  policyLabelsOf,
+  scopeChecks,
 } from "@/src/features/acme-enhancements/server/eyeonGuardrailDecisions";
+import {
+  busiestSql,
+  dailySql,
+  entityTypesSql,
+  kindConditionSql,
+} from "@/src/features/acme-enhancements/server/eyeonGuardrailDecisionsSql";
+import {
+  APPLIED_FILTERS,
+  CALLER_FILTER_MAX_LENGTH,
+  DIRECTION_FILTERS,
+  POLICY_TYPE_FILTERS,
+  VERDICT_FILTERS,
+  WINDOW_DAYS,
+} from "@/src/features/acme-enhancements/utils/eyeonDecisionFilters";
 
 /** How many of the agents with the most refusals the page lists. */
 export const BUSIEST_SHOWN = 5;
+
+/** How many callers the application filter offers, most checks first. */
+export const CALLERS_LISTED = 50;
 
 /** The scope of the guardrail decision log, which this page summarises. */
 const DECISIONS_READ_SCOPE = "projectGuardrails:read" as const;
@@ -71,6 +106,17 @@ const KEY_SELECT = {
   litellmKeyAlias: true,
   status: true,
 } satisfies Prisma.AcmeLitellmKeySelect;
+
+/** The page filters; anything not listed here is refused. */
+export const DecisionFiltersSchema = z
+  .object({
+    direction: z.enum(DIRECTION_FILTERS).optional(),
+    verdict: z.enum(VERDICT_FILTERS).optional(),
+    caller: z.string().trim().min(1).max(CALLER_FILTER_MAX_LENGTH).optional(),
+    policyType: z.enum(POLICY_TYPE_FILTERS).optional(),
+    applied: z.enum(APPLIED_FILTERS).optional(),
+  })
+  .strict();
 
 function decisionsEnabled(): boolean {
   return env.CAIRO_EYEON_GUARDRAIL_DECISIONS_ENABLED === "true";
@@ -97,7 +143,11 @@ export const eyeonGuardrailDecisionsRouter = createTRPCRouter({
     .input(
       z.object({
         projectId: z.string(),
-        windowDays: z.union([z.literal(7), z.literal(30)]),
+        windowDays: z.union([
+          z.literal(WINDOW_DAYS[0]),
+          z.literal(WINDOW_DAYS[1]),
+        ]),
+        filters: DecisionFiltersSchema.optional(),
       }),
     )
     .query(async ({ ctx, input }) => {
@@ -110,6 +160,8 @@ export const eyeonGuardrailDecisionsRouter = createTRPCRouter({
         return { enabled: false as const };
       }
       const { projectId } = input;
+      const filters = input.filters ?? {};
+      const { caller } = filters;
       // An application's screen exists only while gateway management is on,
       // and opens only for the Applications page's roles: link to it, and
       // read the keys to do so, only then.
@@ -127,72 +179,74 @@ export const eyeonGuardrailDecisionsRouter = createTRPCRouter({
       const dailyFrom = trendStart(now, input.windowDays);
       const period = { gte: since, lte: until };
 
-      const [groups, dailyRows, refusalGroups, busiestRows, judge, settings] =
-        await Promise.all([
-          ctx.prisma.acmeGuardrailEvent.groupBy({
-            by: ["direction", "action", "gatewayMode"],
-            where: { projectId, eventTime: period },
-            _count: { _all: true },
-          }),
-          // A day bucket needs raw SQL; bound parameters only, scoped to this
-          // project and the period. Timestamps are stored as UTC without a
-          // zone, so the bounds are passed as UTC text and cast the same way.
-          // Only a reported "enforce" counts as applied (CHG-2026-116).
-          ctx.prisma.$queryRaw<DailyVerdicts[]>(Prisma.sql`
-            SELECT to_char(date_trunc('day', event_time), 'YYYY-MM-DD') AS day,
-                   COUNT(*)::int AS checks,
-                   (COUNT(*) FILTER (WHERE action = 'allow'))::int AS allowed,
-                   (COUNT(*) FILTER (WHERE action = 'block' AND gateway_mode = 'enforce'))::int AS blocked,
-                   (COUNT(*) FILTER (WHERE action = 'block' AND gateway_mode IS DISTINCT FROM 'enforce'))::int AS "wouldBlock",
-                   (COUNT(*) FILTER (WHERE action = 'redact' AND gateway_mode = 'enforce'))::int AS redacted,
-                   (COUNT(*) FILTER (WHERE action = 'redact' AND gateway_mode IS DISTINCT FROM 'enforce'))::int AS "wouldRedact",
-                   (COUNT(*) FILTER (WHERE action = 'unavailable'))::int AS "noVerdict"
-            FROM acme_guardrail_events
-            WHERE project_id = ${projectId}
-              AND event_time >= ${dailyFrom.toISOString()}::timestamp
-              AND event_time <= ${until.toISOString()}::timestamp
-            GROUP BY 1`),
-          // Refusals by the guardrail's policy label: the label only, never
-          // shown as text (refusalsByType maps it to a type).
-          ctx.prisma.acmeGuardrailEvent.groupBy({
-            by: ["policyTriggered", "direction", "gatewayMode"],
-            where: {
-              projectId,
-              eventTime: period,
-              action: AcmeGuardrailEventAction.BLOCK,
-            },
-            _count: { _all: true },
-          }),
-          // The agents with the most refusals, capped in the database, with
-          // their checks and how many agents had a refusal at all. Bound
-          // parameters only, scoped to this project and the period.
-          ctx.prisma.$queryRaw<BusiestRow[]>(Prisma.sql`
-            SELECT agent_id AS alias,
-                   COUNT(*)::int AS checks,
-                   (COUNT(*) FILTER (WHERE action = 'block'))::int AS refusals,
-                   (COUNT(*) FILTER (WHERE action = 'block' AND gateway_mode = 'enforce'))::int AS "refusalsEnforced",
-                   (COUNT(*) OVER ())::int AS "withRefusals"
-            FROM acme_guardrail_events
-            WHERE project_id = ${projectId}
-              AND event_time >= ${since.toISOString()}::timestamp
-              AND event_time <= ${until.toISOString()}::timestamp
-            GROUP BY agent_id
-            HAVING COUNT(*) FILTER (WHERE action = 'block') > 0
-            ORDER BY refusals DESC, alias ASC
-            LIMIT ${BUSIEST_SHOWN}`),
-          judgeAvailability(ctx.prisma, { projectId, now }),
-          getCurrentSettings(ctx.prisma),
-        ]);
+      // First the grouped read, whose groups carry every filtered dimension
+      // and the policy labels the SQL reads match.
+      const [groups, callerRows, judge, settings] = await Promise.all([
+        ctx.prisma.acmeGuardrailEvent.groupBy({
+          by: ["direction", "action", "gatewayMode", "policyTriggered"],
+          where: {
+            projectId,
+            eventTime: period,
+            ...(caller ? { agentId: caller } : {}),
+          },
+          _count: { _all: true },
+        }),
+        // The callers a filter can choose: every one in the period, whatever
+        // the other filters, busiest first, capped in the database.
+        ctx.prisma.acmeGuardrailEvent.groupBy({
+          by: ["agentId"],
+          where: { projectId, eventTime: period },
+          _count: { _all: true },
+          orderBy: [{ _count: { agentId: "desc" } }, { agentId: "asc" }],
+          take: CALLERS_LISTED,
+        }),
+        // The judge's alert figure covers all of the project's traffic over
+        // 24 hours, as on the Guardrails page; the filters do not apply.
+        judgeAvailability(ctx.prisma, { projectId, now }),
+        getCurrentSettings(ctx.prisma),
+      ]);
+
+      const matching = groups.filter((g) => matchesFilters(g, filters));
+      const kind = kindConditionSql(
+        filters,
+        filters.policyType ? policyLabelsOf(groups, filters.policyType) : null,
+      );
+      // The busiest card ranks by refusals, or by the verdict chosen.
+      const busiestVerdict = filters.verdict ?? "block";
+      const sqlScope = { projectId, until, caller };
+
+      const [dailyRows, busiestRows, entityRows] = await Promise.all([
+        // A day bucket needs raw SQL; bound parameters only, scoped to this
+        // project and the period. Timestamps are stored as UTC without a
+        // zone, so the bounds are passed as UTC text and cast the same way.
+        // Only a reported "enforce" counts as applied (CHG-2026-116).
+        ctx.prisma.$queryRaw<DailyVerdicts[]>(
+          dailySql({ ...sqlScope, from: dailyFrom }, kind),
+        ),
+        ctx.prisma.$queryRaw<BusiestRow[]>(
+          busiestSql(
+            { ...sqlScope, from: since },
+            kind,
+            busiestVerdict,
+            BUSIEST_SHOWN,
+          ),
+        ),
+        // Only (type, count) rows, at most one per type the page names.
+        ctx.prisma.$queryRaw<{ type: unknown; count: unknown }[]>(
+          entityTypesSql({ ...sqlScope, from: since }, kind),
+        ),
+      ]);
       // The keys only for a viewer who may open an application, and only
-      // when there is an agent to link. Lineage, name and status: no token
+      // when there is an agent to name. Lineage, name and status: no token
       // hash, no settings.
       const keys =
-        linksApplications && busiestRows.length > 0
+        linksApplications && (busiestRows.length > 0 || callerRows.length > 0)
           ? await ctx.prisma.acmeLitellmKey.findMany({
               where: { projectId, status: { in: USED_STATUSES } },
               select: KEY_SELECT,
             })
           : null;
+      const applications = keys ? applicationsByAlias(keys) : null;
 
       const ceiling = parseModeCeiling(env.CAIRO_GUARDRAIL_MODE_MAX);
       return {
@@ -204,17 +258,23 @@ export const eyeonGuardrailDecisionsRouter = createTRPCRouter({
           mode: settings ? servedMode(settings, now, ceiling) : null,
           ceiling,
         },
-        totals: decisionTotals(groups),
-        byDirection: decisionsByDirection(groups),
+        /** Every check in the period and scope: the base of each rate. */
+        scope: scopeChecks(groups),
+        /** The decisions that match the filters. */
+        totals: decisionTotals(matching),
+        byDirection: decisionsByDirection(matching),
         daily: dailyVerdicts(dailyFrom, input.windowDays, dailyRows),
-        refusalsByType: refusalsByType(refusalGroups),
+        policyByDirection: policyByDirection(matching),
         busiest: {
-          ...busiestApplications(
-            busiestRows,
-            keys ? applicationsByAlias(keys) : null,
-          ),
+          ...busiestApplications(busiestRows, applications),
+          verdict: busiestVerdict,
           limit: BUSIEST_SHOWN,
           linksApplications,
+        },
+        entityTypes: entityTypeCounts(entityRows),
+        callers: {
+          listed: callerOptions(callerRows, applications),
+          limit: CALLERS_LISTED,
         },
         judge: {
           windowHours: judge.windowHours,

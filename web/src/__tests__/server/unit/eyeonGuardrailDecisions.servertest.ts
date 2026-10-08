@@ -9,7 +9,7 @@ import {
   busiestApplications,
   dailyVerdicts,
   decisionsByDirection,
-  refusalsByType,
+  policyByDirection,
 } from "@/src/features/acme-enhancements/server/eyeonGuardrailDecisions";
 import {
   decisionsHeadline,
@@ -82,6 +82,7 @@ describe("decisionsByDirection", () => {
 describe("dailyVerdicts", () => {
   const zero = {
     checks: 0,
+    enforcedChecks: 0,
     allowed: 0,
     blocked: 0,
     wouldBlock: 0,
@@ -93,7 +94,14 @@ describe("dailyVerdicts", () => {
   it("has one point per UTC day, zeros where nothing happened, and ignores other days", () => {
     const start = new Date("2026-10-01T00:00:00.000Z");
     const points = dailyVerdicts(start, 3, [
-      { ...zero, day: "2026-10-02", checks: 9, blocked: 1, wouldBlock: 2 },
+      {
+        ...zero,
+        day: "2026-10-02",
+        checks: 9,
+        enforcedChecks: 4,
+        blocked: 1,
+        wouldBlock: 2,
+      },
       { ...zero, day: "2026-10-02", checks: 1, noVerdict: 1 },
       { ...zero, day: "2026-09-30", checks: 50 },
       { ...zero, day: "2026-10-04", checks: 50 },
@@ -108,6 +116,7 @@ describe("dailyVerdicts", () => {
       ...zero,
       day: "2026-10-02",
       checks: 10,
+      enforcedChecks: 4,
       blocked: 1,
       wouldBlock: 2,
       noVerdict: 1,
@@ -115,63 +124,108 @@ describe("dailyVerdicts", () => {
   });
 });
 
-describe("refusalsByType", () => {
-  function refusal(
+describe("policyByDirection (CHG-2026-137)", () => {
+  function labelled(
     policyTriggered: string | null,
     direction: AcmeGuardrailEventDirection,
+    action: AcmeGuardrailEventAction,
     gatewayMode: string | null,
     n: number,
   ) {
-    return { policyTriggered, direction, gatewayMode, _count: { _all: n } };
+    return {
+      policyTriggered,
+      direction,
+      action,
+      gatewayMode,
+      _count: { _all: n },
+    };
   }
+  const none = { enforced: 0, notEnforced: 0 };
 
-  it("is empty without refusals", () => {
-    expect(refusalsByType([])).toEqual([]);
+  it("is empty without refusals or redactions", () => {
+    expect(policyByDirection([])).toEqual([]);
+    expect(
+      policyByDirection([
+        labelled(null, INPUT, ALLOW, "enforce", 10),
+        labelled(null, INPUT, UNAVAILABLE, null, 2),
+      ]),
+    ).toEqual([]);
   });
 
-  it("maps labels to types, most frequent first, with the mode and direction split", () => {
-    const types = refusalsByType([
-      refusal("Topical Rail", OUTPUT, "enforce", 2),
-      refusal("Jailbreak Detection", INPUT, "record", 3),
-      refusal("jailbreak detection", INPUT, "enforce", 1),
-      refusal("Input too large for inspection", INPUT, null, 1),
-      refusal("something new", INPUT, "enforce", 1),
-      refusal(null, OUTPUT, "record", 1),
+  it("maps labels to types, most frequent first, by direction, verdict and mode", () => {
+    const rows = policyByDirection([
+      labelled("Topical Rail", OUTPUT, BLOCK, "enforce", 2),
+      labelled("Jailbreak Detection", INPUT, BLOCK, "record", 3),
+      labelled("jailbreak detection", INPUT, BLOCK, "enforce", 1),
+      labelled("Input too large for inspection", INPUT, BLOCK, null, 1),
+      labelled("something new", INPUT, BLOCK, "enforce", 1),
+      labelled(null, OUTPUT, BLOCK, "record", 1),
+      labelled("PII Redaction", INPUT, REDACT, "record", 2),
+      labelled("PII Redaction", OUTPUT, REDACT, "ENFORCE", 1),
+      // Allowed checks carry no policy reason, whatever their label.
+      labelled("PII Redaction", INPUT, ALLOW, "enforce", 50),
     ]);
-    expect(types).toEqual([
+    expect(rows).toEqual([
       {
         type: "jailbreak",
         label: "Jailbreak or misuse",
         count: 4,
-        split: { enforced: 1, notEnforced: 3 },
-        prompts: 4,
-        answers: 0,
+        prompts: {
+          blocked: { enforced: 1, notEnforced: 3 },
+          redacted: none,
+        },
+        answers: { blocked: none, redacted: none },
+      },
+      {
+        type: "personalData",
+        label: "Personal data",
+        count: 3,
+        prompts: {
+          blocked: none,
+          redacted: { enforced: 0, notEnforced: 2 },
+        },
+        // "ENFORCE" is not the reported "enforce": not applied.
+        answers: {
+          blocked: none,
+          redacted: { enforced: 0, notEnforced: 1 },
+        },
       },
       {
         type: "offTopic",
         label: "Off-topic or outside policy",
         count: 2,
-        split: { enforced: 2, notEnforced: 0 },
-        prompts: 0,
-        answers: 2,
+        prompts: { blocked: none, redacted: none },
+        answers: {
+          blocked: { enforced: 2, notEnforced: 0 },
+          redacted: none,
+        },
       },
       {
         type: "other",
         label: "Other",
         count: 2,
-        split: { enforced: 1, notEnforced: 1 },
-        prompts: 1,
-        answers: 1,
+        prompts: {
+          blocked: { enforced: 1, notEnforced: 0 },
+          redacted: none,
+        },
+        answers: {
+          blocked: { enforced: 0, notEnforced: 1 },
+          redacted: none,
+        },
       },
       {
         type: "oversized",
         label: "Too large to check",
         count: 1,
-        split: { enforced: 0, notEnforced: 1 },
-        prompts: 1,
-        answers: 0,
+        prompts: {
+          blocked: { enforced: 0, notEnforced: 1 },
+          redacted: none,
+        },
+        answers: { blocked: none, redacted: none },
       },
     ]);
+    // The caller-set labels are never passed on.
+    expect(JSON.stringify(rows)).not.toMatch(/Detection|Rail|something new/);
   });
 });
 
@@ -211,16 +265,16 @@ describe("busiestApplications", () => {
         {
           alias: "a-2",
           checks: 40,
-          refusals: 6,
-          refusalsEnforced: 4,
-          withRefusals: 7,
+          matched: 6,
+          matchedEnforced: 4,
+          withMatches: 7,
         },
         {
           alias: "probe",
           checks: 9,
-          refusals: 5,
-          refusalsEnforced: 0,
-          withRefusals: 7,
+          matched: 5,
+          matchedEnforced: 0,
+          withMatches: 7,
         },
       ],
       apps,
@@ -230,14 +284,14 @@ describe("busiestApplications", () => {
         {
           alias: "a-2",
           application: { lineageId: "l1", name: "Claims bot" },
-          refusals: { enforced: 4, notEnforced: 2 },
+          matched: { enforced: 4, notEnforced: 2 },
           checks: 40,
           per100: 15,
         },
         {
           alias: "probe",
           application: null,
-          refusals: { enforced: 0, notEnforced: 5 },
+          matched: { enforced: 0, notEnforced: 5 },
           checks: 9,
           per100: null,
         },
@@ -252,9 +306,9 @@ describe("busiestApplications", () => {
         {
           alias: "a-2",
           checks: 10,
-          refusals: 1,
-          refusalsEnforced: 1,
-          withRefusals: 1,
+          matched: 1,
+          matchedEnforced: 1,
+          withMatches: 1,
         },
       ],
       null,
