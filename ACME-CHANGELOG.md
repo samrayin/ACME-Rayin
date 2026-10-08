@@ -6929,7 +6929,7 @@ ESLint (no warnings) and Prettier pass on every changed code file. Fresh typeche
 |---|---|
 | **Change ID** | CHG-2026-137 follow-up · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | [ADR-0027](acme-governance/adr/ADR-0027-eyeon-native-pages.md) (the EYEON-native page pattern; no ADR change) |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Approval** | Owner, 2026-10-08: reviewed and merged #388 and approved its release ("merged, proceed to release all"; console `acme-v4.38.0.47`). Live with that release: the Guardrail decisions page is on. No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
 | **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
 | **Impact** | Client-visible once CHG-2026-133's flag is on: the Guardrail decisions page's KPI tiles each get a chart, the decision flow is drawn at a medium, fixed size, decisions over time is taller, and the "Why" card gets bars. With the flag off (the default) nothing changes. No downtime |
 | **Schema change** | None |
