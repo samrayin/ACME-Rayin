@@ -7004,3 +7004,46 @@ To do this, the router reads each key's model list and team, and the project's t
 - **Existing tests:** the allow-list (36), the kit (19), the sidebar per role (28) and the rail model (25) pass unchanged.
 
 Fresh typecheck passed with only the 2 tolerated Enterprise-file errors.
+
+## 2026-10-08 — CHG-2026-142 follow-up (owner decisions)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-142 follow-up · owner: Anees Ur Rahman · Tier 1 |
+| **ADR** | [ADR-0026](acme-governance/adr/ADR-0026-adopting-the-eyeon-prototype.md) §12.4, follow-up paragraph (owner decisions, 2026-10-08) |
+| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
+| **Impact** | Client-visible: "Reset sidebar width" in the top bar's user menu, on desktop and on the phone; the sidebar width is kept per signed-in person rather than per browser; on a window narrower than 1536 pixels the sidebar shows at most a quarter of the window. A width kept before this change goes to the first person who signs in on that browser. Nothing changes for anyone who has not resized. No downtime |
+| **Schema change** | None |
+| **Rollback** | Redeploy the previous image. It reads only the old per-browser key, which is removed once moved, so the sidebar opens at the default until resized; the per-person keys stay for a later roll-forward |
+| **Feature flag** | None |
+
+**What:** the owner's decisions of 2026-10-08 on three follow-ups to the resizable sidebar ("You recommend and lock it"); all three were chosen and built.
+- **A reset in the user menu:** "Reset sidebar width", in the top bar's user menu after the theme, on desktop and in the compact (phone) menu. It does exactly what Enter on the sidebar's edge does: the default width, nothing kept. It is disabled while the kept width is the default. Outside the authenticated layout there is no such item.
+- **Per person, not per browser:** the width is kept under `cairo.sidebarWidth.v1:<userId>`, following EYEON Home's arrangement (CHG-2026-136); the authenticated layout passes the signed-in person's id. Once, when a person has no key of their own and the browser still holds the old `cairo.sidebarWidth.v1`, that width becomes theirs: written under their key, and only then is the old key removed (a refused write keeps it). With no person known, the default applies and nothing is read or written. Reads and writes stay guarded and sanitised; the width is still never sent to the server. A change of person shows the new person's own width.
+- **Maximum width on narrow windows:** the widest the sidebar may be is a quarter of the window's inner width, between 11.5rem and 24rem (at the default font size: 11.5rem up to a 736-pixel window, 24rem from 1536 pixels). The sidebar shows the kept width within it, and the kept width is unchanged, so it comes back when the window widens. The window is re-measured on resize at most once per animation frame; the listener and any pending frame are removed with the sidebar. The handle's `aria-valuemax`, End, the arrow keys and a drag all stop at it.
+
+**Why it matters:** a reset that does not depend on finding and focusing the sidebar's edge; one person's width does not follow another person on a shared browser; and on a small laptop window a wide sidebar no longer squeezes the page.
+
+**Choices:**
+- **Disabled, not hidden:** the menu keeps its shape whatever the width, and the item still tells people the width can be changed and reset. The item goes by the kept width, not the width on screen, so it is enabled on a narrow window that already shows the default while a wider width is kept, and clears that width.
+- **A key or drag that leaves the width where it is keeps nothing:** otherwise pressing End or dragging wider on a narrow window would replace a wider kept width with the window's maximum. A key or drag that changes the width keeps what is shown. Enter, the reset, always applies.
+- **The id comes from the layout,** which already holds the signed-in person, rather than a second session read in the provider.
+
+**Upstream sync (CHG-2026-100):** `AuthenticatedLayout.tsx`'s marked `<EyeonSidebarProvider>` line now passes `userId={user.id}` (comment updated, still "ACME (CHG-2026-142)"); the test that reads the layout checks for it. `sidebar.tsx` is unchanged. Everything else is in ACME files under `features/acme-enhancements/components/eyeon/shell/`, one of them new: `useWindowSidebarMax.ts`.
+
+**Release:** web image only; no setting, flag or migration.
+
+**Tests:** 20 new pure-function tests (`sidebarWidth`, 46 from 26): the window's maximum from 375 to 3840-pixel windows, with the 736 and 1536-pixel turning points, rounding down, the root font size and a window that cannot be measured; clamping, steps, keys and the drag stopping at it, and a maximum outside the limits; one key per person, two people kept apart in one browser, and no person (nothing read or written); the old key moved once, the person's own key winning over it, an old value that is not a width or is the default, a refused write keeping the old key, and a refused removal. The existing storage tests now pass a person.
+
+11 new handle tests (`EyeonSidebarResizeHandle`, 36 from 25):
+- the window's maximum: `aria-valuemax` a quarter of the window, re-measured on the next frame after a resize; a kept width too wide shown within the window and back when it widens, with the kept value unchanged; keys and drags stopping at it, and a key or drag that leaves the width in place keeping the wider kept width; Escape showing the kept width again; Enter resetting a kept width that a narrow window hides; one resize listener, one frame per burst of resizes, removed with its pending frame when the sidebar goes away;
+- per person: the person's own key; the old width moved on the first render; no person (the default, nothing written, the old width left in place); a change of person showing their own width.
+
+The existing 25 now run with a person and a 1920-pixel window, and the layout check looks for `userId={user.id}`.
+
+8 new user menu tests (`EyeonTopbarUserMenu`, 11 from 3): no item outside EYEON's provider; its accessible name, and its place after the theme, or last without one; disabled at the default, where a click changes nothing; enabled after a resize and disabled again after a reset; the same result as Enter on the edge (value, spoken value, CSS width, nothing kept); enabled on a narrow window that shows the default while a wider width is kept; in the compact menu on a phone, where the sidebar has no edge.
+
+Existing tests pass unchanged: the top bar (18), the app shell chrome row (4), the EYEON rail (11) and its model (25).
+
+ESLint (no warnings) and Prettier pass on every changed code file. Fresh typecheck passed with only the 2 tolerated Enterprise-file errors.

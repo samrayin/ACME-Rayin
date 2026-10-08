@@ -21,6 +21,11 @@ import {
   type EyeonUserMenuItem,
   type EyeonUserMenuValue,
 } from "@/src/features/acme-enhancements/components/eyeon/shell/EyeonUserMenuContext";
+import {
+  useEyeonSidebarWidth,
+  type EyeonSidebarWidthControl,
+} from "@/src/features/acme-enhancements/components/eyeon/shell/eyeonSidebarWidthContext";
+import { SIDEBAR_WIDTH_DEFAULT_REM } from "@/src/features/acme-enhancements/components/eyeon/shell/sidebarWidth";
 
 type EyeonTopbarUserMenuProps = EyeonUserMenuValue & {
   /** Avatar only, for the mobile top bar. */
@@ -61,17 +66,49 @@ function renderMenuItem(item: EyeonUserMenuItem) {
 }
 
 /**
+ * ACME (CHG-2026-142 follow-up, owner, 2026-10-08): puts this person's
+ * sidebar back to its default width, exactly as Enter on the sidebar's edge
+ * does, and keeps nothing. Disabled, not hidden, while the kept width is
+ * already the default: the menu keeps its shape, and the item still shows
+ * that the width can be reset. It goes by the kept width, not the width on
+ * screen, which a narrow window may already have brought down to the default.
+ */
+function ResetSidebarWidthItem({
+  control,
+}: {
+  control: EyeonSidebarWidthControl;
+}) {
+  return (
+    <DropdownMenuItem
+      disabled={control.keptWidth === SIDEBAR_WIDTH_DEFAULT_REM}
+      onSelect={() => control.commit(SIDEBAR_WIDTH_DEFAULT_REM)}
+    >
+      Reset sidebar width
+    </DropdownMenuItem>
+  );
+}
+
+/**
  * ACME (CHG-2026-134): the user menu in the top bar, at its right edge, where
  * the ACME AI launcher was. It is the block the sidebar footer showed: the
  * person's avatar, name and email, and the same items (account settings, the
  * theme, feature preview, instances, sign out, and so on), built once by the
  * authenticated layout and rendered here as the footer rendered them.
+ *
+ * Inside EYEON's sidebar provider (the authenticated layout) it also offers
+ * "Reset sidebar width" (CHG-2026-142 follow-up), after the theme, the other
+ * setting of how the console looks in this browser; at the end if there is
+ * no theme item. The same item shows in the compact (phone) menu.
  */
 export function EyeonTopbarUserMenu({
   user,
   items,
   compact = false,
 }: EyeonTopbarUserMenuProps) {
+  const sidebarWidth = useEyeonSidebarWidth();
+  const themeAt = items.findIndex((item) => item.name === "Theme");
+  const resetAt = themeAt === -1 ? items.length : themeAt + 1;
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -130,7 +167,11 @@ export function EyeonTopbarUserMenu({
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuGroup>{items.map(renderMenuItem)}</DropdownMenuGroup>
+        <DropdownMenuGroup>
+          {items.slice(0, resetAt).map(renderMenuItem)}
+          {sidebarWidth && <ResetSidebarWidthItem control={sidebarWidth} />}
+          {items.slice(resetAt).map(renderMenuItem)}
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );

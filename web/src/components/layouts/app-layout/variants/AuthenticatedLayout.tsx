@@ -271,8 +271,9 @@ export function AuthenticatedLayout({
 
       <SidebarPresenceProvider>
         {/* ACME (CHG-2026-142): upstream's SidebarProvider, with the width
-            this person gave the sidebar by dragging its edge. */}
-        <EyeonSidebarProvider>
+            this person gave the sidebar by dragging its edge, kept per
+            signed-in person. */}
+        <EyeonSidebarProvider userId={user.id}>
           <div className="flex h-dvh w-full flex-col">
             <div
               ref={topBannerRef}
