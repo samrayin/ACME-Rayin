@@ -15,8 +15,12 @@ import {
   decisionsHeadline,
   perHundred,
   splitText,
+  tileSeries,
 } from "@/src/features/acme-enhancements/utils/eyeonGuardrailDecisionsLabels";
-import { stackSegments } from "@/src/features/acme-enhancements/components/eyeon/eyeonChartGeometry";
+import {
+  sparklinePaths,
+  stackSegments,
+} from "@/src/features/acme-enhancements/components/eyeon/eyeonChartGeometry";
 
 // CHG-2026-133 (ADR-0027): the EYEON Guardrail decisions page's pure
 // functions: its figures, its wording, and the stacked charts' geometry.
@@ -83,6 +87,10 @@ describe("dailyVerdicts", () => {
   const zero = {
     checks: 0,
     enforcedChecks: 0,
+    matching: 0,
+    matchingEnforced: 0,
+    promptsRefused: 0,
+    answersWithheld: 0,
     allowed: 0,
     blocked: 0,
     wouldBlock: 0,
@@ -99,10 +107,14 @@ describe("dailyVerdicts", () => {
         day: "2026-10-02",
         checks: 9,
         enforcedChecks: 4,
+        matching: 9,
+        matchingEnforced: 4,
+        promptsRefused: 2,
+        answersWithheld: 1,
         blocked: 1,
         wouldBlock: 2,
       },
-      { ...zero, day: "2026-10-02", checks: 1, noVerdict: 1 },
+      { ...zero, day: "2026-10-02", checks: 1, matching: 1, noVerdict: 1 },
       { ...zero, day: "2026-09-30", checks: 50 },
       { ...zero, day: "2026-10-04", checks: 50 },
     ]);
@@ -117,10 +129,107 @@ describe("dailyVerdicts", () => {
       day: "2026-10-02",
       checks: 10,
       enforcedChecks: 4,
+      matching: 10,
+      matchingEnforced: 4,
+      promptsRefused: 2,
+      answersWithheld: 1,
       blocked: 1,
       wouldBlock: 2,
       noVerdict: 1,
     });
+  });
+});
+
+// CHG-2026-137 follow-up (owner, 2026-10-08): a chart in every KPI tile,
+// counted as the tile's figure is; a share without a base is a gap.
+describe("tileSeries", () => {
+  const day = {
+    checks: 0,
+    matching: 0,
+    matchingEnforced: 0,
+    promptsRefused: 0,
+    answersWithheld: 0,
+    redacted: 0,
+    wouldRedact: 0,
+    noVerdict: 0,
+  };
+
+  it("gives each tile one point per day, counted as its figure", () => {
+    const s = tileSeries([
+      {
+        ...day,
+        day: "2026-10-01",
+        checks: 50,
+        matching: 40,
+        matchingEnforced: 10,
+        promptsRefused: 6,
+        answersWithheld: 2,
+        redacted: 1,
+        wouldRedact: 3,
+        noVerdict: 1,
+      },
+      // No check at all: the counts are 0, the shares are not known.
+      { ...day, day: "2026-10-02" },
+      // Checks, but none matches the filters: no share decided in enforce.
+      { ...day, day: "2026-10-03", checks: 8 },
+    ]);
+    const values = (points: { value: number | null }[]) =>
+      points.map((p) => p.value);
+    expect(s.checks.map((p) => p.label)).toEqual([
+      "2026-10-01",
+      "2026-10-02",
+      "2026-10-03",
+    ]);
+    expect(values(s.checks)).toEqual([50, 0, 8]);
+    expect(values(s.promptsRefused)).toEqual([6, 0, 0]);
+    expect(values(s.answersWithheld)).toEqual([2, 0, 0]);
+    // Applied and recorded alike, as the tile's figure.
+    expect(values(s.redactions)).toEqual([4, 0, 0]);
+    // Per 100 of every check of the day, as the period's figure.
+    expect(values(s.noVerdictPct)).toEqual([2, null, 0]);
+    // Of the matching decisions, as the tile's figure.
+    expect(values(s.enforcedPct)).toEqual([25, null, null]);
+  });
+
+  it("has no point without days", () => {
+    expect(tileSeries([]).enforcedPct).toEqual([]);
+  });
+});
+
+describe("sparklinePaths with gaps (CHG-2026-137 follow-up)", () => {
+  it("breaks the line at a day without a value, rather than drawing a zero", () => {
+    const { line, area } = sparklinePaths([0, 10, null, 5, 10], 100, 20, 2);
+    expect(line).toBe("M0 18 L25 2 M75 10 L100 2");
+    expect(area).toBe(
+      "M0 18 L25 2 L25 20 L0 20 Z M75 10 L100 2 L100 20 L75 20 Z",
+    );
+  });
+
+  it("draws a value alone between gaps as a short flat stroke", () => {
+    expect(sparklinePaths([null, 4, null], 100, 20, 2).line).toBe(
+      "M37.5 2 L62.5 2",
+    );
+    // At an edge, the stroke stays inside the box.
+    expect(sparklinePaths([4, null, null], 100, 20, 2).line).toBe(
+      "M0 2 L12.5 2",
+    );
+    expect(sparklinePaths([null, null], 100, 20)).toEqual({
+      line: "",
+      area: "",
+    });
+  });
+
+  it("scales to a fixed ceiling, such as 100 for a share, unless a value is larger", () => {
+    expect(sparklinePaths([50, 100], 10, 10, 1, 100).line).toBe("M0 5 L10 1");
+    expect(sparklinePaths([0, 25], 10, 10, 1, 100).line).toBe("M0 9 L10 7");
+    expect(sparklinePaths([0, 200], 10, 10, 1, 100).line).toBe("M0 9 L10 1");
+  });
+
+  it("draws as before without gaps or a ceiling", () => {
+    expect(sparklinePaths([0, 10, 5], 100, 20, 2).line).toBe(
+      "M0 18 L50 2 L100 10",
+    );
+    expect(sparklinePaths([5], 100, 20).line).toBe("M0 2 L100 2");
   });
 });
 

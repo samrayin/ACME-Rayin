@@ -25,32 +25,62 @@ const SPARK_BOX = {
 } as const;
 
 /**
+ * CHG-2026-137 follow-up: how a sparkline of shares or rates is written,
+ * where a sum over the points means nothing. `format` writes a value (e.g.
+ * "87%"); `max` fixes the top of the scale (100 for a share); `missing` is
+ * what a point without a value means (e.g. "no checks"), drawn as a gap.
+ */
+type EyeonSparkRate = {
+  format: (value: number) => string;
+  max?: number;
+  missing: string;
+};
+
+/**
  * A series as a line over a light area, its own scale, zero at the bottom.
  * `label` names what one point counts, e.g. "Guardrail checks per day".
+ * With `rate`, the accessible name states the range of the values rather
+ * than their total, and a null value is a gap in the line, never a zero.
  */
 export function EyeonSparkline({
   label,
   points,
   tone = "accent",
   size = "sm",
+  rate,
 }: {
   label: string;
-  points: { label: string; value: number }[];
+  points: { label: string; value: number | null }[];
   tone?: EyeonTone;
   size?: "sm" | "lg";
+  rate?: EyeonSparkRate;
 }) {
   const { width, height } = SPARK_BOX[size];
   const values = points.map((p) => p.value);
-  const { line, area } = sparklinePaths(values, width, height);
-  const total = values.reduce((sum, v) => sum + v, 0);
-  const max = Math.max(0, ...values);
+  const present = values.filter((v): v is number => v !== null);
+  const { line, area } = sparklinePaths(values, width, height, 2, rate?.max);
+  const total = present.reduce((sum, v) => sum + v, 0);
+  const max = Math.max(0, ...present);
   const first = points[0]?.label;
   const last = points[points.length - 1]?.label;
   const step = points.length > 1 ? width / (points.length - 1) : width;
+  const written = (v: number | null) =>
+    v === null
+      ? (rate?.missing ?? "no data")
+      : rate
+        ? rate.format(v)
+        : v.toLocaleString();
+  const range = (low: string, high: string) =>
+    low === high ? `each ${high}` : `from ${low} to ${high}`;
+  const figures = !rate
+    ? `${total.toLocaleString()} in total, at most ${max.toLocaleString()}`
+    : present.length === 0
+      ? `none with a value (${rate.missing})`
+      : `${present.length.toLocaleString()} with a value, ${range(rate.format(Math.min(...present)), rate.format(max))}`;
   const summary =
     points.length === 0
       ? `${label}: no data.`
-      : `${label}, ${points.length} points from ${first} to ${last}: ${total.toLocaleString()} in total, at most ${max.toLocaleString()}.`;
+      : `${label}, ${points.length} points from ${first} to ${last}: ${figures}.`;
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
@@ -82,7 +112,7 @@ export function EyeonSparkline({
           height={height}
           fill="transparent"
         >
-          <title>{`${p.label}: ${p.value.toLocaleString()}`}</title>
+          <title>{`${p.label}: ${written(p.value)}`}</title>
         </rect>
       ))}
     </svg>
@@ -324,17 +354,30 @@ function EyeonSwatch({ series }: { series: EyeonStackSeries }) {
   );
 }
 
+/** The plot's height: md for a strip, lg for a card's main chart. */
+const BARS_HEIGHT = {
+  md: { height: 96, className: "h-24" },
+  lg: { height: 224, className: "h-56" },
+} as const;
+
 /**
  * A series of stacked bars, one per point (e.g. per UTC day), the series
  * stacked from the baseline in the order given, on one scale: the tallest
  * stack fills the height. A legend names every series with its total.
  * `label` names what one bar counts, e.g. "Interventions per UTC day".
+ * CHG-2026-137 follow-up: `size` "lg" draws a card's main chart (224 px,
+ * after the prototype's 230) with its scale written around it: the top
+ * value above a dashed top line, and the first and last point under it.
+ * With `emptyText`, a series with nothing to draw says so instead of an
+ * empty plot.
  */
 export function EyeonStackedBars({
   label,
   series,
   points,
   legendValues,
+  size = "md",
+  emptyText,
 }: {
   label: string;
   series: EyeonStackSeries[];
@@ -346,9 +389,12 @@ export function EyeonStackedBars({
    * By default, each series' total.
    */
   legendValues?: string[];
+  size?: keyof typeof BARS_HEIGHT;
+  /** What to say, in place of the plot, when every value is zero. */
+  emptyText?: string;
 }) {
   const width = 300;
-  const height = 96;
+  const { height, className: heightClass } = BARS_HEIGHT[size];
   const max = Math.max(0, ...points.map((p) => sum(p.values)));
   const band = points.length > 0 ? width / points.length : width;
   const barWidth = band * 0.7;
@@ -364,55 +410,100 @@ export function EyeonStackedBars({
     points.length === 0
       ? `${label}: no data.`
       : `${label}, ${points.length} bars from ${points[0]!.label} to ${points[points.length - 1]!.label}: ${series.map((s, j) => `${s.name} ${legend[j]}`).join(", ")}; at most ${max.toLocaleString()} in one bar.`;
-  return (
-    <div className="flex flex-col gap-2">
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        preserveAspectRatio="none"
-        className="h-24 w-full"
-        role="img"
-        aria-label={summary}
-      >
+  const empty = emptyText !== undefined && points.length > 0 && max === 0;
+  const plot = (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
+      className={cn(heightClass, "w-full")}
+      role="img"
+      aria-label={summary}
+    >
+      <line
+        x1={0}
+        x2={width}
+        y1={height - 0.5}
+        y2={height - 0.5}
+        className="stroke-border"
+        vectorEffect="non-scaling-stroke"
+      />
+      {size === "lg" ? (
+        // The top of the scale, where the tallest bar ends; its value is
+        // written above the plot.
         <line
           x1={0}
           x2={width}
-          y1={height - 0.5}
-          y2={height - 0.5}
+          y1={0.5}
+          y2={0.5}
           className="stroke-border"
+          strokeDasharray="4 4"
           vectorEffect="non-scaling-stroke"
         />
-        {points.map((p, i) => {
-          const segments = stackSegments(p.values, max, height - 1);
-          const x = i * band + (band - barWidth) / 2;
-          return (
-            <g key={p.label}>
-              <title>{`${p.label}: ${named(p.values)}`}</title>
-              {segments.map((seg, j) => {
-                const s = series[j];
-                return s && seg.size > 0 ? (
-                  <rect
-                    key={s.name}
-                    x={x}
-                    y={height - 1 - seg.start - seg.size}
-                    width={barWidth}
-                    height={seg.size}
-                    className={EYEON_TONE_TEXT[s.tone]}
-                    fill="currentColor"
-                    fillOpacity={seriesOpacity(s.muted)}
-                  />
-                ) : null;
-              })}
-              <rect
-                x={i * band}
-                y={0}
-                width={band}
-                height={height}
-                fill="transparent"
-              />
-            </g>
-          );
-        })}
-      </svg>
+      ) : null}
+      {points.map((p, i) => {
+        const segments = stackSegments(p.values, max, height - 1);
+        const x = i * band + (band - barWidth) / 2;
+        return (
+          <g key={p.label}>
+            <title>{`${p.label}: ${named(p.values)}`}</title>
+            {segments.map((seg, j) => {
+              const s = series[j];
+              return s && seg.size > 0 ? (
+                <rect
+                  key={s.name}
+                  x={x}
+                  y={height - 1 - seg.start - seg.size}
+                  width={barWidth}
+                  height={seg.size}
+                  className={EYEON_TONE_TEXT[s.tone]}
+                  fill="currentColor"
+                  fillOpacity={seriesOpacity(s.muted)}
+                />
+              ) : null;
+            })}
+            <rect
+              x={i * band}
+              y={0}
+              width={band}
+              height={height}
+              fill="transparent"
+            />
+          </g>
+        );
+      })}
+    </svg>
+  );
+  return (
+    <div className="flex flex-col gap-2">
+      {empty ? (
+        <p className="text-muted-foreground text-sm">{emptyText}</p>
+      ) : size === "lg" ? (
+        // The scale in words around the plot, which keeps the card's full
+        // width (so a strip under it, such as the gateway's mode per day,
+        // lines up with the bars): the top value above it, the first and
+        // last point under it. The accessible name already states the
+        // figures, so these labels are hidden from it.
+        <div className="flex flex-col gap-1">
+          <span
+            className="text-muted-foreground text-xs tabular-nums"
+            aria-hidden
+          >
+            {max.toLocaleString()}
+          </span>
+          {plot}
+          <div
+            className="text-muted-foreground flex justify-between gap-2 text-xs tabular-nums"
+            aria-hidden
+          >
+            <span>{points[0]?.label}</span>
+            <span>
+              {points.length > 1 ? points[points.length - 1]?.label : null}
+            </span>
+          </div>
+        </div>
+      ) : (
+        plot
+      )}
       <ul
         className="flex flex-wrap gap-x-4 gap-y-1 text-xs"
         aria-label="Legend"
@@ -428,6 +519,56 @@ export function EyeonStackedBars({
         ))}
       </ul>
     </div>
+  );
+}
+
+/**
+ * CHG-2026-137 follow-up: one horizontal bar, a stack of named segments on a
+ * scale where `max` fills the bar (the bar of each EyeonBarList row, also
+ * drawn in a table cell). Its accessible name states every segment.
+ */
+export function EyeonStackBar({
+  title,
+  segments,
+  max,
+}: {
+  /** What the bar is, e.g. "Jailbreak or misuse"; it starts the name. */
+  title: string;
+  segments: (EyeonStackSeries & { value: number })[];
+  max: number;
+}) {
+  const width = 200;
+  const parts = stackSegments(
+    segments.map((s) => s.value),
+    max,
+    width,
+  );
+  return (
+    <svg
+      viewBox={`0 0 ${width} 8`}
+      preserveAspectRatio="none"
+      className="h-2 w-full"
+      role="img"
+      aria-label={`${title}: ${segments
+        .map((s) => `${s.name} ${s.value.toLocaleString()}`)
+        .join(", ")}.`}
+    >
+      <rect width={width} height={8} rx={4} className="fill-muted" />
+      {parts.map((seg, j) => {
+        const s = segments[j];
+        return s && seg.size > 0 ? (
+          <rect
+            key={s.name}
+            x={seg.start}
+            width={seg.size}
+            height={8}
+            className={EYEON_TONE_TEXT[s.tone]}
+            fill="currentColor"
+            fillOpacity={seriesOpacity(s.muted)}
+          />
+        ) : null;
+      })}
+    </svg>
   );
 }
 
@@ -454,58 +595,30 @@ export function EyeonBarList({
     note?: ReactNode;
   }[];
 }) {
-  const width = 200;
   const max = Math.max(
     0,
     ...items.map((item) => sum(item.segments.map((s) => s.value))),
   );
   return (
     <ol className="flex flex-col gap-3" aria-label={label}>
-      {items.map((item) => {
-        const segments = stackSegments(
-          item.segments.map((s) => s.value),
-          max,
-          width,
-        );
-        return (
-          <li key={item.key} className="flex min-w-0 flex-col gap-1">
-            <div className="flex items-baseline justify-between gap-2 text-sm">
-              <span className="min-w-0 truncate" title={item.title}>
-                {item.name}
-              </span>
-              <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
-                {item.valueText}
-              </span>
-            </div>
-            <svg
-              viewBox={`0 0 ${width} 8`}
-              preserveAspectRatio="none"
-              className="h-2 w-full"
-              role="img"
-              aria-label={`${item.title}: ${item.segments
-                .map((s) => `${s.name} ${s.value.toLocaleString()}`)
-                .join(", ")}.`}
-            >
-              <rect width={width} height={8} rx={4} className="fill-muted" />
-              {segments.map((seg, j) => {
-                const s = item.segments[j];
-                return s && seg.size > 0 ? (
-                  <rect
-                    key={s.name}
-                    x={seg.start}
-                    width={seg.size}
-                    height={8}
-                    className={EYEON_TONE_TEXT[s.tone]}
-                    fill="currentColor"
-                    fillOpacity={seriesOpacity(s.muted)}
-                  />
-                ) : null;
-              })}
-            </svg>
-            {item.note}
-          </li>
-        );
-      })}
+      {items.map((item) => (
+        <li key={item.key} className="flex min-w-0 flex-col gap-1">
+          <div className="flex items-baseline justify-between gap-2 text-sm">
+            <span className="min-w-0 truncate" title={item.title}>
+              {item.name}
+            </span>
+            <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
+              {item.valueText}
+            </span>
+          </div>
+          <EyeonStackBar
+            title={item.title}
+            segments={item.segments}
+            max={max}
+          />
+          {item.note}
+        </li>
+      ))}
     </ol>
   );
 }

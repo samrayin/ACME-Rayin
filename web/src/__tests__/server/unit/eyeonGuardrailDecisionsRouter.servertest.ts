@@ -244,6 +244,10 @@ const today = () => new Date().toISOString().slice(0, 10);
 const DAILY_ROW = {
   checks: 36,
   enforcedChecks: 20,
+  matching: 36,
+  matchingEnforced: 20,
+  promptsRefused: 4,
+  answersWithheld: 2,
   allowed: 24,
   blocked: 3,
   wouldBlock: 3,
@@ -546,6 +550,63 @@ describe("EYEON Guardrail decisions: access and reads (CHG-2026-133, CHG-2026-13
     );
     // Without a filter, the condition on what was decided is just TRUE.
     expect(sql).toMatch(/FILTER \(WHERE TRUE AND action = 'allow'\)/);
+  });
+
+  // CHG-2026-137 follow-up (owner, 2026-10-08): the KPI tiles' charts come
+  // from the same daily read, as counts of metadata columns only.
+  it("counts, in the same daily read, the matching decisions, those in enforce mode, and refusals by direction", async () => {
+    const { result, db } = await enabledSummary("SECURITY");
+    expect(result.daily[6]).toMatchObject({
+      matching: 36,
+      matchingEnforced: 20,
+      promptsRefused: 4,
+      answersWithheld: 2,
+    });
+    expect(result.daily[0]).toMatchObject({
+      matching: 0,
+      matchingEnforced: 0,
+      promptsRefused: 0,
+      answersWithheld: 0,
+    });
+    const { sql } = rawQuery(db, isDaily);
+    expect(sql).toMatch(/FILTER \(WHERE TRUE\)\)::int AS matching,/);
+    // Only a reported enforce counts as applied.
+    expect(sql).toMatch(
+      /FILTER \(WHERE TRUE AND gateway_mode = 'enforce'\)\)::int AS "matchingEnforced"/,
+    );
+    expect(sql).toMatch(
+      /FILTER \(WHERE TRUE AND action = 'block' AND direction = 'input'\)\)::int AS "promptsRefused"/,
+    );
+    expect(sql).toMatch(
+      /FILTER \(WHERE TRUE AND action = 'block' AND direction = 'output'\)\)::int AS "answersWithheld"/,
+    );
+    // Still one daily read among the three statements.
+    expect(db.$queryRaw).toHaveBeenCalledTimes(3);
+    expect(
+      db.$queryRaw.mock.calls.filter(([q]) => isDaily(sqlText(q))),
+    ).toHaveLength(1);
+  });
+
+  it("applies the filters to the tiles' daily counts, as to the tiles' figures", async () => {
+    const { db } = await enabledSummary("SECURITY", fakePrisma(), {
+      ...INPUT_7,
+      filters: { direction: "answers", applied: "applied" },
+    });
+    const { sql } = rawQuery(db, isDaily);
+    const kind = String.raw`\(direction = 'output'\) AND \(gateway_mode = 'enforce'\)`;
+    for (const column of [
+      "matching",
+      '"matchingEnforced"',
+      '"promptsRefused"',
+      '"answersWithheld"',
+    ])
+      expect(sql).toMatch(
+        new RegExp(
+          String.raw`FILTER \(WHERE ${kind}[^)]*\)\)::int AS ${column}`,
+        ),
+      );
+    // The day's checks stay every check: the base of a rate.
+    expect(sql).toMatch(/COUNT\(\*\)::int AS checks,/);
   });
 
   it("names refusals and redactions by policy type and direction, from the label only", async () => {

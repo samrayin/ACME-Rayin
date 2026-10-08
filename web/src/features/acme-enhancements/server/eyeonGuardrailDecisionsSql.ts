@@ -103,13 +103,20 @@ function scopeSql(s: Scope): Prisma.Sql {
  * One row per UTC day: every check of the day in scope and how many were
  * decided in enforce mode (the base of a rate, and the gateway's mode that
  * day), then the decisions that match the filters, by verdict, applied
- * apart from recorded.
+ * apart from recorded. CHG-2026-137 follow-up, for the KPI tiles' charts:
+ * also the matching decisions and how many of them were decided in enforce
+ * mode, and the matching block verdicts on prompts and on answers. Counts
+ * of metadata columns only (direction, action, mode), as before.
  */
 export function dailySql(s: Scope, kind: Prisma.Sql): Prisma.Sql {
   return Prisma.sql`
     SELECT to_char(date_trunc('day', event_time), 'YYYY-MM-DD') AS day,
            COUNT(*)::int AS checks,
            (COUNT(*) FILTER (WHERE gateway_mode = 'enforce'))::int AS "enforcedChecks",
+           (COUNT(*) FILTER (WHERE ${kind}))::int AS matching,
+           (COUNT(*) FILTER (WHERE ${kind} AND gateway_mode = 'enforce'))::int AS "matchingEnforced",
+           (COUNT(*) FILTER (WHERE ${kind} AND action = 'block' AND direction = 'input'))::int AS "promptsRefused",
+           (COUNT(*) FILTER (WHERE ${kind} AND action = 'block' AND direction = 'output'))::int AS "answersWithheld",
            (COUNT(*) FILTER (WHERE ${kind} AND action = 'allow'))::int AS allowed,
            (COUNT(*) FILTER (WHERE ${kind} AND action = 'block' AND gateway_mode = 'enforce'))::int AS blocked,
            (COUNT(*) FILTER (WHERE ${kind} AND action = 'block' AND gateway_mode IS DISTINCT FROM 'enforce'))::int AS "wouldBlock",

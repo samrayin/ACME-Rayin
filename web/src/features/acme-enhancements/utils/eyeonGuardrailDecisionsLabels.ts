@@ -191,3 +191,55 @@ export const DAY_MODE_LABEL: Record<DayMode, string> = {
   mixed: "Both modes",
   none: "No checks",
 };
+
+// CHG-2026-137 follow-up (owner, 2026-10-08: "the charts within Guardrail
+// decision are not getting displayed"): a chart in every KPI tile.
+
+/** One UTC day of the page's daily series, as far as the tiles need it. */
+type TileDay = {
+  day: string;
+  /** Every check of the day in scope (the caller filter only). */
+  checks: number;
+  /** The decisions that match the filters, and those in enforce mode. */
+  matching: number;
+  matchingEnforced: number;
+  promptsRefused: number;
+  answersWithheld: number;
+  redacted: number;
+  wouldRedact: number;
+  noVerdict: number;
+};
+
+type TilePoint = { label: string; value: number | null };
+
+/**
+ * The KPI tiles' series, one point per UTC day, each counted as its tile's
+ * figure is: checks over every check in scope; refused prompts, withheld
+ * answers and redactions over the matching decisions, applied or recorded
+ * only; checks without a verdict per 100 checks of the day (the matching
+ * ones over every check, as the period's figure in that tile); and the
+ * share of the matching decisions decided in enforce mode, in percent. A
+ * share of a day without its base (no checks, or no matching decision) is
+ * null, drawn as a gap: it is not known, so it is never 0.
+ */
+export function tileSeries(daily: readonly TileDay[]): {
+  checks: TilePoint[];
+  promptsRefused: TilePoint[];
+  answersWithheld: TilePoint[];
+  redactions: TilePoint[];
+  noVerdictPct: TilePoint[];
+  enforcedPct: TilePoint[];
+} {
+  const series = (value: (d: TileDay) => number | null) =>
+    daily.map((d) => ({ label: d.day, value: value(d) }));
+  const pct = (part: number, whole: number) =>
+    whole > 0 ? (100 * part) / whole : null;
+  return {
+    checks: series((d) => d.checks),
+    promptsRefused: series((d) => d.promptsRefused),
+    answersWithheld: series((d) => d.answersWithheld),
+    redactions: series((d) => d.redacted + d.wouldRedact),
+    noVerdictPct: series((d) => pct(d.noVerdict, d.checks)),
+    enforcedPct: series((d) => pct(d.matchingEnforced, d.matching)),
+  };
+}

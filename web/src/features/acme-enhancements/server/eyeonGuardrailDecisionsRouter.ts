@@ -27,13 +27,16 @@
  * decisions grouped by direction, verdict, mode and policy label; the
  * callers with the most checks (capped in the database); the judge's
  * no-verdict rate over 24 hours; the guardrail settings in force (for the
- * mode); one daily series by verdict; the agents ranked by refusals or the
- * chosen verdict (capped in the database); redactions per personal-data
- * entity type (counted in the database: only a known type name and a count
- * leave it); and, for a viewer who may open Applications, the project's
- * gateway keys' lineage, name and status. No prompt or answer text, redacted
- * text, finding position, score or matched text, encrypted content or token
- * hash is read; the tests assert on every select, group and SQL statement.
+ * mode); one daily series by verdict (which also carries, for the KPI
+ * tiles' charts, the matching decisions, those in enforce mode and the block
+ * verdicts by direction: counts, in the same read); the agents ranked by
+ * refusals or the chosen verdict (capped in the database); redactions per
+ * personal-data entity type (counted in the database: only a known type
+ * name and a count leave it); and, for a viewer who may open Applications,
+ * the project's gateway keys' lineage, name and status. No prompt or answer
+ * text, redacted text, finding position, score or matched text, encrypted
+ * content or token hash is read; the tests assert on every select, group and
+ * SQL statement.
  * The figures are shaped in eyeonGuardrailDecisions.ts.
  */
 import { z } from "zod";
