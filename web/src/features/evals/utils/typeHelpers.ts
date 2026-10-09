@@ -2,6 +2,7 @@ import {
   EvalTargetObject,
   type EvalTargetObject as EvalTargetObjectType,
 } from "@langfuse/shared";
+import { ACME_BUILT_IN_LABEL } from "@/src/features/acme-enhancements/utils/acmeBranding";
 
 const partnerIdentifierToName = new Map([["ragas", "Ragas"]]);
 
@@ -17,7 +18,8 @@ export const getMaintainer = (evalTemplate: {
     if (evalTemplate.partner) {
       return `${getPartnerName(evalTemplate.partner)} maintained`;
     }
-    return "Langfuse maintained";
+    // ACME (CHG-2026-146, ADR-0029): "Built-in" for "Langfuse maintained".
+    return ACME_BUILT_IN_LABEL;
   }
   return "User maintained";
 };

@@ -13,6 +13,7 @@ import { Check, Copy, LockIcon, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
+import { ACME_PRODUCT_NAME } from "@/src/features/acme-enhancements/utils/acmeBranding";
 
 const SKILLS_INSTALL_COMMAND =
   "Install the Langfuse AI skill from github.com/langfuse/skills and use it to add tracing to this application with Langfuse following best practices.";
@@ -90,18 +91,20 @@ export function TracesSetupOnboardingCard({
     }
   };
 
+  // ACME (CHG-2026-146, ADR-0029): the description and the first step say
+  // EYEON. The copied skill prompt names the real skill and stays; the video
+  // and docs links go in a later phase.
   return (
     <SplashScreen
       waitingFor="Waiting for first trace"
       title="Time to log your first trace, it only takes a minute"
-      description="Get your API keys first, then ask your coding agent to add observability with Langfuse to your application."
+      description={`Get your API keys first, then ask your coding agent to add observability with ${ACME_PRODUCT_NAME} to your application.`}
       videoSrc="https://static.langfuse.com/prod-assets/onboarding/traces-overview-v1.mp4"
       videoPosition="bottom"
       steps={[
         {
           title: "Create API keys",
-          description:
-            "Your application needs API keys to send traces to Langfuse.",
+          description: `Your application needs API keys to send traces to ${ACME_PRODUCT_NAME}.`,
           content: apiKeys ? (
             <ApiKeyDetailContent
               scope="project"

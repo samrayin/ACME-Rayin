@@ -35,6 +35,7 @@ import {
   HoverCardTrigger,
 } from "@/src/components/ui/hover-card";
 import { CodeMirrorEditor } from "@/src/components/editor";
+import { ACME_BUILT_IN_LABEL } from "@/src/features/acme-enhancements/utils/acmeBranding";
 
 const resolvePricingTier = <T extends { id: string }>(
   tiers: T[],
@@ -170,12 +171,14 @@ export default function ModelDetailPage() {
               <div className="mt-1 font-mono text-sm">{model.matchPattern}</div>
             </div>
 
+            {/* ACME (CHG-2026-146, ADR-0029): "Built-in", under the models
+                table's own heading, "Maintainer". */}
             <div>
               <div className="text-muted-foreground text-sm font-bold">
-                Maintained by
+                Maintainer
               </div>
               <div className="mt-1 text-sm">
-                {isLangfuseModel ? "Langfuse" : "User"}
+                {isLangfuseModel ? ACME_BUILT_IN_LABEL : "User"}
               </div>
             </div>
 

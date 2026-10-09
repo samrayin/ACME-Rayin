@@ -28,6 +28,7 @@ import Link from "next/link";
 import { useIsCodeEvalEnabled } from "@/src/features/evals/hooks/useIsCodeEvalEnabled";
 import { shouldShowEvalTemplate } from "@/src/features/evals/utils/code-eval-template-utils";
 import { SiPython, SiTypescript } from "react-icons/si";
+import { ACME_BUILT_IN_LABEL } from "@/src/features/acme-enhancements/utils/acmeBranding";
 
 const CodeTemplateLanguageIcon = ({
   sourceCodeLanguage,
@@ -231,7 +232,8 @@ export function EvaluatorSelector({
 
         {filteredTemplates.langfuse.length > 0 && (
           <>
-            <InputCommandGroup heading="Langfuse managed evaluators">
+            {/* ACME (CHG-2026-146, ADR-0029): "Built-in" for "Langfuse managed". */}
+            <InputCommandGroup heading={`${ACME_BUILT_IN_LABEL} evaluators`}>
               {filteredTemplates.langfuse.map((template) => {
                 const isInvalid = isTemplateInvalid(template);
 
