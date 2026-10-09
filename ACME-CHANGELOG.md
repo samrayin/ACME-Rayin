@@ -7091,3 +7091,33 @@ ESLint (no warnings) and Prettier pass on every changed code file. Fresh typeche
 - **README:** the deploy/azure README lists the eight variables.
 
 **Checks:** `terraform fmt -check` passes on the new blocks (it still reports two older alignment lines elsewhere in `main.tf` and `versions.tf`, left as they are); `bash -n` on the script. `terraform validate` and `plan` were not run here: the configuration still awaits its state reconciliation, and no `apply` may run until that is done (see the deploy/azure README).
+
+## 2026-10-09 — Three gateway models retired (CHG-2026-149)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-149 · owner: Anees Ur Rahman · Tier 1 |
+| **ADR** | None (a model list change; models are set in the gateway config, ADR-0010) |
+| **Approval** | Pending. The owner reviews and merges; the live step needs the owner's go |
+| **Dates** | Dev: not applied (the live ConfigMap still lists the three) · Staging: not available · Prod: not yet |
+| **Impact** | After the live step, the gateway serves four models: `cairo-chat`, `groq-judge`, `groq-safeguard` and `cairo-evaluator`. The three retired models disappear from the LLM Gateway model catalogue and from Gateway health. A call that names one of them gets the gateway's "model not found" error instead of the provider's error |
+| **Schema change** | None |
+| **Rollback** | Revert the commit, then apply the ConfigMap key from `main` and restart the gateway, as in the live step |
+
+**What:** the owner, 2026-10-09: "From LLM Gateway - Model Catalog - Retire the below claude-sonnet nvidia-nemotron gemini-judge". They are config-file models, which the console shows read-only, so the change is to the gateway config.
+- **Why none is missed:**
+  - `claude-sonnet` has failed since 2026-09-12: the Anthropic account has no credit.
+  - `nvidia-nemotron` has had no endpoint under the OpenRouter account's data policy since 2026-10-04.
+  - `gemini-judge`'s model was withdrawn by Google for new users on 2026-10-04.
+- **Config:** `integrations/litellm/config/litellm-config.yaml` drops the three entries and records why, with a pointer to git history for bringing one back. It matched the live ConfigMap exactly before this change (compared 2026-10-09).
+- **Still reserved:** `nvidia-nemotron` and `gemini-judge` stay in the console's protected names (`acmeLitellmModels.ts`). The judge key's model list named `nvidia-nemotron` (CHG-2026-029), so a model registered under that name would be reachable with the judge key. Only the comment changes.
+- **References:**
+  - The promptfoo gateway eval now targets `cairo-chat`, since its old target no longer answered.
+  - The README, the Secret example and an `env.mjs` comment no longer name the retired models as live.
+  - `GEMINI_API_KEY` and `ANTHROPIC_API_KEY` are no longer read; removing them from the live Secret is the owner's call.
+
+**Live step (after merge, on the owner's go):**
+1. Save the full ConfigMap `rayin-platform/litellm-config` as a rollback anchor.
+2. Replace only its `litellm-config.yaml` key with `main`'s file. The two hook files stay untouched.
+3. Restart the gateway (2 replicas, rolling) and watch the rollout.
+4. Check: the startup logs show no errors; the readiness check answers; the model catalogue lists four models; a guardrail check still gets a verdict.

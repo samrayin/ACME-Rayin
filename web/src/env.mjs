@@ -72,7 +72,7 @@ export const env = createEnv({
     // feature (never a raw provider key -- the gateway holds those).
     RAYIN_CHAT_LLM_API_KEY: z.string().optional(),
     // RAYIN_CHAT_LLM_MODEL: the LiteLLM model_name alias to call (must be
-    // one of that virtual key's allowed models), e.g. "nvidia-nemotron".
+    // one of that virtual key's allowed models), e.g. "cairo-chat".
     RAYIN_CHAT_LLM_MODEL: z.string().optional(),
     // ACME addition (CHG-2026-141, ADR-0026 §12.3): the switch for ACME AI,
     // the chat above. SERVER-ONLY, no NEXT_PUBLIC_ form; the console asks
