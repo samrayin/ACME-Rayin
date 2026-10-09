@@ -297,15 +297,6 @@ export const ROUTES: Route[] = [
     section: RouteSection.Main,
   },
   {
-    title: "Alerts",
-    pathname: "/project/[projectId]/alerts",
-    icon: BellRing,
-    projectRbacScopes: ["alerts:read"],
-    show: ({ v4WriteMode }) => Boolean(v4WriteMode) && v4WriteMode !== "legacy",
-    group: RouteGroup.Observability,
-    section: RouteSection.Main,
-  },
-  {
     title: "Prompts",
     pathname: "/project/[projectId]/prompts",
     icon: FileJson,
@@ -401,6 +392,18 @@ export const ROUTES: Route[] = [
     title: "Settings",
     pathname: "/organization/[organizationId]/settings",
     icon: Settings,
+    group: RouteGroup.Settings,
+    section: RouteSection.Main,
+  },
+  {
+    // ACME (CHG-2026-148): moved from Observability to Settings at the
+    // owner's request; alert rules are configuration. Same page, scope and
+    // visibility rule as upstream.
+    title: "Alerts",
+    pathname: "/project/[projectId]/alerts",
+    icon: BellRing,
+    projectRbacScopes: ["alerts:read"],
+    show: ({ v4WriteMode }) => Boolean(v4WriteMode) && v4WriteMode !== "legacy",
     group: RouteGroup.Settings,
     section: RouteSection.Main,
   },
