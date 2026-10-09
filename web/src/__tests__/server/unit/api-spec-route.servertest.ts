@@ -24,7 +24,9 @@ describe("/api/docs", () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.getHeader("Content-Type")).toBe("text/html; charset=utf-8");
-    expect(body).toContain("<title>Langfuse API Reference</title>");
+    // ACME (CHG-2026-146, ADR-0029): EYEON's title; the MCP name stays.
+    expect(body).toContain("<title>EYEON API Reference</title>");
+    expect(body).not.toContain("Langfuse API Reference");
     expect(body).toMatch(/src="\?asset=scalar-api-reference-[a-f0-9]{12}\.js"/);
     expect(body).toContain('"url":"openapi.yaml"');
     expect(body).toContain('"agent":{"disabled":true}');
