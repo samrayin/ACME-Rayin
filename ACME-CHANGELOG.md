@@ -7011,7 +7011,7 @@ Fresh typecheck passed with only the 2 tolerated Enterprise-file errors.
 |---|---|
 | **Change ID** | CHG-2026-142 follow-up · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | [ADR-0026](acme-governance/adr/ADR-0026-adopting-the-eyeon-prototype.md) §12.4, follow-up paragraph (owner decisions, 2026-10-08) |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Approval** | Owner, 2026-10-08: reviewed and merged #395 and approved its release ("397 merged, yes to release"; console `acme-v4.38.0.49`). Live with that release. No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
 | **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
 | **Impact** | Client-visible: "Reset sidebar width" in the top bar's user menu, on desktop and on the phone; the sidebar width is kept per signed-in person rather than per browser; on a window narrower than 1536 pixels the sidebar shows at most a quarter of the window. A width kept before this change goes to the first person who signs in on that browser. Nothing changes for anyone who has not resized. No downtime |
 | **Schema change** | None |
@@ -7054,7 +7054,7 @@ ESLint (no warnings) and Prettier pass on every changed code file. Fresh typeche
 |---|---|
 | **Change ID** | CHG-2026-144 · owner: Anees Ur Rahman · Tier 2 |
 | **ADR** | None (build and tooling hygiene; no behaviour change) |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Approval** | Owner, 2026-10-08: reviewed and merged #397 and approved its release ("397 merged, yes to release"; console `acme-v4.38.0.49`). In the web image from that release, read back inside a running pod; the worker image carries it from its next build. No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
 | **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
 | **Impact** | None on screen. Stops anonymous usage data leaving developer machines, the registry builds and the running containers |
 | **Schema change** | None |
