@@ -6964,8 +6964,8 @@ Fresh typecheck passed with only the 2 tolerated Enterprise-file errors. ESLint 
 |---|---|
 | **Change ID** | CHG-2026-139 (follow-up) · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | [ADR-0027](acme-governance/adr/ADR-0027-eyeon-native-pages.md) (no new ADR) |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
-| **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
+| **Approval** | Owner, 2026-10-08: reviewed and merged #394 and approved its release ("merged 394, release it"; console `acme-v4.38.0.48`). No self-approval. Not a production approval |
+| **Dates** | Dev: 2026-10-08 19:57 UTC, console `acme-v4.38.0.48` (`8314a899e`), live because the page's flag is on · Staging: not available · Prod: not yet |
 | **Impact** | Client-visible as soon as it is released, because the Gateway health flag is on in dev. The page's hero becomes the prototype's route map. No downtime |
 | **Schema change** | None |
 | **Rollback** | Redeploy the previous image |
