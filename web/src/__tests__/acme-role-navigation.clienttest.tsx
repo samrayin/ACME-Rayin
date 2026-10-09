@@ -195,9 +195,23 @@ describe("sidebar sections (CHG-2026-073, CHG-2026-081)", () => {
     // Project and organization settings: one or the other shows, by context.
     expect(groupsOf("Settings")).toEqual(["Settings", "Settings"]);
     expect(groupsOf("UI Customization")).toEqual(["Settings"]);
+    // CHG-2026-148: alert rules are configuration, so Alerts sits under
+    // Settings, after the project and organization settings.
+    expect(groupsOf("Alerts")).toEqual(["Settings"]);
     expect(groupsOf("Support")).toEqual(["Support"]);
     expect(groupsOf("Contact ACME Support")).toEqual(["Support"]);
     expect(groupsOf("Audit Logs")).toEqual([]);
+  });
+
+  it("Alerts follows the two Settings entries (CHG-2026-148)", () => {
+    const settings = ROUTES.filter((r) => r.group === RouteGroup.Settings).map(
+      (r) => r.title,
+    );
+    expect(settings.slice(0, 3)).toEqual(["Settings", "Settings", "Alerts"]);
+    const observability = ROUTES.filter(
+      (r) => r.group === RouteGroup.Observability,
+    ).map((r) => r.title);
+    expect(observability).not.toContain("Alerts");
   });
 
   it("the EYEON overview is first under Governance Controls (CHG-2026-132)", () => {
