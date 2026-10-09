@@ -71,8 +71,13 @@ the same place in both.
 Consequences of doing it here:
 
 - The repository on disk and in git stays **byte-identical to upstream**.
-- **No import site changes.** The study counted 58 of them; every one resolves to
-  the stub at the same path.
+- **No import site changes.** Verified 2026-10-06 against `origin/main`: **59**
+  production files import an Enterprise path (web 53, worker 6), across **50**
+  distinct module paths; a further **23** test files do. The study's "58 import
+  sites" was the production count and stands. Every one resolves to the stub at
+  the same path. The surface is listed in
+  `acme-governance/ee-strip/stub-surface-from-mit-call-sites.md`, generated from
+  MIT call sites only.
 - Upstream syncs continue to apply, and the boundary gate keeps working.
 
 ### 3.2 Why not the alternatives
