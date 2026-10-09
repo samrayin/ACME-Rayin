@@ -7,37 +7,18 @@
 # ../k8s/secret.example.yaml).
 
 model_list:
-  # Anthropic — originally "live day one" per "Open decisions" #2
-  # (2026-09-11), but the underlying account has no billing credit
-  # (discovered 2026-09-12 when promptfoo's gateway eval surfaced a raw
-  # "credit balance is too low" error -- every call through this model
-  # 400s). Left in the model list (harmless, LiteLLM just reports it
-  # unhealthy) since fixing the account's billing is the real long-term
-  # answer, but nothing in this deployment should target it right now --
-  # see nvidia-nemotron below, the actual live default for dev.
-  - model_name: claude-sonnet
-    litellm_params:
-      model: anthropic/claude-sonnet-5
-      api_key: os.environ/ANTHROPIC_API_KEY
-
-  # OpenRouter (NVIDIA Nemotron 3 Ultra, free tier) — added 2026-09-12 to
-  # unblock promptfoo eval/red-team testing while the Anthropic account has
-  # no credit (see note above). This is the model every dev-environment
-  # consumer (chat, promptfoo, rayin-guardrails' own rail engine) should
-  # actually target for now -- not a permanent provider decision, just what
-  # works today without a billing fix. (A Groq entry was tried and removed
-  # 2026-09-12: the model slug this account had access to no longer exists
-  # on Groq's current lineup, and nvidia-nemotron alone was sufficient to
-  # unblock testing, so it wasn't worth chasing a second working provider.)
-  #
-  # NO LONGER ANSWERS (2026-10-04): once the OpenRouter account was set to no
-  # prompt logging and no training (CHG-2026-103), OpenRouter offers no
-  # endpoint for this free model ("0 endpoints ... matching your data
-  # policy"). Kept so the judge key's model list stays valid; use cairo-chat.
-  - model_name: nvidia-nemotron
-    litellm_params:
-      model: openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
-      api_key: os.environ/OPENROUTER_API_KEY
+  # RETIRED 2026-10-09 (CHG-2026-149, the owner: "Retire the below
+  # claude-sonnet nvidia-nemotron gemini-judge"). None of the three answered:
+  #   - claude-sonnet (anthropic/claude-sonnet-5): the Anthropic account has
+  #     no billing credit, every call returned 400 (since 2026-09-12).
+  #   - nvidia-nemotron (OpenRouter free tier): no endpoint matches the
+  #     account's no-logging, no-training policy (since 2026-10-04).
+  #   - gemini-judge (gemini/gemini-2.5-flash-lite): Google withdrew the model
+  #     for new users, 404 (since 2026-10-04).
+  # Their names stay reserved in the console (acmeLitellmModels.ts), so no
+  # one can register a new model under a name an older key still lists.
+  # To bring one back, add its entry again from git history, with a provider
+  # that answers.
 
   # CHG-2026-104 (2026-10-04): the chat model for applications and the dev
   # demo. gpt-oss-120b through OpenRouter, on the paid account that also
@@ -73,7 +54,8 @@ model_list:
           effort: low
 
   # Groq and Gemini — added 2026-09-20 (CHG-2026-015) as ADDITIONAL judge-model
-  # options, not replacements. nvidia-nemotron stays the default. Which model
+  # options, not replacements. (nvidia-nemotron, the default then, is retired:
+  # CHG-2026-149.) Which model
   # becomes the permanent judge is week 2's decision and is gated on the
   # free-tier data-use check in ADR-0005 F3: the judge model receives the full
   # prompt text of every request the guardrail inspects, so a provider whose
@@ -137,14 +119,6 @@ model_list:
     litellm_params:
       model: openrouter/openai/gpt-oss-safeguard-20b
       api_key: os.environ/OPENROUTER_API_KEY
-
-  # NO LONGER ANSWERS (2026-10-04): Google returns 404 "no longer available
-  # to new users" for gemini-2.5-flash-lite. Left unchanged here; replacing it
-  # is a separate decision (free-tier data use, ADR-0005 F3).
-  - model_name: gemini-judge
-    litellm_params:
-      model: gemini/gemini-2.5-flash-lite
-      api_key: os.environ/GEMINI_API_KEY
 
   # CHG-2026-086 f (ADR-0020 §3.6), 2026-09-30: CAIRO's own evaluators move
   # behind the gateway. Until now they called the provider directly, outside the
@@ -299,7 +273,8 @@ litellm_settings:
 # drift). Created via the LiteLLM Admin UI or API after the proxy is up,
 # e.g.:
 #
-# NOTE (2026-09-12): both starter keys are scoped to nvidia-nemotron, not
+# NOTE (2026-09-12, historical: nvidia-nemotron and claude-sonnet were
+# retired on 2026-10-09, CHG-2026-149): both starter keys are scoped to nvidia-nemotron, not
 # claude-sonnet -- this dev environment's Anthropic account has no billing
 # credit, so RAYIN_CHAT_LLM_MODEL and rayin-guardrails' GUARDRAILS_LLM_MODEL
 # should both target nvidia-nemotron for now. Revisit once Anthropic

@@ -37,7 +37,13 @@ import {
   type LitellmServiceDeps,
 } from "./acmeLitellmService";
 
-/** The guardrails service depends on these; changing them breaks checks. */
+/**
+ * The guardrails service depends on these; changing them breaks checks.
+ * nvidia-nemotron and gemini-judge are retired from the gateway config
+ * (CHG-2026-149) but stay reserved: the judge key's model list may still
+ * name them, so a new model registered under either name would be
+ * reachable with that key.
+ */
 const PROTECTED_MODEL_NAMES = [
   "nvidia-nemotron",
   "groq-judge",

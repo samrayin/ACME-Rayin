@@ -4,19 +4,17 @@ extensions:
   - file://hooks/langfuse-scores.js:langfuseScores
 
 providers:
-  - id: openai:chat:nvidia-nemotron # LiteLLM model_name alias, not the upstream id
+  - id: openai:chat:cairo-chat # LiteLLM model_name alias, not the upstream id
     config:
       apiBaseUrl: http://localhost:4000/v1 # in-cluster: http://litellm.rayin-platform:4000/v1
       apiKeyEnvar: LITELLM_PROMPTFOO_KEY
-      # No temperature override needed here (unlike claude-sonnet, which only
-      # supports temperature=1) -- confirmed working via OpenRouter's free
-      # tier while claude-sonnet is unhealthy (no billing credit). This is
-      # the dev-environment default for now -- not a permanent provider
-      # decision.
+      # CHG-2026-149 (2026-10-09): was nvidia-nemotron, retired from the
+      # gateway because it no longer answered. cairo-chat shares a paid
+      # account balance with the guardrail judge, so keep eval runs small.
 
 defaultTest:
   options:
-    provider: openai:chat:nvidia-nemotron # grade with a model actually reachable today
+    provider: openai:chat:cairo-chat # grade with a model actually reachable today
 
 prompts:
   - |

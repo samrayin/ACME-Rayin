@@ -148,10 +148,12 @@ kubectl apply -f k8s/namespace.yaml
 ### 2. Config
 
 [`config/litellm-config.yaml`](config/litellm-config.yaml) already reflects
-the resolved decisions above — `nvidia-nemotron` is the live default for
-every dev-environment consumer (Anthropic is configured but unhealthy, no
-billing credit; Groq was tried and dropped), OpenAI/Azure OpenAI stay
-dormant, $50 budget on the starter keys.
+the resolved decisions above, as since updated: `cairo-chat` is the chat
+model for applications (CHG-2026-104), `groq-safeguard` the guardrail judge
+(CHG-2026-103) and `cairo-evaluator` CAIRO's evaluators (CHG-2026-086 f).
+`claude-sonnet`, `nvidia-nemotron` and `gemini-judge` were retired on
+2026-10-09 (CHG-2026-149) because none of them answered. OpenAI/Azure
+OpenAI stay dormant.
 
 ### 3. Secrets
 
