@@ -42,6 +42,7 @@ import { env } from "@/src/env.mjs";
 import { useIsCodeEvalEnabled } from "@/src/features/evals/hooks/useIsCodeEvalEnabled";
 import { shouldShowEvalTemplate } from "@/src/features/evals/utils/code-eval-template-utils";
 import { getEvalTemplateFamilyKey } from "@/src/features/evals/utils/eval-template-family";
+import { ACME_BUILT_IN_LABEL } from "@/src/features/acme-enhancements/utils/acmeBranding";
 
 type TemplateSelectorProps = {
   projectId: string;
@@ -287,7 +288,8 @@ export const TemplateSelector = ({
 
                 {filteredTemplates.langfuse.length > 0 && (
                   <InputCommandGroup
-                    heading="Langfuse managed evaluators"
+                    // ACME (CHG-2026-146, ADR-0029): "Built-in" for "Langfuse managed".
+                    heading={`${ACME_BUILT_IN_LABEL} evaluators`}
                     className="max-h-full min-h-0"
                   >
                     {filteredTemplates.langfuse.map(([familyKey, template]) => {

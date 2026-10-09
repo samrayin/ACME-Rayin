@@ -2,6 +2,7 @@
 import { RotateCw, Sparkles, X } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import { cn } from "@/src/utils/tailwind";
+import { ACME_PRODUCT_NAME } from "@/src/features/acme-enhancements/utils/acmeBranding";
 
 export type VersionUpdateBannerViewProps = {
   /** Reload the tab to pick up the new build. */
@@ -56,7 +57,8 @@ export function VersionUpdateBannerView({
     >
       <Sparkles className="text-primary h-4 w-4 shrink-0" />
       <span className="text-foreground text-sm whitespace-nowrap">
-        Langfuse just got an update
+        {/* ACME (CHG-2026-146, ADR-0029): the product is EYEON. */}
+        {ACME_PRODUCT_NAME} just got an update
       </span>
       <Button size="sm" className="rounded-full" onClick={onReload}>
         <RotateCw className="mr-1.5 h-3.5 w-3.5" />

@@ -31,6 +31,7 @@ import { TestModelMatchButton } from "@/src/features/models/components/test-matc
 import { ActionButton } from "@/src/components/ActionButton";
 import { useHasProjectAccess } from "@/src/features/rbac/utils/checkProjectAccess";
 import { SettingsTableCard } from "@/src/components/layouts/settings-table-card";
+import { ACME_BUILT_IN_LABEL } from "@/src/features/acme-enhancements/utils/acmeBranding";
 
 export type ModelTableRow = {
   modelId: string;
@@ -55,8 +56,9 @@ const modelConfigDescriptions = {
     "Tokenizer used for this model to calculate token counts if none are ingested. Pick from list of supported tokenizers.",
   config:
     "Some tokenizers require additional configuration (e.g. openai tiktoken). See docs for details.",
+  // ACME (CHG-2026-146, ADR-0029): "built-in" wording.
   maintainer:
-    "Maintainer of the model. Langfuse managed models can be cloned, user managed models can be edited and deleted. To supersede a Langfuse managed model, set the custom model name to the Langfuse model name.",
+    "Maintainer of the model. Built-in models can be cloned, user managed models can be edited and deleted. To supersede a built-in model, set the custom model name to the built-in model's name.",
   lastUsed: "Start time of the latest generation using this model",
 } as const;
 
@@ -146,7 +148,8 @@ export default function ModelTable({ projectId }: { projectId: string }) {
                 )}
               </TooltipTrigger>
               <TooltipContent>
-                {isLangfuse ? "Langfuse maintained" : "User maintained"}
+                {/* ACME (CHG-2026-146, ADR-0029) */}
+                {isLangfuse ? ACME_BUILT_IN_LABEL : "User maintained"}
               </TooltipContent>
             </Tooltip>
           </div>

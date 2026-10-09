@@ -32,6 +32,7 @@ import { TablePeekView } from "@/src/components/table/peek";
 import { LangfuseIcon } from "@/src/components/design-system/LangfuseIcon/LangfuseIcon";
 import { useEvalCapabilities } from "@/src/features/evals/hooks/useEvalCapabilities";
 import { Alert } from "@/src/components/design-system/Alert/Alert";
+import { ACME_BUILT_IN_LABEL } from "@/src/features/acme-enhancements/utils/acmeBranding";
 
 const PeekViewEvaluatorConfigDetail = ({
   projectId,
@@ -184,7 +185,8 @@ const PeekViewEvaluatorConfigDetail = ({
               )}
             </TooltipTrigger>
             <TooltipContent>
-              {evalConfig.evalTemplate.partner ?? "Langfuse"}
+              {/* ACME (CHG-2026-146, ADR-0029) */}
+              {evalConfig.evalTemplate.partner ?? ACME_BUILT_IN_LABEL}
             </TooltipContent>
           </Tooltip>
         )}

@@ -45,6 +45,7 @@ import { useV4UpgradeUiEnabled } from "@/src/features/v4-migration/useV4UpgradeU
 import { useAccountV4MigrationData } from "@/src/features/v4-migration/hooks/useV4MigrationData";
 import { getProjectMigrationReadiness } from "@/src/features/v4-migration/migrationData";
 import { ErrorPage } from "@/src/components/error-page";
+import { ACME_PRODUCT_NAME } from "@/src/features/acme-enhancements/utils/acmeBranding";
 
 const OrganizationProjectTiles = ({
   org,
@@ -442,9 +443,10 @@ const Onboarding = () => {
       </CardHeader>
       <CardContent>
         <CardDescription>
+          {/* ACME (CHG-2026-146, ADR-0029): the product is EYEON. */}
           {canCreateOrgs
             ? "Create an organization to get started. Alternatively, ask your organization admin to invite you."
-            : "You need to get invited to an organization to get started with Langfuse."}
+            : `You need to get invited to an organization to get started with ${ACME_PRODUCT_NAME}.`}
         </CardDescription>
       </CardContent>
       <CardFooter className="flex gap-4">

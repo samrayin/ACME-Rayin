@@ -66,6 +66,7 @@ import { useScheduledDashboardExecuteQuery } from "@/src/features/dashboard/hook
 import { CopyWidgetDialog } from "@/src/features/widgets/components/CopyWidgetDialog";
 import { usePostHogClientCapture } from "@/src/features/posthog-analytics";
 import { Badge } from "@/src/components/ui/badge";
+import { ACME_BUILT_IN_LABEL } from "@/src/features/acme-enhancements/utils/acmeBranding";
 
 export interface WidgetPlacement {
   id: string;
@@ -626,13 +627,14 @@ export function DashboardWidget({
           <span className="truncate" title={widget.data.name}>
             {widget.data.name}
           </span>
+          {/* ACME (CHG-2026-146, ADR-0029): "Built-in" label; the owner value is unchanged. */}
           {dashboardOwner === "PROJECT" && widget.data.owner === "LANGFUSE" && (
             <Badge
               variant="secondary"
               className="shrink-0"
-              title="Maintained by Langfuse — editing creates your own copy"
+              title={`${ACME_BUILT_IN_LABEL} — editing creates your own copy`}
             >
-              Langfuse
+              {ACME_BUILT_IN_LABEL}
             </Badge>
           )}
         </span>

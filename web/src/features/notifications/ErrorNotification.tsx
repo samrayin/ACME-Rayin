@@ -73,7 +73,8 @@ export const ErrorNotification: React.FC<ErrorNotificationProps> = ({
               setOpen(true);
             }}
           >
-            Report issue to Langfuse team
+            {/* ACME (CHG-2026-146, ADR-0029): neutral wording. */}
+            Report issue
           </Button>
         )}
       </div>

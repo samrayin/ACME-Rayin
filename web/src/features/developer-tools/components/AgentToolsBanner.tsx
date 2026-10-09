@@ -5,6 +5,7 @@ import { Bot } from "lucide-react";
 
 // ACME (CHG-2026-064): CAIRO branding and an ACME contact link instead of the
 // upstream docs link.
+// ACME (CHG-2026-146, ADR-0029): the tools are named without "Langfuse".
 const CONTACT_HREF = "mailto:helpdesk@almoayyedcomputers.com";
 
 /**
@@ -34,7 +35,7 @@ export function AgentToolsBanner() {
                   ACME EYEON works great with your AI coding agents.
                 </span>{" "}
                 Connect Claude Code, Codex, and other agents to your data with
-                the Langfuse Agent Skill, MCP server, and CLI.
+                the Agent Skill, MCP server, and CLI.
               </span>
             </div>
           </Callout>

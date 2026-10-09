@@ -1,0 +1,1992 @@
+{
+  "about": "Frozen allowlist for scripts/ci/check_langfuse_text.py (CHG-2026-146, ADR-0029). Each path maps its categories (text: visible \"Langfuse\" text; link: langfuse.com links) to the trimmed line texts allowed there, a multiset; a line over 240 characters is kept as its first 160 characters, its length and a SHA-256 of the whole line. Generated once from the tree after the ten most visible strings were replaced. It only ever shrinks: run the script with --shrink after removing text. Never add entries for new text.",
+  "entries": {
+    "packages/shared/src/domain/webhooks.ts": {
+      "text": [
+        "export const LangfuseUserAgent = \"Langfuse/1.0\";"
+      ]
+    },
+    "packages/shared/src/env.ts": {
+      "text": [
+        "LANGFUSE_S3_EVENT_UPLOAD_BUCKET: z.string(), // Langfuse requires a bucket name for S3 Event Uploads."
+      ]
+    },
+    "packages/shared/src/in-app-agent/server/modelProvider.ts": {
+      "text": [
+        "\"Langfuse AI is not configured. Set LANGFUSE_AI_PROVIDER and LANGFUSE_AI_MODEL, plus LANGFUSE_AI_API_KEY when LANGFUSE_AI_PROVIDER is anthropic or openai.\";",
+        "`Ignoring ${ignored.join(\" and \")} because the Langfuse AI provider is bedrock. Bedrock uses the instance AWS credential chain, not an API key, base URL, extra headers, or the OpenAI Responses API toggle.`,"
+      ]
+    },
+    "packages/shared/src/in-app-agent/server/persistence.ts": {
+      "text": [
+        "- \"Langfuse setup improvement recommendations\"",
+        "Generate a concise title for this Langfuse assistant conversation."
+      ]
+    },
+    "packages/shared/src/in-app-agent/server/systemPrompt.ts": {
+      "text": [
+        "Avoid messages such as \"I'll search the Langfuse documentation for information about X.\" or \"Let me search the documentation for you.\".",
+        "Before answering any question about the Langfuse product, always search the Langfuse documentation and base your answer on the relevant documentation.",
+        "For questions about best practices or specific workflows (e.g. setting up evals), use the available Langfuse skills when they apply. Select only the skills relevant to the user's request.",
+        "Langfuse uses internal environments for Langfuse-managed product workflows, such as evaluations, prompt experiments or code evals. These environments can create ... [314 chars, sha256 92777fdf1eaf80b5]",
+        "Never construct Langfuse URLs yourself, only use URLs included in tool-calls. If no url is available, mention the ID as plain text or fetch the entity with a tool first.",
+        "Only include them if the user explicitly asks for internal or Langfuse-managed environments, or asks for all environments.",
+        "Prefer Langfuse MCP tools over sandbox tools whenever an MCP tool can perform the task, especially the metrics tools for aggregations.",
+        "The user should be made aware of the Langfuse skill: https://github.com/langfuse/skills",
+        "Use the docs tools to find relevant general information about Langfuse or best practices.",
+        "When a relevant Langfuse page would help the user, answer the question normally and call {{redirectToolName}} to propose opening that page.",
+        "When mentioning Langfuse entity IDs from MCP tool results, render them as markdown links.",
+        "When you answer using Langfuse documentation tool results, answer normally. The product will attach source links automatically.",
+        "You are an assistant called Langfuse Assistant.",
+        "Your role is to assist users with tasks in the Langfuse Cloud product."
+      ]
+    },
+    "packages/shared/src/server/evals/codeEvalDispatcherTypes.ts": {
+      "link": [
+        "\"https://langfuse.com/docs/evaluation/evaluation-methods/code-evaluators\";"
+      ]
+    },
+    "packages/shared/src/server/instrumentation/index.ts": {
+      "text": [
+        "Namespace: \"Langfuse\","
+      ]
+    },
+    "packages/shared/src/server/llm/ai-sdk/resolveAiSdkModelConfig.ts": {
+      "text": [
+        "\"Langfuse credentials are only supported for Amazon Bedrock, Anthropic, and OpenAI\","
+      ]
+    },
+    "packages/shared/src/server/llm/baseUrlValidation.ts": {
+      "text": [
+        "\"Only HTTPS base URLs are allowed on Langfuse Cloud\","
+      ]
+    },
+    "packages/shared/src/server/llm/getInternalTracingHandler.ts": {
+      "text": [
+        "handler: { langfuse: Langfuse };",
+        "langfuse: new Langfuse({"
+      ]
+    },
+    "packages/shared/src/server/llm/langfuseAiCompletion.ts": {
+      "text": [
+        "`Unsupported Langfuse AI provider: ${(_exhaustive as InAppAgentModelConfig).provider}`,",
+        "throw new Error(\"Langfuse AI completion model is not configured.\");"
+      ]
+    },
+    "packages/shared/src/server/llm/llmText.ts": {
+      "text": [
+        "\"Remote media downloads are not supported on the Langfuse server; use provider-supported URLs or inline data instead\","
+      ]
+    },
+    "packages/shared/src/server/services/SlackService.ts": {
+      "text": [
+        ": \"Langfuse Notification\"),"
+      ]
+    },
+    "packages/shared/src/server/services/blobStorageEndpointValidation.ts": {
+      "text": [
+        "\"Only HTTPS blob storage endpoints are allowed on Langfuse Cloud\","
+      ]
+    },
+    "packages/shared/src/server/services/buildColoredAttachmentSlackMessage.ts": {
+      "text": [
+        "text: \"View in Langfuse\","
+      ]
+    },
+    "packages/shared/src/server/services/email/batchExportSuccess/BatchExportSuccessEmailTemplate.tsx": {
+      "text": [
+        "alt=\"Langfuse\"",
+        "const previewText = `Download your data export from Langfuse`;"
+      ],
+      "link": [
+        "src=\"https://static.langfuse.com/langfuse_logo_transactional_email.png\""
+      ]
+    },
+    "packages/shared/src/server/services/email/batchExportSuccess/sendBatchExportSuccessEmail.ts": {
+      "text": [
+        "name: \"Langfuse\","
+      ]
+    },
+    "packages/shared/src/server/services/email/cloudSpendAlert/CloudSpendAlertEmailTemplate.tsx": {
+      "text": [
+        "alt=\"Langfuse\""
+      ],
+      "link": [
+        "src=\"https://static.langfuse.com/langfuse_logo_transactional_email.png\""
+      ]
+    },
+    "packages/shared/src/server/services/email/cloudSpendAlert/sendCloudSpendAlertEmail.ts": {
+      "text": [
+        "const emailSubject = `Langfuse Spend Alert · ${orgName} reached $${threshold.toFixed(2)}`;",
+        "name: \"Langfuse\","
+      ]
+    },
+    "packages/shared/src/server/services/email/commentMention/CommentMentionEmailTemplate.tsx": {
+      "text": [
+        "alt=\"Langfuse\""
+      ],
+      "link": [
+        "src=\"https://static.langfuse.com/langfuse_logo_transactional_email.png\""
+      ]
+    },
+    "packages/shared/src/server/services/email/commentMention/sendCommentMentionEmail.ts": {
+      "text": [
+        "name: \"Langfuse\","
+      ]
+    },
+    "packages/shared/src/server/services/email/evaluatorBlocked/EvaluatorBlockedEmailTemplate.tsx": {
+      "text": [
+        "alt=\"Langfuse\""
+      ],
+      "link": [
+        "src=\"https://static.langfuse.com/langfuse_logo_transactional_email.png\""
+      ]
+    },
+    "packages/shared/src/server/services/email/evaluatorBlocked/sendEvaluatorBlockedEmail.ts": {
+      "text": [
+        "name: \"Langfuse\","
+      ],
+      "link": [
+        "replyTo: \"support@langfuse.com\","
+      ]
+    },
+    "packages/shared/src/server/services/email/integrationExportFailed/IntegrationExportFailedEmailTemplate.tsx": {
+      "text": [
+        "alt=\"Langfuse\""
+      ],
+      "link": [
+        "src=\"https://static.langfuse.com/langfuse_logo_transactional_email.png\""
+      ]
+    },
+    "packages/shared/src/server/services/email/integrationExportFailed/sendIntegrationExportFailedEmail.ts": {
+      "text": [
+        "name: \"Langfuse\","
+      ],
+      "link": [
+        "replyTo: \"support@langfuse.com\","
+      ]
+    },
+    "packages/shared/src/server/services/email/organizationInvitation/MembershipInvitationEmailTemplate.tsx": {
+      "text": [
+        ": \" Langfuse\"}",
+        "? ` Langfuse (${langfuseCloudRegion} data region)`",
+        "Join <strong>{orgName}</strong> on <strong>Langfuse</strong>",
+        "alt=\"Langfuse\"",
+        "const previewText = `Join ${invitedByUsername} on Langfuse`;"
+      ],
+      "link": [
+        "src=\"https://static.langfuse.com/langfuse_logo_transactional_email.png\""
+      ]
+    },
+    "packages/shared/src/server/services/email/organizationInvitation/sendMembershipInvitationEmail.ts": {
+      "text": [
+        "from: `Langfuse <${env.EMAIL_FROM_ADDRESS}>`,",
+        "subject: `${inviterName} invited you to join the \"${orgName}\" organization on Langfuse`,"
+      ],
+      "link": [
+        "EU: \"https://cloud.langfuse.com\",",
+        "HIPAA: \"https://hipaa.cloud.langfuse.com\",",
+        "JP: \"https://jp.cloud.langfuse.com\",",
+        "STAGING: \"https://staging.langfuse.com\",",
+        "US: \"https://us.cloud.langfuse.com\","
+      ]
+    },
+    "packages/shared/src/server/services/email/passwordReset/sendResetPasswordVerificationRequest.tsx": {
+      "text": [
+        ": \"Your Langfuse password reset code\";",
+        ": \"Your Langfuse reset code\";",
+        ": `Use the following code to reset your Langfuse password: ${token}\\n\\nThis code will expire in 3 minutes. If you did not request a reset, you can ignore this email.`;",
+        "? \"Verify your Langfuse email\"",
+        "? \"Verify your Langfuse email\"",
+        "? `Welcome to Langfuse! Use the following code to verify your email: ${token}\\n\\nThis code will expire in 3 minutes. If you did not request this, you can ignore this email.`",
+        "Forgot your Langfuse password?",
+        "Welcome to Langfuse!",
+        "alt=\"Langfuse\""
+      ],
+      "link": [
+        "src=\"https://static.langfuse.com/langfuse_logo_transactional_email.png\""
+      ]
+    },
+    "packages/shared/src/server/services/email/usageThresholdSuspension/UsageThresholdSuspensionEmailTemplate.tsx": {
+      "text": [
+        "alt=\"Langfuse\""
+      ],
+      "link": [
+        "href=\"https://langfuse.com/startups\"",
+        "src=\"https://static.langfuse.com/langfuse_logo_transactional_email.png\""
+      ]
+    },
+    "packages/shared/src/server/services/email/usageThresholdSuspension/sendUsageThresholdSuspensionEmail.ts": {
+      "text": [
+        "const emailSubject = `🚨 URGENT: Langfuse ingestion suspended for ${organizationName}`;",
+        "name: \"Langfuse\","
+      ],
+      "link": [
+        "replyTo: \"support@langfuse.com\","
+      ]
+    },
+    "packages/shared/src/server/services/email/usageThresholdWarning/UsageThresholdWarningEmailTemplate.tsx": {
+      "text": [
+        "Your Langfuse organization &quot;{organizationName}&quot; has reached{\" \"}",
+        "alt=\"Langfuse\""
+      ],
+      "link": [
+        "href=\"https://langfuse.com/startups\"",
+        "src=\"https://static.langfuse.com/langfuse_logo_transactional_email.png\""
+      ]
+    },
+    "packages/shared/src/server/services/email/usageThresholdWarning/sendUsageThresholdWarningEmail.ts": {
+      "text": [
+        "const emailSubject = `Langfuse Free Tier: ${organizationName} usage reached ${limit.toLocaleString()} events`;",
+        "name: \"Langfuse\","
+      ],
+      "link": [
+        "replyTo: \"support@langfuse.com\","
+      ]
+    },
+    "packages/shared/src/server/transcript/fixtures/trace/vercel-ai-sdk-docs-tool-loop.ts": {
+      "text": [
+        "\"Fetch the raw Markdown for a single Langfuse docs page. Accepts a docs path (e.g., /docs/observability/overview) or a full https://langfuse.com URL. Returns th ... [718 chars, sha256 f0304c760b7048ae]",
+        "\"Fetch the raw Markdown for a single Langfuse docs page. Accepts a docs path (e.g., /docs/observability/overview) or a full https://langfuse.com URL. Returns th ... [718 chars, sha256 f0304c760b7048ae]",
+        "\"How to attach a score to a trace user score to a trace Langfuse SDK example\",",
+        "\"How to attach a score to a trace user score to a trace Langfuse SDK example\",",
+        "\"How to attach a score to a trace user score to a trace Langfuse SDK example\",",
+        "\"How to attach a score to a trace user score to a trace Langfuse SDK example\",",
+        "\"How to attach a score to a trace user score to a trace Langfuse SDK example\",",
+        "\"I’m going to search the Langfuse docs for how to add or attach a score to a trace, including minimal code examples.\",",
+        "\"I’m going to search the Langfuse docs for how to add or attach a score to a trace, including minimal code examples.\",",
+        "\"Semantic search (RAG) over the Langfuse documentation. Use this whenever the user asks a broader question that cannot be answered by a specific single page. Re ... [354 chars, sha256 0874b9b56a32ce8e]",
+        "\"Semantic search (RAG) over the Langfuse documentation. Use this whenever the user asks a broader question that cannot be answered by a specific single page. Re ... [354 chars, sha256 0874b9b56a32ce8e]",
+        "\"Submit explicit user-approved feedback to the Langfuse team.\\nBefore calling, ask permission and show the exact payload.\\nIf the user wants a reply, ask them t ... [472 chars, sha256 c609be72ebe6d46d]",
+        "\"Submit explicit user-approved feedback to the Langfuse team.\\nBefore calling, ask permission and show the exact payload.\\nIf the user wants a reply, ask them t ... [472 chars, sha256 c609be72ebe6d46d]",
+        "\"You are a helpful Langfuse support agent. Your goal: give the correct, actionable answer with links and minimal, runnable examples.\\n\\n## Guidelines\\n- Make ex ... [1376 chars, sha256 12c1f47b6697169b]",
+        "'**Searching documents for scores**\\n\\nI need to use tools to search the documentation. It looks like Langfuse has a \"scores\" API that can be linked to traces o ... [451 chars, sha256 cbe978da2dbb2214]",
+        "'**Searching documents for scores**\\n\\nI need to use tools to search the documentation. It looks like Langfuse has a \"scores\" API that can be linked to traces o ... [451 chars, sha256 cbe978da2dbb2214]",
+        "'{\"content\": [{\"type\": \"document\", \"record_type\": \"documentation\", \"url\": \"https://langfuse.com/docs/evaluation/evaluation-methods/scores-via-sdk\", \"title\": \"Sc ... [76727 chars, sha256 e96ad1158c28b076]",
+        "'{\"name\":\"langfuse-docs-assistant-chat\",\"prompt\":[{\"role\":\"system\",\"content\":\"You are a helpful Langfuse support agent. Your goal: give the correct, actionable  ... [1727 chars, sha256 eaee85a35402d5b0]",
+        "text: \"I’m going to search the Langfuse docs for how to add or attach a score to a trace, including minimal code examples.\",",
+        "text: '**Searching documents for scores**\\n\\nI need to use tools to search the documentation. It looks like Langfuse has a \"scores\" API that can be linked to tr ... [457 chars, sha256 1876ddc92d14aaad]",
+        "text: '{\"content\": [{\"type\": \"document\", \"record_type\": \"documentation\", \"url\": \"https://langfuse.com/docs/evaluation/evaluation-methods/scores-via-sdk\", \"title ... [76733 chars, sha256 6e3dc86a81c3e19b]",
+        "text: '{\"content\": [{\"type\": \"document\", \"record_type\": \"documentation\", \"url\": \"https://langfuse.com/docs/evaluation/evaluation-methods/scores-via-sdk\", \"title ... [76733 chars, sha256 6e3dc86a81c3e19b]",
+        "text: '{\"content\": [{\"type\": \"document\", \"record_type\": \"documentation\", \"url\": \"https://langfuse.com/docs/evaluation/evaluation-methods/scores-via-sdk\", \"title ... [76733 chars, sha256 6e3dc86a81c3e19b]"
+      ],
+      "link": [
+        "\"Fetch the raw Markdown for a single Langfuse docs page. Accepts a docs path (e.g., /docs/observability/overview) or a full https://langfuse.com URL. Returns th ... [718 chars, sha256 f0304c760b7048ae]",
+        "\"Fetch the raw Markdown for a single Langfuse docs page. Accepts a docs path (e.g., /docs/observability/overview) or a full https://langfuse.com URL. Returns th ... [718 chars, sha256 f0304c760b7048ae]",
+        "\"Get a high-level, machine-readable index by downloading https://langfuse.com/llms.txt. Use this at the start of a session when needed to discover key docs endp ... [331 chars, sha256 37ccfa2a6c32801a]",
+        "\"Get a high-level, machine-readable index by downloading https://langfuse.com/llms.txt. Use this at the start of a session when needed to discover key docs endp ... [331 chars, sha256 37ccfa2a6c32801a]",
+        "'Docs path starting with \"/\" (e.g., /docs/observability/overview) or a full URL on https://langfuse.com. Do not include anchors (#...) or queries (?foo=bar) — they will be ignored.',",
+        "'Docs path starting with \"/\" (e.g., /docs/observability/overview) or a full URL on https://langfuse.com. Do not include anchors (#...) or queries (?foo=bar) — they will be ignored.',",
+        "'You can add a user score to a trace via the SDKs or API by creating a Score linked to the traceId (optionally to a specific observationId). For thumbs up/down, ... [2311 chars, sha256 2c0b760f5b08edc2]",
+        "'You can add a user score to a trace via the SDKs or API by creating a Score linked to the traceId (optionally to a specific observationId). For thumbs up/down, ... [2311 chars, sha256 ab4601252076f9b6]",
+        "'You can add a user score to a trace via the SDKs or API by creating a Score linked to the traceId (optionally to a specific observationId). For thumbs up/down, ... [2311 chars, sha256 ab4601252076f9b6]",
+        "'{\"content\": [{\"type\": \"document\", \"record_type\": \"documentation\", \"url\": \"https://langfuse.com/docs/evaluation/evaluation-methods/scores-via-sdk\", \"title\": \"Sc ... [76727 chars, sha256 e96ad1158c28b076]",
+        "text: 'You can add a user score to a trace via the SDKs or API by creating a Score linked to the traceId (optionally to a specific observationId). For thumbs up ... [2317 chars, sha256 27672a0dd79c5913]",
+        "text: '{\"content\": [{\"type\": \"document\", \"record_type\": \"documentation\", \"url\": \"https://langfuse.com/docs/evaluation/evaluation-methods/scores-via-sdk\", \"title ... [76733 chars, sha256 6e3dc86a81c3e19b]",
+        "text: '{\"content\": [{\"type\": \"document\", \"record_type\": \"documentation\", \"url\": \"https://langfuse.com/docs/evaluation/evaluation-methods/scores-via-sdk\", \"title ... [76733 chars, sha256 6e3dc86a81c3e19b]",
+        "text: '{\"content\": [{\"type\": \"document\", \"record_type\": \"documentation\", \"url\": \"https://langfuse.com/docs/evaluation/evaluation-methods/scores-via-sdk\", \"title ... [76733 chars, sha256 6e3dc86a81c3e19b]"
+      ]
+    },
+    "packages/shared/src/server/utils/baseUrl.ts": {
+      "text": [
+        "\"NEXTAUTH_URL must be set to derive the Langfuse base URL.\","
+      ]
+    },
+    "packages/shared/src/utils/normalized-io/conventions/providers/ai-sdk/fixtures.ts": {
+      "text": [
+        "\"Fetch the raw Markdown for a single Langfuse docs page from a path or URL.\",",
+        "\"Get a high-level, machine-readable index of the Langfuse documentation.\",",
+        "\"Langfuse Python minimal tracing example RAG retrieve span generation span OpenAI client langfuse.openai example run_experiment datasets quickstart\",",
+        "\"RAG tracing Langfuse example retrieval generation evaluation datasets\",",
+        "\"Semantic search (RAG) over the Langfuse documentation. Returns a concise answer synthesized from relevant docs.\",",
+        "\"The last user message is a how-to question asking for guidance on using Langfuse evaluation features. It does not express feedback about a feature.\",",
+        "\"The last user message is a how-to question asking for guidance on using Langfuse evaluation features. It does not express feedback about a feature.\",",
+        "\"You are a helpful Langfuse support agent. Give correct, actionable answers with links and minimal runnable examples.\",",
+        "content: \"I'll search the Langfuse docs for a RAG example.\",",
+        "content: \"What can I use Langfuse for?\",",
+        "description: \"A Langfuse docs path or full URL.\",",
+        "description: \"Semantic search over the Langfuse documentation.\",",
+        "parts: [{ type: \"text\", text: \"What can I use Langfuse for?\" }],",
+        "text: \"I need to find out what Langfuse is used for and review the documentation overview first.\",",
+        "text: \"I need to find out what Langfuse is used for and review the documentation overview first.\",",
+        "text: \"I'll search the Langfuse docs for a RAG example.\",",
+        "text: \"You are a helpful Langfuse support agent. Give correct, actionable answers with links and minimal runnable examples.\",",
+        "text: \"[Langfuse documentation overview response]\",",
+        "text: \"[Langfuse documentation overview response]\","
+      ]
+    },
+    "packages/shared/src/utils/normalized-io/conventions/providers/gemini/fixtures.ts": {
+      "text": [
+        "'{\"attributes\":{\"input.value\":\"{\\\\\"contents\\\\\": [{\\\\\"role\\\\\": \\\\\"user\\\\\", \\\\\"parts\\\\\": [{\\\\\"text\\\\\": \\\\\"What is Langfuse?\\\\\"}]}], \\\\\"model\\\\\": \\\\\"projects/verte ... [9693 chars, sha256 51362a3bcdbd7cb1]",
+        "'{\"attributes\":{\"llm.input_messages.0.message.content\":\"What is Langfuse?\",\"llm.input_messages.0.message.role\":\"user\",\"output.value\":\"{\\\\\"sdk_http_response\\\\\":{ ... [10736 chars, sha256 6038f55067171b5f]",
+        "'{\"attributes\":{\"session.id\":\"demo-session\",\"user.id\":\"demo-user\",\"gen_ai.system\":\"gcp.vertex.agent\",\"gen_ai.request.model\":\"gemini-2.0-flash\",\"gcp.vertex.agent ... [4804 chars, sha256 6374822735f0d904]",
+        "'{\"candidates\": [{\"content\": {\"role\": \"model\", \"parts\": [{\"text\": \"**Langfuse** is an **open-source observability and evaluation platform specifically designed  ... [4288 chars, sha256 a29e5d81779c1158]",
+        "'{\"content\":{\"parts\":[{\"text\":\"Hello Langfuse 👋!\\\\n\"}],\"role\":\"model\"},\"finish_reason\":\"STOP\",\"usage_metadata\":{\"candidates_token_count\":6,\"candidates_tokens_de ... [318 chars, sha256 633fa277a51034b8]",
+        "'{\"contents\": [{\"role\": \"user\", \"parts\": [{\"text\": \"What is Langfuse?\"}]}], \"model\": \"projects/vertex-ai-integration-467711/locations/europe-central2/publishers ... [245 chars, sha256 2053d3c90cade934]",
+        "'{\"model\": \"gemini-2.0-flash\", \"config\": {\"http_options\": {\"headers\": {\"x-goog-api-client\": \"google-adk/1.12.0 gl-python/3.12.11\", \"user-agent\": \"google-adk/1.1 ... [643 chars, sha256 d7b108bb4fcc69b0]",
+        "'{\"sdk_http_response\":{\"headers\":{\"content-type\":\"application/json; charset=UTF-8\",\"vary\":\"Origin, X-Origin, Referer\",\"content-encoding\":\"gzip\",\"date\":\"Fri, 01  ... [5142 chars, sha256 4c12be025796a956]",
+        "greeting: \"Hello Langfuse 👋\",",
+        "input: '{\"model\": \"gemini-2.5-flash\", \"contents\": \"What is Langfuse?\"}',",
+        "text: \"Hello Langfuse 👋!\\n\",",
+        "text: \"What is Langfuse?\",",
+        "text: \"What is Langfuse?\",",
+        "text: '**Langfuse** is an **open-source observability and evaluation platform specifically designed for Large Language Model (LLM) applications.**\\n\\nIn essence ... [4259 chars, sha256 f0bace7e47c7bb8b]",
+        "text: '**Langfuse** is an **open-source observability and evaluation platform specifically designed for Large Language Model (LLM) applications.**\\n\\nThink of i ... [3918 chars, sha256 5f2ebdbdbd6af62b]"
+      ]
+    },
+    "packages/shared/src/utils/normalized-io/conventions/providers/mixed/fixtures/index.ts": {
+      "text": [
+        "\"Langfuse is a tool designed to help developers monitor and debug applications that utilize large language models (LLMs). It provides features for tracking and  ... [478 chars, sha256 ee17c846ee411f1a]",
+        "'I now can give a great answer  \\nFinal Answer: \\n```html\\n<!DOCTYPE html>\\n<html lang=\"en\">\\n<head>\\n    <meta charset=\"UTF-8\">\\n    <meta name=\"viewport\" cont ... [660 chars, sha256 5466dbf7b6f1240a]",
+        "'{\"attributes\":{\"llm.model_name\":\"gpt-4o\",\"llm.invocation_parameters\":\"{\\\\\"context_window\\\\\":128000,\\\\\"num_output\\\\\":-1,\\\\\"is_chat_model\\\\\":true,\\\\\"is_function_ ... [1491 chars, sha256 ecdbf97051089cc2]",
+        "'{\"attributes\":{\"llm.model_name\":\"gpt-4o-mini\",\"llm.input_messages.0.message.role\":\"system\",\"llm.input_messages.0.message.content\":\"You are Software developer.  ... [4388 chars, sha256 421fff627b9ff777]",
+        "'{\"messages\": [{\"role\": \"system\", \"content\": \"You are Software developer. An expert coder with a keen eye for software trends.\\\\nYour personal goal is: Write cl ... [966 chars, sha256 8b4a40faaeaa4354]",
+        "args: [\"What is Langfuse?\"],",
+        "input: '{\"args\": [\"What is Langfuse?\"]}',",
+        "text: \"Langfuse is a tool designed to help developers monitor and debug applications that utilize large language models (LLMs). It provides features for trackin ... [484 chars, sha256 b120840feb0dd600]",
+        "text: \"\\nCurrent Task: Define the HTML for making a simple website with heading- Hello World! Langfuse monitors your CrewAI agent!\\n\\nThis is the expected crite ... [433 chars, sha256 d4b898b2fba1697b]",
+        "text: 'I now can give a great answer  \\nFinal Answer: \\n```html\\n<!DOCTYPE html>\\n<html lang=\"en\">\\n<head>\\n    <meta charset=\"UTF-8\">\\n    <meta name=\"viewport ... [666 chars, sha256 d6be11ce504f941d]"
+      ]
+    },
+    "packages/shared/src/utils/normalized-io/conventions/providers/pydantic-ai/fixtures.ts": {
+      "text": [
+        "'[{\"content\":\"You are a helpful assistant that answers questions clearly and concisely.\",\"role\":\"system\",\"gen_ai.system\":\"openai\",\"gen_ai.message.index\":0,\"even ... [326 chars, sha256 1aa7f39ef2ac293b]",
+        "'{\"attributes\":{\"gen_ai.operation.name\":\"chat\",\"gen_ai.system\":\"openai\",\"gen_ai.request.model\":\"gpt-4o\",\"server.address\":\"api.openai.com\",\"model_request_paramet ... [1901 chars, sha256 df1f146b628169bc]",
+        "'{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Langfuse is a tool designed for observability and monitoring of applications that utilize large language mo ... [665 chars, sha256 78205ee393fad852]",
+        "text: \"Langfuse is a tool designed for observability and monitoring of applications that utilize large language models (LLMs). It provides features to trace, lo ... [562 chars, sha256 393b1e6a897b031e]",
+        "text: \"What is Langfuse?\","
+      ]
+    },
+    "web/src/components/design-system/Button/Button.tsx": {
+      "link": [
+        "hostname === \"langfuse.com\" || hostname.endsWith(\".langfuse.com\");"
+      ]
+    },
+    "web/src/components/design-system/LangfuseIcon/LangfuseIcon.tsx": {
+      "text": [
+        "alt = \"Langfuse\","
+      ]
+    },
+    "web/src/components/design-system/LangfuseLogo/LangfuseLogo.tsx": {
+      "text": [
+        "alt=\"Langfuse Logo\"",
+        "alt=\"Langfuse Logo\""
+      ]
+    },
+    "web/src/components/layouts/app-layout/right-drawer/MobileRightDrawer.tsx": {
+      "text": [
+        "Action items to keep your integrations compatible with Langfuse v4"
+      ]
+    },
+    "web/src/components/layouts/default-head/getPageMetadata.ts": {
+      "text": [
+        "\"Create a free Langfuse Cloud account. No credit card required. Trace, evaluate, and manage prompts for your LLM application.\",",
+        "\"Sign in to Langfuse Cloud, the open source agent evals & observability platform. EU, US, Japan, and HIPAA data regions.\",",
+        "title: \"Sign in | Langfuse Cloud\",",
+        "title: \"Sign up | Langfuse Cloud\","
+      ],
+      "link": [
+        "const CANONICAL_CLOUD_ORIGIN = \"https://cloud.langfuse.com\";"
+      ]
+    },
+    "web/src/components/nav/AppSidebar/AppSidebar.tsx": {
+      "text": [
+        "<SidebarMenuButton asChild tooltip=\"Your Langfuse Organizations\">",
+        "<span>Your Langfuse Orgs</span>"
+      ],
+      "link": [
+        "<Link href=\"https://langfuse.com/changelog\" target=\"_blank\">",
+        "<Link href=\"https://langfuse.com/pricing-self-host\" target=\"_blank\">",
+        "<Link href=\"https://langfuse.com/roadmap\" target=\"_blank\">",
+        "href=\"https://langfuse.com/docs/demo\"",
+        "href=\"https://langfuse.com/docs/deployment/self-host#update\""
+      ]
+    },
+    "web/src/components/nav/AppSidebar/utils.ts": {
+      "text": [
+        "\"Langfuse MCP now covers observations, metrics, scores, datasets, comments, and more.\",",
+        "\"Langfuse agent skill turns Langfuse into a headless platform to evaluate, query and instrument your application.\",",
+        "\"Run experiments inside GitHub Actions to test every PR against a Langfuse dataset.\",",
+        "alt: \"Langfuse GitHub stars\",",
+        "title: \"Star Langfuse\","
+      ],
+      "link": [
+        "link: \"https://langfuse.com/changelog/2026-05-25-experiment-ci-cd-gates\",",
+        "link: \"https://langfuse.com/changelog/2026-05-26-langfuse-agent-skill\",",
+        "link: \"https://langfuse.com/changelog/2026-05-27-clickhouse-full-text-search-fast-mode\",",
+        "link: \"https://langfuse.com/changelog/2026-05-28-code-evaluators\",",
+        "link: \"https://langfuse.com/changelog/2026-05-29-mcp-update\","
+      ]
+    },
+    "web/src/components/nav/topbar-brand.tsx": {
+      "text": [
+        "aria-label=\"Langfuse home\""
+      ]
+    },
+    "web/src/components/onboarding/AnnotationQueuesOnboarding.tsx": {
+      "link": [
+        "href: \"https://langfuse.com/docs/scores/annotation\",",
+        "videoSrc=\"https://static.langfuse.com/prod-assets/onboarding/annotation-queue-overview-v1.mp4\""
+      ]
+    },
+    "web/src/components/onboarding/DatasetItemsOnboarding.tsx": {
+      "link": [
+        "href=\"https://langfuse.com/docs/evaluation/experiments/datasets#create-items-from-production-data\""
+      ]
+    },
+    "web/src/components/onboarding/DatasetsOnboarding.tsx": {
+      "text": [
+        "description=\"Datasets in Langfuse are collections of inputs (and expected outputs) for your LLM application. You can run Experiments against these datasets to test new releases before deployment to production.\""
+      ],
+      "link": [
+        "href: \"https://langfuse.com/docs/datasets\",",
+        "videoSrc=\"https://static.langfuse.com/prod-assets/onboarding/datasets-overview-v1.mp4\""
+      ]
+    },
+    "web/src/components/onboarding/PromptsOnboarding.tsx": {
+      "link": [
+        "href: \"https://langfuse.com/docs/prompt-management/get-started\","
+      ]
+    },
+    "web/src/components/onboarding/ScoresOnboarding.tsx": {
+      "text": [
+        "\"Langfuse's scores are flexible and can be used to track any metric that's associated with an LLM application\","
+      ],
+      "link": [
+        "href: \"https://langfuse.com/docs/evaluation/evaluation-methods/custom-scores\",",
+        "videoSrc=\"https://static.langfuse.com/prod-assets/onboarding/scores-overview-v1.mp4\""
+      ]
+    },
+    "web/src/components/onboarding/SessionsOnboarding.tsx": {
+      "link": [
+        "href=\"https://langfuse.com/docs/observability/features/sessions\"",
+        "videoSrc=\"https://static.langfuse.com/prod-assets/onboarding/sessions-overview-v1.mp4\""
+      ]
+    },
+    "web/src/components/onboarding/UsersOnboarding.tsx": {
+      "link": [
+        "href=\"https://langfuse.com/docs/observability/features/users\"",
+        "videoSrc=\"https://static.langfuse.com/prod-assets/onboarding/users-overview-v1.mp4\""
+      ]
+    },
+    "web/src/components/onboarding/components/EvaluatorsOnboardingView/EvaluatorsOnboardingView.tsx": {
+      "text": [
+        "Langfuse supports two evaluator types:"
+      ],
+      "link": [
+        "href: \"https://langfuse.com/docs/evaluation\",",
+        "href: \"https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge\",",
+        "videoSrc=\"https://static.langfuse.com/prod-assets/onboarding/scores-llm-as-a-judge-overview-v1.mp4\""
+      ]
+    },
+    "web/src/components/table/data-table-controls.tsx": {
+      "link": [
+        "href=\"https://langfuse.com/docs/observability/features/environments\"",
+        "href=\"https://langfuse.com/docs/observability/features/sessions\"",
+        "href=\"https://langfuse.com/docs/observability/features/tags\""
+      ]
+    },
+    "web/src/components/table/use-cases/models.tsx": {
+      "text": [
+        "const isLangfuse = row.original.maintainer === \"Langfuse\";",
+        "maintainer: model.projectId ? \"User\" : \"Langfuse\",",
+        "return row.original.maintainer !== \"Langfuse\" ? ("
+      ]
+    },
+    "web/src/components/table/use-cases/observations.tsx": {
+      "text": [
+        "description: \"Link to prompt version in Langfuse prompt management.\","
+      ],
+      "link": [
+        "href: \"https://langfuse.com/docs/experimentation\",",
+        "href: \"https://langfuse.com/docs/observability/features/log-levels\",",
+        "href: \"https://langfuse.com/docs/observability/features/log-levels\",",
+        "href: \"https://langfuse.com/docs/observability/features/metadata\",",
+        "href: \"https://langfuse.com/docs/prompt-management/get-started\","
+      ]
+    },
+    "web/src/components/table/use-cases/scores.tsx": {
+      "link": [
+        "href: \"https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge\",",
+        "href: \"https://langfuse.com/docs/observability/features/metadata\",",
+        "href: \"https://langfuse.com/docs/observability/features/users\",",
+        "href=\"https://langfuse.com/faq/all/what-are-scores\""
+      ]
+    },
+    "web/src/components/table/use-cases/traces.tsx": {
+      "link": [
+        "href: \"https://langfuse.com/docs/observability/features/metadata\",",
+        "href: \"https://langfuse.com/docs/observability/features/releases-and-versioning\",",
+        "href: \"https://langfuse.com/docs/observability/features/releases-and-versioning\",",
+        "href: \"https://langfuse.com/docs/observability/features/sessions\",",
+        "href: \"https://langfuse.com/docs/observability/features/tags\",",
+        "href: \"https://langfuse.com/docs/observability/features/users\",",
+        "href=\"https://langfuse.com/docs/observability/features/metadata\"",
+        "href=\"https://langfuse.com/docs/observability/features/releases-and-versioning\"",
+        "href=\"https://langfuse.com/docs/observability/features/releases-and-versioning\"",
+        "href=\"https://langfuse.com/docs/observability/features/sessions\"",
+        "href=\"https://langfuse.com/docs/observability/features/tags\"",
+        "href=\"https://langfuse.com/docs/observability/features/users\""
+      ]
+    },
+    "web/src/components/ui/LangfuseMediaView.tsx": {
+      "text": [
+        "const text = \"Invalid Langfuse Media Tag\";"
+      ]
+    },
+    "web/src/components/ui/media/MediaReferenceTag.tsx": {
+      "text": [
+        "? \"This field was too large to process inline, so Langfuse saved the complete original value as an attachment at ingestion.\""
+      ]
+    },
+    "web/src/components/ui/resizable-image.tsx": {
+      "text": [
+        "const displayError = `Cannot load image. ${src.includes(\"http\") ? \"Http images are not rendered in Langfuse for security reasons\" : \"Invalid image URL\"}`;"
+      ]
+    },
+    "web/src/features/acme-enhancements/components/AcmeChatWidget.tsx": {
+      "text": [
+        "Ask about this project&apos;s traces, or about Langfuse"
+      ]
+    },
+    "web/src/features/acme-enhancements/server/acmeChatRouter.ts": {
+      "text": [
+        "const DEFAULT_CHAT_INSTRUCTIONS = `You are ACME AI, embedded directly in this Langfuse project's console."
+      ]
+    },
+    "web/src/features/acme-enhancements/server/acmeKnowledgeBase.ts": {
+      "text": [
+        "- UI customization / logo is Enterprise-only per Langfuse's own pricing, but it's",
+        "Langfuse's licensing.",
+        "co-branding, not full white-label — the customer's logo sits alongside Langfuse's,",
+        "do not promise either without a live demo from Langfuse first.",
+        "mis-stated fact about Langfuse licensing."
+      ]
+    },
+    "web/src/features/ai-gateway/components/GatewayConfigurationPage/components/GatewayConfigurationView/GatewayConfigurationView.tsx": {
+      "text": [
+        "ingested into Langfuse."
+      ]
+    },
+    "web/src/features/annotation-queues/components/AnnotationQueueItemsTable.tsx": {
+      "link": [
+        "href: \"https://langfuse.com/docs/evaluation/evaluation-methods/annotation-queues\","
+      ]
+    },
+    "web/src/features/annotation-queues/pages/AnnotationQueues.tsx": {
+      "link": [
+        "href: \"https://langfuse.com/docs/evaluation/evaluation-methods/annotation-queues\","
+      ]
+    },
+    "web/src/features/apiKey/authenticator.ts": {
+      "text": [
+        "\"Admin API key auth is not available on Langfuse Cloud\","
+      ]
+    },
+    "web/src/features/auth-credentials/components/ResetPasswordPage.tsx": {
+      "link": [
+        "href: \"https://langfuse.com/self-hosting/security/authentication-and-sso#auth-email-password\","
+      ]
+    },
+    "web/src/features/auth/SignInPage.tsx": {
+      "link": [
+        "const PREVIEW_DEMO_USER_EMAIL = \"demo@langfuse.com\";",
+        "href=\"mailto:support@langfuse.com\""
+      ]
+    },
+    "web/src/features/auth/components/AuthCloudPrivacyNotice.tsx": {
+      "text": [
+        "Langfuse Cloud Addendum",
+        "Langfuse Privacy Policy"
+      ],
+      "link": [
+        "href=\"https://langfuse.com/privacy\""
+      ]
+    },
+    "web/src/features/auth/components/CloudRegionPicker.tsx": {
+      "text": [
+        "<p>Langfuse Cloud is available in four data regions:</p>"
+      ],
+      "link": [
+        "href=\"https://langfuse.com/docs/data-security-privacy\"",
+        "href=\"https://langfuse.com/security/data-regions\"",
+        "href=\"https://langfuse.com/security/hipaa\""
+      ]
+    },
+    "web/src/features/auth/lib/createProjectMembershipsOnSignup.ts": {
+      "text": [
+        ": \"Langfuse Cloud Signup\",",
+        "? \"Langfuse Cloud Invite\""
+      ]
+    },
+    "web/src/features/automations/components/actions/GitHubDispatchActionForm.tsx": {
+      "text": [
+        "href=\"https://github.com/settings/tokens/new?scopes=repo&description=Langfuse%20Automation\""
+      ]
+    },
+    "web/src/features/automations/components/actions/SlackActionForm.tsx": {
+      "text": [
+        "/invite @Langfuse"
+      ]
+    },
+    "web/src/features/automations/components/actions/WebhookActionForm.tsx": {
+      "text": [
+        "\"This header is automatically added by Langfuse and cannot be customized\",",
+        "Default headers (automatically added by Langfuse):"
+      ]
+    },
+    "web/src/features/automations/components/actions/WebhookActionHandler.tsx": {
+      "text": [
+        "`Header ${index + 1}: \"${header.name}\" is automatically added by Langfuse and cannot be customized`,"
+      ]
+    },
+    "web/src/features/background-migrations/components/retry-background-migration.tsx": {
+      "link": [
+        "href=\"https://langfuse.com/self-hosting/administration/organization-management-api#authentication\""
+      ]
+    },
+    "web/src/features/background-migrations/server/background-migrations-router.ts": {
+      "text": [
+        "message: \"Background migrations are not available in Langfuse Cloud\","
+      ]
+    },
+    "web/src/features/batch-actions/components/RunEvaluationDialog/EstimatedCostRow.tsx": {
+      "text": [
+        "Expected cost on your linked API key (not Langfuse). Estimated"
+      ]
+    },
+    "web/src/features/batch-actions/server/prepareBatchEvalEvaluatorMappings.ts": {
+      "text": [
+        "\"Code evaluator mappings are managed by Langfuse and cannot be provided.\","
+      ]
+    },
+    "web/src/features/batch-exports/components/BatchExportsSettingsPage.tsx": {
+      "text": [
+        "across Langfuse. Exports are processed asynchronously and remain"
+      ]
+    },
+    "web/src/features/blobstorage-integration/blobstorage-integration-router.ts": {
+      "text": [
+        "const testContent = `Langfuse blob storage validation test"
+      ]
+    },
+    "web/src/features/blobstorage-integration/components/ExportSourceField.tsx": {
+      "link": [
+        "href=\"https://langfuse.com/docs/integrations/export-sources\""
+      ]
+    },
+    "web/src/features/cloud-status-notification/components/CloudStatusMenu.tsx": {
+      "link": [
+        "href=\"https://status.langfuse.com\""
+      ]
+    },
+    "web/src/features/cloud-status-notification/server/cloud-status-router.ts": {
+      "link": [
+        "\"https://status.langfuse.com/api/v1/summary\","
+      ]
+    },
+    "web/src/features/dashboard/DashboardDetailPage.tsx": {
+      "text": [
+        "\"Only Langfuse dashboard or widget JSON files can be dropped here.\",",
+        "\"The clipboard does not contain a Langfuse widget JSON. Copy one via a widget's ⋯ menu first.\",",
+        "Langfuse dashboard or widget JSON",
+        "`${imported.skippedPresetCount} preset card(s) in the file are not available in this Langfuse version.`,"
+      ]
+    },
+    "web/src/features/dashboard/ProjectHomePage.tsx": {
+      "text": [
+        "const dashboardName = displayedDashboard?.name ?? \"Langfuse Home\";"
+      ]
+    },
+    "web/src/features/dashboard/components/ChartScores.tsx": {
+      "link": [
+        "href=\"https://langfuse.com/docs/evaluation/overview\""
+      ]
+    },
+    "web/src/features/dashboard/components/ModelCostTable.tsx": {
+      "link": [
+        "href=\"https://langfuse.com/docs/model-usage-and-cost\""
+      ]
+    },
+    "web/src/features/dashboard/components/ScoresTable.tsx": {
+      "link": [
+        "href: \"https://langfuse.com/docs/evaluation/overview\","
+      ]
+    },
+    "web/src/features/dashboard/components/TracesBarListChart.tsx": {
+      "link": [
+        "href=\"https://langfuse.com/docs/get-started\""
+      ]
+    },
+    "web/src/features/dashboard/components/TracesTimeSeriesChart.tsx": {
+      "link": [
+        "href=\"https://langfuse.com/docs/observability/overview\""
+      ]
+    },
+    "web/src/features/dashboard/components/UserChart.tsx": {
+      "link": [
+        "href=\"https://langfuse.com/docs/observability/features/users\""
+      ]
+    },
+    "web/src/features/dashboard/utils/dashboard-import-export.ts": {
+      "text": [
+        "? \"The dashboard file only contains preset cards that are not available in this Langfuse version.\"",
+        "reason: \"This preset card is not available in this Langfuse version.\",",
+        "reason: `This card uses format version ${payload.version}; this Langfuse version supports up to ${PRESET_FILE_FORMAT_VERSION}.`,",
+        "reason: `This dashboard uses format version ${declaredVersion}; this Langfuse version supports up to ${DASHBOARD_FILE_FORMAT_VERSION}.`,"
+      ]
+    },
+    "web/src/features/datasets/components/DatasetVersionHistoryPanel.tsx": {
+      "link": [
+        "\"https://langfuse.com/docs/evaluation/experiments/datasets#run-experiments-on-versioned-datasets\","
+      ]
+    },
+    "web/src/features/datasets/lib/csv/helpers.ts": {
+      "link": [
+        "\"The file's single dataset items are too large. CSV imports are intended for text and structured JSON dataset items. Use the UI item editor or API/SDKs for mult ... [282 chars, sha256 1c8a7bf836444ce3]"
+      ]
+    },
+    "web/src/features/datasets/server/remoteExperimentHelpers.ts": {
+      "text": [
+        "message: `Header \"${rawKey}\" is set by Langfuse and cannot be overridden`,"
+      ]
+    },
+    "web/src/features/developer-tools/components/DeveloperToolsSettings.tsx": {
+      "text": [
+        "(Claude Code, Cursor, Windsurf) with native Langfuse capabilities",
+        "Bring Langfuse into your terminal and AI coding agents. These tools let",
+        "It uses the same API key pair as the Langfuse SDKs.",
+        "The Langfuse Agent Skill is an open-source skill following",
+        "The Langfuse CLI provides terminal access to the full Langfuse API.",
+        "The Langfuse MCP server lets AI assistants and agents interact with",
+        "you and your agents read and write Langfuse data—traces, prompts,",
+        "your Langfuse data programmatically via the Model Context Protocol."
+      ],
+      "link": [
+        "<DocsButton href=\"https://langfuse.com/docs/api-and-data-platform/features/agent-skill\" />",
+        "<DocsButton href=\"https://langfuse.com/docs/api-and-data-platform/features/cli\" />",
+        "<DocsButton href=\"https://langfuse.com/docs/api-and-data-platform/features/mcp-server\" />",
+        "https://cloud.langfuse.com/api/public/mcp \\\\"
+      ]
+    },
+    "web/src/features/evals/components/code-eval-template-form-body.tsx": {
+      "link": [
+        "\"https://langfuse.com/docs/evaluation/evaluation-methods/code-evaluators#function-contract\";"
+      ]
+    },
+    "web/src/features/evals/components/default-eval-model-setup.tsx": {
+      "link": [
+        "href=\"https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge#how-llm-as-a-judge-works\""
+      ]
+    },
+    "web/src/features/evals/components/eval-version-callout.tsx": {
+      "link": [
+        "href=\"https://langfuse.com/docs/evaluation/experiments/experiments-via-sdk#experiment-runner-sdk\"",
+        "href=\"https://langfuse.com/docs/evaluation/experiments/experiments-via-sdk#experiment-runner-sdk\"",
+        "href=\"https://langfuse.com/docs/observability/sdk/upgrade-path\"",
+        "href=\"https://langfuse.com/faq/all/llm-as-a-judge-migration\""
+      ]
+    },
+    "web/src/features/evals/components/inner-evaluator-form.tsx": {
+      "link": [
+        "href=\"https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge\"",
+        "href=\"https://langfuse.com/docs/observability/sdk/upgrade-path\""
+      ]
+    },
+    "web/src/features/evals/components/select-evaluator-list.tsx": {
+      "text": [
+        "Use code to create Langfuse scores."
+      ]
+    },
+    "web/src/features/evals/components/template-form.tsx": {
+      "link": [
+        "href=\"https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge#how-llm-as-a-judge-works\"",
+        "href=\"https://langfuse.com/docs/observability/sdk/upgrade-path\""
+      ]
+    },
+    "web/src/features/evals/components/variable-mapping-card.tsx": {
+      "text": [
+        "description=\"Field on the Langfuse object to insert into the template.\"",
+        "description=\"Langfuse object to retrieve the data from.\"",
+        "description=\"Name of the Langfuse object to retrieve the data from.\""
+      ],
+      "link": [
+        "href=\"https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge\"",
+        "href=\"https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge\"",
+        "href=\"https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge\"",
+        "href=\"https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge\"",
+        "href=\"https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge\"",
+        "href=\"https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge\"",
+        "href=\"https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge\"",
+        "href=\"https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge\"",
+        "href=\"https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge\""
+      ]
+    },
+    "web/src/features/evals/pages/default-evaluation-model.tsx": {
+      "link": [
+        "href: \"https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge\","
+      ]
+    },
+    "web/src/features/evals/pages/evaluators.tsx": {
+      "link": [
+        "href: \"https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge\",",
+        "href: \"https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge\","
+      ]
+    },
+    "web/src/features/evals/pages/remap-evaluator.tsx": {
+      "text": [
+        "This evaluator needs an upgrade for Langfuse v4."
+      ],
+      "link": [
+        "\"https://langfuse.com/faq/all/llm-as-a-judge-migration\";",
+        "const V4_DOCS_URL = \"https://langfuse.com/docs/v4\";",
+        "href=\"https://langfuse.com/faq/all/llm-as-a-judge-migration\""
+      ]
+    },
+    "web/src/features/evals/pages/templates.tsx": {
+      "link": [
+        "href: \"https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge\","
+      ]
+    },
+    "web/src/features/evals/server/legacyCompatibilityService.ts": {
+      "text": [
+        "\"Langfuse managed template not found\",",
+        "throw new ForbiddenError(\"Langfuse-managed evaluators cannot be deleted\");"
+      ]
+    },
+    "web/src/features/evals/utils/code-eval-template-hover-docs.ts": {
+      "text": [
+        "A Langfuse score returned by a Python evaluator.`;",
+        "A Langfuse score returned by a TypeScript evaluator.`;",
+        "One or more Langfuse scores to create for the target observation.`,",
+        "One or more Langfuse scores to create for the target observation.`,",
+        "The Langfuse score data type. Use NUMERIC, BOOLEAN, CATEGORICAL, or TEXT.`,",
+        "The Langfuse score data type.`,",
+        "The Python dataclass value Langfuse passes to evaluate.`,",
+        "The Python function Langfuse executes for each matched target observation.`,",
+        "The TypeScript function Langfuse executes for each matched target observation.`,",
+        "The TypeScript value Langfuse passes to evaluate.`,",
+        "The data Langfuse passes to a Python evaluator.`,",
+        "The data Langfuse passes to a TypeScript evaluator.`,"
+      ]
+    },
+    "web/src/features/evals/utils/code-eval-template-starter-examples.ts": {
+      "text": [
+        "\"\"\"Evaluates one observation and returns one or more Langfuse scores.\"\"\""
+      ]
+    },
+    "web/src/features/evals/v2/constants/evaluatorEmptyState.ts": {
+      "link": [
+        "\"https://langfuse.com/docs/evaluation/overview\";"
+      ]
+    },
+    "web/src/features/evals/v2/fns/formatEvaluatorCostCalculation.ts": {
+      "text": [
+        ": \"Expected cost on your linked API key (not Langfuse). Matching observations are based on the last 7 days.\";",
+        "? \"Expected cost on your linked API key (not Langfuse).\"",
+        "explanation: `No cost-bearing evaluator trace was available${window}, and the fallback test call did not return a usable model cost. Expected cost would be charged to your linked API key, not Langfuse.`,"
+      ]
+    },
+    "web/src/features/evals/v2/server/rules/ruleService.ts": {
+      "text": [
+        "\"Code evaluator mappings are managed by Langfuse and cannot be provided.\","
+      ]
+    },
+    "web/src/features/events/components/EventsTable.tsx": {
+      "text": [
+        "description: \"Link to prompt version in Langfuse prompt management.\","
+      ],
+      "link": [
+        "href: \"https://langfuse.com/docs/experimentation\",",
+        "href: \"https://langfuse.com/docs/observability/features/log-levels\",",
+        "href: \"https://langfuse.com/docs/observability/features/log-levels\",",
+        "href: \"https://langfuse.com/docs/observability/features/metadata\",",
+        "href: \"https://langfuse.com/docs/observability/features/releases-and-versioning\",",
+        "href: \"https://langfuse.com/docs/prompt-management/get-started\","
+      ]
+    },
+    "web/src/features/events/components/V4IntroDialog.tsx": {
+      "text": [
+        "Welcome to a faster Langfuse",
+        "alt=\"Langfuse gets Faster — performance comparison showing 5x to 165x speedups\"",
+        "aria-label=\"Welcome to a faster Langfuse\""
+      ],
+      "link": [
+        "href=\"https://langfuse.com/docs/observability/sdk/upgrade-path\"",
+        "href=\"https://langfuse.com/docs/v4\"",
+        "href=\"https://langfuse.com/faq/all/explore-observations-in-v4\""
+      ]
+    },
+    "web/src/features/events/config/filter-config.ts": {
+      "link": [
+        "href: \"https://langfuse.com/docs/observability/features/observation-types\","
+      ]
+    },
+    "web/src/features/events/lib/v4PreviewLabel.ts": {
+      "text": [
+        "\"Get a more performant Langfuse experience. Upgrade SDKs to the latest major for real-time data. This is a personal setting.\";"
+      ]
+    },
+    "web/src/features/experiments/components/CreateExperimentsForm.tsx": {
+      "text": [
+        "<li>Keep experiment results in Langfuse</li>",
+        "Langfuse. Your service receives the selected dataset and run",
+        "Test single prompts and model configurations via Langfuse UI."
+      ],
+      "link": [
+        "<Link href=\"https://langfuse.com/docs/evaluation/dataset-runs/native-run\">",
+        "href=\"https://langfuse.com/docs/evaluation/dataset-runs/datasets\"",
+        "href=\"https://langfuse.com/docs/evaluation/dataset-runs/remote-run\""
+      ]
+    },
+    "web/src/features/experiments/components/MultiStepExperimentForm.tsx": {
+      "link": [
+        "href=\"https://langfuse.com/docs/evaluation/dataset-runs/native-run\""
+      ]
+    },
+    "web/src/features/experiments/components/RemoteExperimentUpsertForm.tsx": {
+      "text": [
+        "? \"Requests include an x-langfuse-signature header so your service can verify they come from Langfuse.\"",
+        "Langfuse signs every remote experiment request with this secret via",
+        "message: `\"${name}\" is set by Langfuse and cannot be overridden`,",
+        "service to verify that requests come from Langfuse. It can only be",
+        "which can run against the dataset and post results to Langfuse."
+      ]
+    },
+    "web/src/features/feature-flags/utils.ts": {
+      "link": [
+        "normalizedEmail?.endsWith(\"@langfuse.com\") === true ||"
+      ]
+    },
+    "web/src/features/feedback/server/FeedbackService.ts": {
+      "text": [
+        "\"langfuse-mcp\": \"Langfuse MCP\",",
+        "text: \"💬 New Langfuse feedback\",",
+        "text: `New Langfuse feedback · ${feedbackSourceLabel[source]} · ${input.targetType} · ${id}`,"
+      ]
+    },
+    "web/src/features/in-app-agent/components/InAppAgentDisabledDialog.tsx": {
+      "text": [
+        "The Langfuse Assistant requires AI features to be enabled for this"
+      ]
+    },
+    "web/src/features/in-app-agent/components/InAppAgentWidgetComposer.tsx": {
+      "text": [
+        "Add with Langfuse Assistant",
+        "aria-label=\"Add with Langfuse Assistant\""
+      ]
+    },
+    "web/src/features/in-app-agent/components/InAppAgentWindow.tsx": {
+      "text": [
+        "Welcome to the Langfuse Assistant"
+      ]
+    },
+    "web/src/features/in-app-agent/components/utils/utils.ts": {
+      "text": [
+        "return { source: \"docs\", label: \"Reading Langfuse docs\" };"
+      ]
+    },
+    "web/src/features/in-app-agent/quickActions.ts": {
+      "text": [
+        "\"Help me create a new prompt in Langfuse prompt management, including choosing between a text and chat prompt, defining its variables, and setting a label.\",",
+        "\"Help me get an experiment ready on this dataset: check that its item keys match my prompt variables, confirm an LLM connection is configured, and attach an eva ... [356 chars, sha256 b31547d08fb2e0ff]",
+        "description: \"Check this prompt against Langfuse guidance\","
+      ]
+    },
+    "web/src/features/llm-api-key/server/router.ts": {
+      "link": [
+        "\"Missing environment variable: `ENCRYPTION_KEY`. Please consult our docs: https://langfuse.com/self-hosting\","
+      ]
+    },
+    "web/src/features/mcp/server/comments/tools/getComment.ts": {
+      "text": [
+        "description: \"Get a comment by ID from the current Langfuse project.\","
+      ]
+    },
+    "web/src/features/mcp/server/comments/tools/listComments.ts": {
+      "text": [
+        "\"List comments in the current Langfuse project, optionally filtered by object or author.\","
+      ]
+    },
+    "web/src/features/mcp/server/dashboardWidgets/index.ts": {
+      "text": [
+        "description: \"Manage dashboard widgets in the current Langfuse project\","
+      ]
+    },
+    "web/src/features/mcp/server/dashboardWidgets/tools/createDashboardWidget.ts": {
+      "text": [
+        "\"Widgets are useful to visualize Langfuse project data and give informative breakdowns to the user.\","
+      ]
+    },
+    "web/src/features/mcp/server/datasets/events-only-guard.ts": {
+      "text": [
+        "\"This tool is not available on deployments running in Langfuse v4 events_only mode. Use the experiments tools instead. Learn more about Langfuse v4 at: https://langfuse.com/docs/v4\","
+      ],
+      "link": [
+        "\"This tool is not available on deployments running in Langfuse v4 events_only mode. Use the experiments tools instead. Learn more about Langfuse v4 at: https://langfuse.com/docs/v4\","
+      ]
+    },
+    "web/src/features/mcp/server/evals/index.ts": {
+      "text": [
+        "\"Manage evaluators and evaluation rules in the current Langfuse project\","
+      ]
+    },
+    "web/src/features/mcp/server/evals/rule-schema.ts": {
+      "text": [
+        "\"Optional rule-specific variable mapping for LLM evaluators. Omit for code evaluators, whose mapping is managed by Langfuse.\","
+      ]
+    },
+    "web/src/features/mcp/server/evals/tools/evaluatorInput.ts": {
+      "text": [
+        "\"Code evaluator mappings are managed by Langfuse and cannot be provided.\","
+      ]
+    },
+    "web/src/features/mcp/server/evals/tools/listEvaluationRules.ts": {
+      "text": [
+        "\"List observation evaluation rules in the current Langfuse project, including all evaluator assignments. Results are paginated.\","
+      ]
+    },
+    "web/src/features/mcp/server/evals/tools/listEvaluators.ts": {
+      "text": [
+        "\"List evaluators (llm_as_judge and code) defined in the current Langfuse project. Results are paginated.\","
+      ]
+    },
+    "web/src/features/mcp/server/evals/tools/listManagedEvaluatorTemplates.ts": {
+      "text": [
+        "\"List the evaluator templates maintained by Langfuse and partners. Copy a returned definition into createEvaluator to create a project evaluator.\","
+      ]
+    },
+    "web/src/features/mcp/server/evals/tools/testEvaluator.ts": {
+      "text": [
+        "\"Test an evaluator draft or the latest saved version of an evaluator against one observation in the current Langfuse project.\","
+      ]
+    },
+    "web/src/features/mcp/server/experiments/tools/listExperimentItems.ts": {
+      "text": [
+        "\"List experiment items in the current Langfuse project with cursor-based pagination.\","
+      ]
+    },
+    "web/src/features/mcp/server/experiments/tools/listExperiments.ts": {
+      "text": [
+        "\"List experiments in the current Langfuse project with cursor-based pagination.\","
+      ]
+    },
+    "web/src/features/mcp/server/feedback/index.ts": {
+      "text": [
+        "\"Submit feedback about Langfuse skills, MCP tools, CLI, docs, or API\","
+      ]
+    },
+    "web/src/features/mcp/server/feedback/tools/submitFeedback.ts": {
+      "text": [
+        "\"Submit explicit user-approved feedback to the Langfuse team about Langfuse skills, MCP tools, CLI, docs, or public API.\","
+      ]
+    },
+    "web/src/features/mcp/server/health/index.ts": {
+      "text": [
+        "description: \"Check Langfuse health\","
+      ]
+    },
+    "web/src/features/mcp/server/health/tools/getHealth.ts": {
+      "text": [
+        "\"Check Langfuse API health. Optionally verify database availability and recent trace/observation ingestion.\","
+      ]
+    },
+    "web/src/features/mcp/server/mcpServer.ts": {
+      "text": [
+        "\"For conceptual Langfuse product guidance, SDK/API documentation, instrumentation help, or prompt-migration guidance, prefer the Langfuse docs MCP server or installed Langfuse agent skills when they are available.\",",
+        "\"To send feedback about Langfuse skills, MCP tools, CLI, docs, or public API, ask the user for permission and show the exact feedback payload; if they want a re ... [347 chars, sha256 75990a0e61616106]",
+        "\"Use this server for project-scoped Langfuse data and actions such as prompts, datasets, scores, comments, metrics, observations etc.\","
+      ]
+    },
+    "web/src/features/mcp/server/media/index.ts": {
+      "text": [
+        "\"Retrieve files, images, audio, video, text, and other media assets in the current Langfuse project\","
+      ]
+    },
+    "web/src/features/mcp/server/metrics/index.ts": {
+      "text": [
+        "\"Analyze project usage, quality, cost, and performance metrics from Langfuse data\","
+      ]
+    },
+    "web/src/features/mcp/server/metrics/tools/getMetricsSchema.ts": {
+      "text": [
+        "\"Discover which Langfuse metrics can be analyzed and how to group, filter, aggregate, and time-bucket them before calling queryMetrics.\","
+      ]
+    },
+    "web/src/features/mcp/server/metrics/tools/queryMetrics.ts": {
+      "text": [
+        "\"Answer analytics questions about the current Langfuse project, such as usage over time, model costs, latency, errors, scores, or grouped breakdowns by environment, trace, observation, model, user, session, tag, or score name.\","
+      ]
+    },
+    "web/src/features/mcp/server/models/tools/listModels.ts": {
+      "text": [
+        "\"List custom and Langfuse-managed model definitions visible to the current project.\","
+      ]
+    },
+    "web/src/features/mcp/server/monitors/index.ts": {
+      "text": [
+        "description: \"Inspect alerts in the current Langfuse project\","
+      ]
+    },
+    "web/src/features/mcp/server/observations/index.ts": {
+      "text": [
+        "\"Inspect traces, generations, spans, events, and other observations in Langfuse\","
+      ]
+    },
+    "web/src/features/mcp/server/observations/tools/getObservation.ts": {
+      "text": [
+        "\"Get the details for a single observation in the current Langfuse project by observation ID.\","
+      ]
+    },
+    "web/src/features/mcp/server/observations/tools/listObservations.ts": {
+      "text": [
+        "\"Find and review observations in the current Langfuse project, such as generations, spans, events, agent steps, and tool calls.\","
+      ]
+    },
+    "web/src/features/mcp/server/prompts/index.ts": {
+      "text": [
+        "\"Manage Langfuse prompts - create, retrieve, and update prompt versions\","
+      ]
+    },
+    "web/src/features/mcp/server/prompts/tools/createChatPrompt.ts": {
+      "text": [
+        "\"Create a new chat prompt version in Langfuse. Chat prompts are arrays of messages with roles and content.\","
+      ]
+    },
+    "web/src/features/mcp/server/prompts/tools/createTextPrompt.ts": {
+      "text": [
+        "\"Create a new text prompt version in Langfuse.\","
+      ]
+    },
+    "web/src/features/mcp/server/scores/index.ts": {
+      "text": [
+        "\"Read scores and manage score configurations in the current Langfuse project\","
+      ]
+    },
+    "web/src/features/mcp/server/scores/tools/createScore.ts": {
+      "text": [
+        "\"Create one score in the current Langfuse project.\","
+      ]
+    },
+    "web/src/features/mcp/server/scores/tools/deleteScoreConfig.ts": {
+      "text": [
+        "\"Delete a score configuration from the current Langfuse project by archiving it.\","
+      ]
+    },
+    "web/src/features/mcp/server/scores/tools/getScore.ts": {
+      "text": [
+        "\"Fetch one score by ID from the current Langfuse project.\","
+      ]
+    },
+    "web/src/features/mcp/server/scores/tools/getScoreConfig.ts": {
+      "text": [
+        "\"Fetch one score configuration by ID from the current Langfuse project. Returns the public score config object directly.\","
+      ]
+    },
+    "web/src/features/mcp/server/scores/tools/listScores.ts": {
+      "text": [
+        "\"Find scores in Langfuse.\","
+      ]
+    },
+    "web/src/features/mcp/server/v4Migration/index.ts": {
+      "text": [
+        "description: \"Inspect project-specific Langfuse v4 migration evidence\","
+      ]
+    },
+    "web/src/features/mcp/server/v4Migration/tools/getV4MigrationData.ts": {
+      "text": [
+        "\"Get project-specific evidence for upgrading to Langfuse v4, including SDK versions and compatibility, experiment instrumentation, legacy integrations, deprecat ... [249 chars, sha256 ca8a099d9dcfb2aa]"
+      ]
+    },
+    "web/src/features/mixpanel-integration/mixpanel-integration-router.ts": {
+      "link": [
+        "\"Missing environment variable: `ENCRYPTION_KEY`. Please consult our docs: https://langfuse.com/self-hosting\","
+      ]
+    },
+    "web/src/features/models/components/ModelSettings.tsx": {
+      "text": [
+        "Langfuse to automatically calculate the price of generations based on"
+      ]
+    },
+    "web/src/features/models/components/UpsertModelFormDialog/UpsertModelFormDialog.tsx": {
+      "text": [
+        "Optionally, Langfuse can tokenize the input and output of"
+      ],
+      "link": [
+        "href=\"https://langfuse.com/docs/model-usage-and-cost\"",
+        "href=\"https://langfuse.com/docs/model-usage-and-cost\""
+      ]
+    },
+    "web/src/features/natural-language-filters/server/router.ts": {
+      "text": [
+        "\"Langfuse AI filters environment variables not configured. Please set LANGFUSE_AI_FEATURES_PUBLIC_KEY and LANGFUSE_AI_FEATURES_SECRET_KEY variables.\","
+      ]
+    },
+    "web/src/features/natural-language-filters/server/utils.ts": {
+      "text": [
+        "): Langfuse {",
+        "langfuseClient = new Langfuse({",
+        "let langfuseClient: Langfuse | null = null;"
+      ]
+    },
+    "web/src/features/onboarding/components/OnboardingSurvey.tsx": {
+      "text": [
+        "within your Langfuse data region. Your data will not"
+      ],
+      "link": [
+        "href=\"https://langfuse.com/security/ai-features\""
+      ]
+    },
+    "web/src/features/organizations/cloudRegions.ts": {
+      "link": [
+        "hostname: \"cloud.langfuse.com\",",
+        "hostname: \"hipaa.cloud.langfuse.com\",",
+        "hostname: \"jp.cloud.langfuse.com\",",
+        "hostname: \"staging.langfuse.com\",",
+        "hostname: \"us.cloud.langfuse.com\",",
+        "rootUrl: \"https://cloud.langfuse.com\",",
+        "rootUrl: \"https://hipaa.cloud.langfuse.com\",",
+        "rootUrl: \"https://jp.cloud.langfuse.com\",",
+        "rootUrl: \"https://staging.langfuse.com\",",
+        "rootUrl: \"https://us.cloud.langfuse.com\","
+      ]
+    },
+    "web/src/features/organizations/components/AIFeatureSwitch.tsx": {
+      "text": [
+        "<i>can</i> be sent to AWS Bedrock within the Langfuse data",
+        "Share data about your use of AI with Langfuse for product and"
+      ],
+      "link": [
+        "href=\"https://langfuse.com/security/ai-features\"",
+        "href=\"https://langfuse.com/security/ai-features\""
+      ]
+    },
+    "web/src/features/organizations/components/NewOrganizationForm.tsx": {
+      "text": [
+        "? \"Relevant project data can be sent to AWS Bedrock within your Langfuse data region. Your data will not be used for training models.\""
+      ],
+      "link": [
+        "href=\"https://langfuse.com/security/ai-features\""
+      ]
+    },
+    "web/src/features/organizations/components/ProjectOverview.tsx": {
+      "text": [
+        "<CardTitle>Try Langfuse Demo</CardTitle>",
+        "Docs. Interact with it to see traces in Langfuse.",
+        "We have built a Q&A chatbot that answers questions based on the Langfuse"
+      ],
+      "link": [
+        "<Link href=\"https://langfuse.com/docs\" target=\"_blank\">",
+        "<Link href=\"https://langfuse.com/docs/ask-ai\" target=\"_blank\">",
+        "href: \"https://langfuse.com/docs/rbac\","
+      ]
+    },
+    "web/src/features/organizations/server/adminOrgContext.ts": {
+      "text": [
+        "message: \"Only Langfuse admins can access this endpoint\","
+      ]
+    },
+    "web/src/features/organizations/server/organizationRouter.ts": {
+      "text": [
+        "\"AI telemetry controls are only available on Langfuse Cloud.\","
+      ]
+    },
+    "web/src/features/payment-banner/PaymentBannerView.tsx": {
+      "text": [
+        "{`We have problems collecting subscription payment for your organization '${organizationName}'. Please update your payment information to continue using Langfuse.`}"
+      ]
+    },
+    "web/src/features/playground/page/index.tsx": {
+      "link": [
+        "href: \"https://langfuse.com/docs/prompt-management/features/playground\",",
+        "href: \"https://langfuse.com/docs/prompt-management/features/playground\","
+      ]
+    },
+    "web/src/features/posthog-integration/components/PostHogIntegrationForm.tsx": {
+      "link": [
+        "href=\"https://langfuse.com/docs/integrations/export-sources\""
+      ]
+    },
+    "web/src/features/posthog-integration/posthog-integration-router.ts": {
+      "link": [
+        "\"Missing environment variable: `ENCRYPTION_KEY`. Please consult our docs: https://langfuse.com/self-hosting\","
+      ]
+    },
+    "web/src/features/projects/ProjectSettingsPage.tsx": {
+      "text": [
+        "Integrate with Mixpanel to sync your Langfuse traces, generations,",
+        "Langfuse Events/Metrics available in your Posthog Dashboards.",
+        "Langfuse alerts natively in Slack."
+      ],
+      "link": [
+        "href=\"https://langfuse.com/docs/query-traces#blob-storage\"",
+        "href=\"https://langfuse.com/integrations/analytics/mixpanel\"",
+        "href=\"https://langfuse.com/integrations/analytics/posthog\""
+      ]
+    },
+    "web/src/features/prompts/components/ImportPromptsButtonDialogController.tsx": {
+      "text": [
+        "Upload a JSON file exported from Langfuse. Each prompt will be created"
+      ]
+    },
+    "web/src/features/prompts/components/NewPromptForm/index.tsx": {
+      "link": [
+        "href=\"https://langfuse.com/docs/prompt-management/get-started#prompt-folders-for-organization\""
+      ]
+    },
+    "web/src/features/prompts/components/prompt-detail.tsx": {
+      "text": [
+        "\"You can use this prompt within your application through the Langfuse SDKs and integrations. Refer to the documentation for more information.\",",
+        "# Initialize Langfuse client",
+        ") => `from langfuse import Langfuse",
+        "langfuse = Langfuse()"
+      ],
+      "link": [
+        "href: \"https://langfuse.com/docs/prompts\",",
+        "href=\"https://langfuse.com/docs/prompts\""
+      ]
+    },
+    "web/src/features/prompts/components/prompt-new.tsx": {
+      "text": [
+        "\"Manage and version your prompts in Langfuse. Edit and update them via the UI and SDK. Retrieve the production version via the SDKs. Learn more in the docs.\",",
+        "Prompts are immutable in Langfuse. To update a prompt, create a new"
+      ],
+      "link": [
+        "href: \"https://langfuse.com/docs/prompts\","
+      ]
+    },
+    "web/src/features/public-api/components/ApiKeyDetailContent.tsx": {
+      "text": [
+        "Langfuse MCP server, see the{\" \"}"
+      ],
+      "link": [
+        "href=\"https://langfuse.com/docs/api-and-data-platform/features/mcp-server\""
+      ]
+    },
+    "web/src/features/public-api/components/ApiKeyList.tsx": {
+      "link": [
+        ": \"https://langfuse.com/docs/api#org-scoped-routes\",",
+        "? \"https://langfuse.com/docs/api#authentication\""
+      ]
+    },
+    "web/src/features/public-api/components/CreateLLMApiKeyForm.tsx": {
+      "text": [
+        "Key to identify the connection within Langfuse. Cannot",
+        "Select how Langfuse should authenticate to Bedrock.",
+        "available in Langfuse features."
+      ],
+      "link": [
+        "href=\"https://langfuse.com/docs/administration/llm-connection#supported-providers\""
+      ]
+    },
+    "web/src/features/public-api/server/createAuthedProjectAPIRoute.ts": {
+      "text": [
+        "\"This endpoint is not available on deployments running in Langfuse v4 events_only mode. Learn more about Langfuse v4 at: https://langfuse.com/docs/v4\","
+      ],
+      "link": [
+        "\"This endpoint is not available on deployments running in Langfuse v4 events_only mode. Learn more about Langfuse v4 at: https://langfuse.com/docs/v4\","
+      ]
+    },
+    "web/src/features/public-api/server/deprecations.ts": {
+      "text": [
+        "const V3_NOTICE = `On Langfuse Cloud, Langfuse v3 is deprecated and this endpoint will be removed on ${V3_SUNSET_HUMAN}. ${V3_DELAY_NOTICE}`;",
+        "message: `${V3_NOTICE} In Langfuse v4, dataset run items are replaced by experiment items; use ${REPLACEMENT.experimentItems} instead.`,",
+        "message: `${V3_NOTICE} In Langfuse v4, dataset runs are replaced by experiments; use ${REPLACEMENT.experiments} instead.`,",
+        "message: `${V3_NOTICE} In Langfuse v4, read session data via ${REPLACEMENT.observationsV2BySession}.`,",
+        "message: `${V3_NOTICE} In Langfuse v4, read span and trace data via ${REPLACEMENT.observationsV2}.`,",
+        "message: `On Langfuse Cloud, this is the deprecated Langfuse v3 ingestion API and it is shut down on ${V3_SUNSET_HUMAN}, except for score events: from that date ... [628 chars, sha256 f2604d6d367998d0]"
+      ],
+      "link": [
+        "\"https://langfuse.com/docs/api-and-data-platform/features/scores-api\",",
+        "\"https://langfuse.com/integrations/native/opentelemetry/migration-to-v4.md\",",
+        "compatibility: \"https://langfuse.com/docs/compatibility\",",
+        "metricsV2: \"https://langfuse.com/docs/metrics/features/metrics-api\",",
+        "otel: \"https://langfuse.com/integrations/native/opentelemetry\","
+      ]
+    },
+    "web/src/features/public-api/server/rateLimitUpgradePaths.ts": {
+      "link": [
+        "\"https://langfuse.com/docs/api-and-data-platform/features/observations-api\";"
+      ]
+    },
+    "web/src/features/public-api/server/structuredPublicApiErrorContract.ts": {
+      "link": [
+        "\"See https://langfuse.com/docs/api-and-data-platform/features/public-api for more details.\","
+      ]
+    },
+    "web/src/features/public-api/server/verifyProjectApiKeyAuth.ts": {
+      "text": [
+        "message: \"Admin API key auth is not available on Langfuse Cloud\","
+      ]
+    },
+    "web/src/features/public-api/server/withMiddlewares.ts": {
+      "text": [
+        "\"This applies to Langfuse Cloud only until v4 is released in OSS.\",",
+        "\"This applies to Langfuse Cloud only until v4 is released in OSS.\","
+      ],
+      "link": [
+        "\"Docs: https://langfuse.com/docs/api-and-data-platform/features/observations-api\",",
+        "\"Docs: https://langfuse.com/docs/metrics/features/metrics-api\",",
+        "\"See https://langfuse.com/docs/api-and-data-platform/features/public-api for more details.\","
+      ]
+    },
+    "web/src/features/public-api/types/feedback.ts": {
+      "text": [
+        ".describe(\"Optional URL reference. Langfuse stores it as text only.\"),"
+      ]
+    },
+    "web/src/features/rbac/components/MembersTable.tsx": {
+      "link": [
+        "href: \"https://langfuse.com/docs/administration/rbac\",",
+        "href: \"https://langfuse.com/docs/administration/rbac\","
+      ]
+    },
+    "web/src/features/score-analytics/components/ScoreAnalyticsHeader.tsx": {
+      "link": [
+        "href=\"https://langfuse.com/discussions\""
+      ]
+    },
+    "web/src/features/score-configs/components/ScoreConfigSettings.tsx": {
+      "link": [
+        "href=\"https://langfuse.com/docs/evaluation/evaluation-methods/annotation\""
+      ]
+    },
+    "web/src/features/scores/components/AnnotationForm.tsx": {
+      "link": [
+        "href: \"https://langfuse.com/docs/evaluation/evaluation-methods/annotation\","
+      ]
+    },
+    "web/src/features/search-bar/lib/fields.ts": {
+      "text": [
+        "return `negation of ${label(op)} is not representable in the Langfuse filter contract`;"
+      ]
+    },
+    "web/src/features/search-bar/server/buildFilterPrompt.ts": {
+      "text": [
+        "Langfuse filter array in JSON, using the FULL filter surface — not just simple",
+        "You are the Langfuse filter generator for the observability (v4 events) table.",
+        "return `You generate observation filters for a Langfuse evaluation rule."
+      ]
+    },
+    "web/src/features/search-bar/server/parseOutcomeScoring.ts": {
+      "text": [
+        "let scoreClient: Langfuse | null = null;",
+        "scoreClient = new Langfuse({",
+        "}): Langfuse {"
+      ]
+    },
+    "web/src/features/search-bar/server/prompts/search-bar-filter.prompt.json": {
+      "text": [
+        "\"content\": \"## Role\\n\\nYou are the Langfuse filter generator for the observability (v4 events) table.\\nTurn a natural-language request about LLM traces/observat ... [10199 chars, sha256 ccf26314a62b429c]"
+      ]
+    },
+    "web/src/features/sessions/SessionsTable.tsx": {
+      "link": [
+        "href: \"https://langfuse.com/docs/observability/features/sessions\","
+      ]
+    },
+    "web/src/features/setup/components/TracesSetupOnboardingCard.tsx": {
+      "text": [
+        "\"Install the Langfuse AI skill from github.com/langfuse/skills and use it to add tracing to this application with Langfuse following best practices.\";"
+      ],
+      "link": [
+        "\"https://langfuse.com/docs/observability/get-started\";",
+        "videoSrc=\"https://static.langfuse.com/prod-assets/onboarding/traces-overview-v1.mp4\""
+      ]
+    },
+    "web/src/features/slack/app_manifest.json": {
+      "text": [
+        "\"description\": \"Receive real-time alerts and insights from Langfuse directly in Slack. Monitor traces, errors, and performance effortlessly.\",",
+        "\"display_name\": \"Langfuse\",",
+        "\"long_description\": \"The Langfuse Slack App keeps your team in sync by delivering real-time observability and alerts directly to your Slack channels. Whether yo ... [722 chars, sha256 6ea55179ad1b0a08]",
+        "\"name\": \"Langfuse\","
+      ],
+      "link": [
+        "\"https://cloud.langfuse.com/api/public/slack/oauth\",",
+        "\"https://hipaa.cloud.langfuse.com/api/public/slack/oauth\",",
+        "\"https://staging.langfuse.com/api/public/slack/oauth\"",
+        "\"https://us.cloud.langfuse.com/api/public/slack/oauth\","
+      ]
+    },
+    "web/src/features/slack/server/router.ts": {
+      "text": [
+        "return 'Channel not found. The channel may not exist or is a private channel the bot has not been invited to. For private channels, invite the app with \"/invite @Langfuse\" in that channel.';",
+        "text: \"Hello from Langfuse! This is a test message to verify your Slack integration is working properly.\",",
+        "text: \"Open Langfuse\",",
+        "text: \"Test message from Langfuse\",",
+        "text: \"🎉 Test Message from Langfuse\","
+      ]
+    },
+    "web/src/features/support-chat/ConnectedSupportFormSection.tsx": {
+      "link": [
+        "\"Please contact support@langfuse.com\","
+      ]
+    },
+    "web/src/features/support-chat/IntroSection.tsx": {
+      "text": [
+        "Join the conversation and connect with the Langfuse community."
+      ],
+      "link": [
+        "href=\"https://langfuse.com/discord\"",
+        "href=\"https://langfuse.com/docs/ask-ai\"",
+        "href=\"https://langfuse.com/gh-support\"",
+        "href=\"https://langfuse.com/gh-support\"",
+        "href=\"https://langfuse.com/ideas\"",
+        "href=\"https://langfuse.com/ideas\"",
+        "href=\"https://langfuse.com/issues\"",
+        "href=\"https://langfuse.com/issues\"",
+        "href=\"https://status.langfuse.com\"",
+        "uiCustomization?.documentationHref ?? \"https://langfuse.com/docs\""
+      ]
+    },
+    "web/src/features/support-chat/SupportForm.tsx": {
+      "text": [
+        "text=\"Please confirm that your issue has critical business impact. This means it severely impacts your use of Langfuse in production, such as loss of production data, ingestion issues, or prompt fetching issues.\""
+      ]
+    },
+    "web/src/features/support-chat/pylon/pylonClient.ts": {
+      "text": [
+        "`<p>Team Langfuse</p>`,"
+      ],
+      "link": [
+        "email: \"support@langfuse.com\","
+      ]
+    },
+    "web/src/features/support-chat/trpc/supportRouter.ts": {
+      "text": [
+        "tags: [\"Langfuse\"],"
+      ]
+    },
+    "web/src/features/traces/components/IOPreview/IOPreview.tsx": {
+      "link": [
+        "href=\"https://langfuse.com/faq/all/empty-trace-input-and-output\""
+      ]
+    },
+    "web/src/features/traces/components/IOPreview/components/CorrectedOutputField.tsx": {
+      "link": [
+        "href=\"https://langfuse.com/docs/observability/features/corrections\""
+      ]
+    },
+    "web/src/features/users/UsersPage.tsx": {
+      "text": [
+        "\"The unique identifier for the user that was logged in Langfuse. See docs for more details on how to set this up.\",",
+        "Attribute data in Langfuse to a user by adding a userId to your"
+      ],
+      "link": [
+        "href: \"https://langfuse.com/docs/model-usage-and-cost\",",
+        "href: \"https://langfuse.com/docs/model-usage-and-cost\",",
+        "href: \"https://langfuse.com/docs/observability/data-model\",",
+        "href: \"https://langfuse.com/docs/observability/features/users\",",
+        "href: \"https://langfuse.com/docs/observability/features/users\",",
+        "href=\"https://langfuse.com/docs/observability/features/users\""
+      ]
+    },
+    "web/src/features/v4-migration/EvaluatorMigrationDialog.tsx": {
+      "text": [
+        "\"Hi! Could you enable AI features for our Langfuse organization? I need them to use the Assistant to upgrade our deprecated evaluators for v4. Thanks!\";"
+      ],
+      "link": [
+        "href=\"https://langfuse.com/security/ai-features\""
+      ]
+    },
+    "web/src/features/v4-migration/V4MigrationBanner.tsx": {
+      "text": [
+        "Langfuse v4 is here: real-time and up to 165× faster."
+      ],
+      "link": [
+        "const V4_DOCS_URL = \"https://langfuse.com/docs/v4\";"
+      ]
+    },
+    "web/src/features/v4-migration/V4MigrationContent.tsx": {
+      "text": [
+        "? `Langfuse ${caller.sdkName === \"python\" ? \"Python\" : \"JavaScript\"} SDK${caller.sdkVersion ? ` ${caller.sdkVersion}` : \"\"}`",
+        "Data is arriving through the ingestion API without a Langfuse SDK",
+        "Langfuse Assistant",
+        "Langfuse v4 is live: a re-architecture of our data model and database",
+        "any Langfuse SDK"
+      ],
+      "link": [
+        "\"https://langfuse.com/docs/api-and-data-platform/features/export-to-blob-storage#upgrade-path\",",
+        "\"https://langfuse.com/docs/evaluation/evaluation-methods/code-evaluators\";",
+        "\"https://langfuse.com/docs/observability/data-model#observations-and-traces\";",
+        "\"https://langfuse.com/docs/observability/features/filter-search-bar\";",
+        "\"https://langfuse.com/docs/observability/features/full-text-search\";",
+        "\"https://langfuse.com/docs/observability/sdk/upgrade-path\";",
+        "\"https://langfuse.com/faq/all/deprecated-api-migration\";",
+        "\"https://langfuse.com/integrations/analytics/mixpanel#migrate-export-source\",",
+        "\"https://langfuse.com/integrations/analytics/posthog#migrate-export-source\",",
+        "\"https://langfuse.com/integrations/native/opentelemetry\";",
+        "\"https://langfuse.com/integrations/native/opentelemetry/experiments\";",
+        "\"https://langfuse.com/integrations/native/opentelemetry/migration-to-v4\";",
+        "const ALERTS_URL = \"https://langfuse.com/docs/metrics/features/alerts\";",
+        "const LANGFUSE_ASSISTANT_URL = \"https://langfuse.com/docs/langfuse-assistant\";",
+        "const SDK_OVERVIEW_URL = \"https://langfuse.com/docs/observability/sdk/overview\";",
+        "const V4_DOCS_URL = \"https://langfuse.com/docs/v4\";"
+      ]
+    },
+    "web/src/features/v4-migration/V4MigrationStatusPage.tsx": {
+      "text": [
+        ": \"Langfuse v4 is here: real-time ingestion and up to 165× faster queries. \"}",
+        "? \"Langfuse v4 is here: real-time ingestion and up to 165× faster queries. Complete the action items on each project below to avoid disruption. \""
+      ],
+      "link": [
+        "\"https://langfuse.com/docs/observability/sdk/upgrade-path\";",
+        "\"https://langfuse.com/faq/all/explore-observations-in-v4\";",
+        "const API_REFERENCE_URL = \"https://api.reference.langfuse.com\";",
+        "const DATA_MODEL_URL = \"https://langfuse.com/docs/observability/data-model\";",
+        "const V4_DOCS_URL = \"https://langfuse.com/docs/v4\";"
+      ]
+    },
+    "web/src/features/v4-migration/partnerIntegrationDocs.ts": {
+      "link": [
+        "\"https://langfuse.com/faq/all/partner-integration-v4-upgrade\";"
+      ]
+    },
+    "web/src/features/v4-migration/useV4UpgradeAssistantSupport.ts": {
+      "text": [
+        "- Recommended: SDK first. I upgrade the SDK outside Langfuse, then come back and you migrate the evals. If I choose this, give me the coding-editor prompt below to copy.",
+        "If the Langfuse skill is installed, use it and read references/v4-project-migration.md.",
+        "Work in code-only mode unless Langfuse project access is already configured. Do not stop to install the Langfuse CLI or request credentials. Complete and test a ... [313 chars, sha256 d8f78d6ec7c2e6f7]",
+        "const SDK_FIRST_CHOICE_PROMPT = `I want to upgrade my Langfuse setup to v4. My deprecated evaluators can be migrated here with your help, but my SDK upgrade has ... [262 chars, sha256 10076963a6355658]",
+        "const UPGRADE_OUTSIDE_PLATFORM_PROMPT = `I want to upgrade my Langfuse setup to v4, but parts of it must be done outside of Langfuse, which you cannot do from h ... [287 chars, sha256 25ad6bb5c77913ab]",
+        "export const V4_CODING_AGENT_PROMPT = `Migrate this repository's Langfuse setup to v4."
+      ]
+    },
+    "web/src/features/web-callouts/components/WebCalloutSettingsPage.tsx": {
+      "text": [
+        "Langfuse sends a backend JSON POST when a user clicks a web callout",
+        "is called from the Langfuse backend.",
+        "message: \"This header is set by Langfuse and cannot be customized.\","
+      ],
+      "link": [
+        "href=\"https://langfuse.com/docs/observability/features/web-callouts\"",
+        "href=\"https://langfuse.com/docs/observability/features/web-callouts\""
+      ]
+    },
+    "web/src/features/widgets/utils/import-export-utils.ts": {
+      "text": [
+        "reason: `This widget uses format version ${declaredVersion}; this Langfuse version supports up to ${WIDGET_FILE_FORMAT_VERSION}.`,"
+      ]
+    },
+    "web/src/hooks/useEnvLabel.ts": {
+      "link": [
+        "if (!session.data?.user?.email?.endsWith(\"@langfuse.com\")) {"
+      ]
+    },
+    "web/src/initialize.ts": {
+      "text": [
+        "`[Langfuse Init] LANGFUSE_INIT_ORG_ID is not set but other LANGFUSE_INIT_* variables are configured. ` +",
+        "`[Langfuse Init] LANGFUSE_INIT_PROJECT_ID is not set but API key variables are configured. ` +",
+        "`[Langfuse Init] Partial API key configuration: ${missingKey} is not set. ` +",
+        "`[Langfuse Init] Partial user configuration: ${missingVar} is not set. ` +"
+      ]
+    },
+    "web/src/pages/api/admin/api-keys/index.ts": {
+      "text": [
+        "This API route is used by Langfuse Cloud to delete API keys for a project."
+      ]
+    },
+    "web/src/pages/api/admin/bullmq/index.ts": {
+      "text": [
+        "This API route is used by Langfuse Cloud to retry failed bullmq jobs."
+      ]
+    },
+    "web/src/pages/api/docs.ts": {
+      "text": [
+        "name: \"Langfuse API\","
+      ]
+    },
+    "web/src/pages/api/public/experiment-items/index.ts": {
+      "text": [
+        "\"The experiment items API is only available in a Langfuse v4 write mode. Learn more at: https://langfuse.com/docs/v4\","
+      ],
+      "link": [
+        "\"The experiment items API is only available in a Langfuse v4 write mode. Learn more at: https://langfuse.com/docs/v4\","
+      ]
+    },
+    "web/src/pages/api/public/experiments/index.ts": {
+      "text": [
+        "\"The experiments API is only available in a Langfuse v4 write mode. Learn more at: https://langfuse.com/docs/v4\","
+      ],
+      "link": [
+        "\"The experiments API is only available in a Langfuse v4 write mode. Learn more at: https://langfuse.com/docs/v4\","
+      ]
+    },
+    "web/src/pages/api/public/ingestion.ts": {
+      "text": [
+        "`Rejected ${rejectedErrors.length} event(s) from the legacy /api/public/ingestion endpoint for project ${projectId} because this Langfuse v4 deployment runs in  ... [246 chars, sha256 b7b7456d4fd93eb3]"
+      ],
+      "link": [
+        "\"https://langfuse.com/self-hosting/upgrade/upgrade-guides/upgrade-v3-to-v4\";"
+      ]
+    },
+    "web/src/pages/api/public/scim/ServiceProviderConfig.ts": {
+      "link": [
+        "\"https://langfuse.com/docs/administration/scim-and-org-api\","
+      ]
+    },
+    "web/src/pages/api/public/scim/Users/index.ts": {
+      "text": [
+        "leadSource: \"Langfuse Cloud Invite\","
+      ]
+    },
+    "web/src/pages/api/public/v2/metrics.ts": {
+      "text": [
+        "\"The metrics v2 API is only available in a Langfuse v4 write mode. Learn more at: https://langfuse.com/docs/v4\","
+      ],
+      "link": [
+        "\"The metrics v2 API is only available in a Langfuse v4 write mode. Learn more at: https://langfuse.com/docs/v4\","
+      ]
+    },
+    "web/src/pages/api/public/v2/observations/index.ts": {
+      "text": [
+        "\"The observations v2 API is only available in a Langfuse v4 write mode. Learn more at: https://langfuse.com/docs/v4\","
+      ],
+      "link": [
+        "\"The observations v2 API is only available in a Langfuse v4 write mode. Learn more at: https://langfuse.com/docs/v4\","
+      ]
+    },
+    "web/src/pages/api/well-known/mcp.json.ts": {
+      "text": [
+        "description: \"Use Langfuse over MCP.\",",
+        "title: \"Langfuse\","
+      ],
+      "link": [
+        "websiteUrl: \"https://langfuse.com\","
+      ]
+    },
+    "web/src/pages/auth/enterprise-sso-required.tsx": {
+      "link": [
+        "href=\"mailto:support@langfuse.com\"",
+        "href=\"mailto:support@langfuse.com\"",
+        "support@langfuse.com",
+        "support@langfuse.com"
+      ]
+    },
+    "web/src/pages/auth/hf-spaces.tsx": {
+      "text": [
+        "<title>Langfuse on Hugging Face</title>",
+        "Langfuse on Hugging Face"
+      ]
+    },
+    "web/src/pages/project/[projectId]/dashboards/index.tsx": {
+      "link": [
+        "href: \"https://langfuse.com/docs/metrics/features/custom-dashboards\","
+      ]
+    },
+    "web/src/pages/project/[projectId]/datasets/index.tsx": {
+      "text": [
+        "\"Datasets in Langfuse are a collection of inputs (and expected outputs) of an LLM application. They are used to benchmark new releases before deployment to production. See docs to learn more.\",",
+        "\"Datasets in Langfuse are a collection of inputs (and expected outputs) of an LLM application. They are used to benchmark new releases before deployment to production. See docs to learn more.\","
+      ],
+      "link": [
+        "href: \"https://langfuse.com/docs/evaluation/dataset-runs/datasets\",",
+        "href: \"https://langfuse.com/docs/evaluation/dataset-runs/datasets\","
+      ]
+    },
+    "web/src/pages/project/[projectId]/observations/index.tsx": {
+      "link": [
+        "href: \"https://langfuse.com/docs/observability/data-model\","
+      ]
+    },
+    "web/src/pages/project/[projectId]/observations/new.tsx": {
+      "link": [
+        "href: \"https://langfuse.com/docs/observability/data-model\","
+      ]
+    },
+    "web/src/pages/project/[projectId]/prompts/[[...folder]].tsx": {
+      "text": [
+        "\"Manage and version your prompts in Langfuse. Edit and update them via the UI and SDK. Retrieve the production version via the SDKs. Learn more in the docs.\","
+      ],
+      "link": [
+        "href: \"https://langfuse.com/docs/prompt-management/get-started\","
+      ]
+    },
+    "web/src/pages/project/[projectId]/prompts/metrics.tsx": {
+      "text": [
+        "\"You can use this prompt within your application through the Langfuse SDKs and integrations. Refer to the documentation for more information.\","
+      ],
+      "link": [
+        "href: \"https://langfuse.com/docs/prompt-management/get-started\","
+      ]
+    },
+    "web/src/pages/project/[projectId]/scores/analytics.tsx": {
+      "link": [
+        "href: \"https://langfuse.com/docs/evaluation/overview\","
+      ]
+    },
+    "web/src/pages/project/[projectId]/scores/index.tsx": {
+      "link": [
+        "href: \"https://langfuse.com/docs/evaluation/overview\","
+      ]
+    },
+    "web/src/pages/project/[projectId]/sessions/index.tsx": {
+      "link": [
+        "href: \"https://langfuse.com/docs/observability/features/sessions\",",
+        "href=\"https://langfuse.com/docs/observability/features/sessions\""
+      ]
+    },
+    "web/src/pages/project/[projectId]/settings/integrations/blobstorage.tsx": {
+      "link": [
+        "href=\"https://langfuse.com/docs/api-and-data-platform/features/export-to-blob-storage\""
+      ]
+    },
+    "web/src/pages/project/[projectId]/settings/integrations/mixpanel.tsx": {
+      "text": [
+        "to sync your Langfuse traces, generations, and scores for advanced"
+      ],
+      "link": [
+        "<Link href=\"https://langfuse.com/integrations/analytics/mixpanel\">",
+        "href=\"https://langfuse.com/docs/integrations/export-sources\""
+      ]
+    },
+    "web/src/pages/project/[projectId]/settings/integrations/posthog.tsx": {
+      "text": [
+        "(OSS product analytics) to make Langfuse events/metrics available in"
+      ],
+      "link": [
+        "href=\"https://langfuse.com/integrations/analytics/posthog\""
+      ]
+    },
+    "web/src/pages/project/[projectId]/settings/integrations/slack.tsx": {
+      "text": [
+        "/invite @Langfuse"
+      ]
+    },
+    "web/src/pages/project/[projectId]/settings/models/[modelId].tsx": {
+      "link": [
+        "href: \"https://langfuse.com/docs/model-usage-and-cost\","
+      ]
+    },
+    "web/src/pages/project/[projectId]/traces/index.tsx": {
+      "link": [
+        "\"A trace represents a single function/api invocation. Traces contain observations. See [docs](https://langfuse.com/docs/observability/data-model) to learn more.\",",
+        "href: \"https://langfuse.com/docs/observability/data-model\",",
+        "href: \"https://langfuse.com/docs/observability/data-model\",",
+        "href=\"https://langfuse.com/docs/observability/data-model\""
+      ]
+    },
+    "web/src/pages/project/[projectId]/traces/setup.tsx": {
+      "text": [
+        "\"Setup tracing to track and analyze your LLM calls. You can create API keys and integrate Langfuse with your application.\",",
+        "Langfuse relies on OpenTelemetry to instrument your application and",
+        "export LLM application/agent traces to Langfuse. You can use one of",
+        "in the documentation to add Langfuse to your application."
+      ],
+      "link": [
+        "<ActionButton href=\"https://langfuse.com/docs/observability/get-started\">",
+        "href: \"https://langfuse.com/docs/observability/overview\","
+      ]
+    },
+    "web/src/pages/project/[projectId]/widgets/index.tsx": {
+      "link": [
+        "href: \"https://langfuse.com/docs/metrics/features/custom-dashboards\","
+      ]
+    },
+    "web/src/server/api/routers/public.ts": {
+      "link": [
+        "`https://langfuse.com/api/latest-releases?repo=langfuse/langfuse&version=${VERSION}`,"
+      ]
+    },
+    "worker/src/app.ts": {
+      "text": [
+        "message: \"Langfuse Worker API 🚀\","
+      ]
+    },
+    "worker/src/env.ts": {
+      "text": [
+        "error: \"Langfuse requires a bucket name for S3 Event Uploads.\","
+      ]
+    },
+    "worker/src/features/batchExport/handleBatchExportJob.ts": {
+      "link": [
+        "\"Batch export is not enabled. Configure environment variables to use this feature. See https://langfuse.com/self-hosting/infrastructure/blobstorage#batch-exports for more details.\","
+      ]
+    },
+    "worker/src/features/blobstorage/deprecationNotice.ts": {
+      "link": [
+        "\"https://langfuse.com/docs/api-and-data-platform/features/export-to-blob-storage\";"
+      ]
+    },
+    "worker/src/features/evaluation/evalService.ts": {
+      "text": [
+        "\"Cancelling eval job targeting an internal Langfuse environment\",",
+        "logger.debug(\"Skipping eval job creation for internal Langfuse trace\", {"
+      ]
+    },
+    "worker/src/features/evaluation/observationEval/observationEvalProcessor.ts": {
+      "text": [
+        "\"Cancelling eval job targeting an internal Langfuse environment\","
+      ]
+    },
+    "worker/src/features/experiments/utils.ts": {
+      "text": [
+        "\"Langfuse in-app experiments require prompt and model configurations in dataset run metadata\","
+      ]
+    },
+    "worker/src/features/in-app-agent/runtime/agent.ts": {
+      "text": [
+        "The sandbox has no egress network connection, so the Langfuse CLI, Langfuse SDKs, and other application-specific CLIs or SDKs cannot act on the user's project or environment from there.",
+        "`Failed to initialize Langfuse MCP: ${result.errors.langfuse}`,",
+        "const ASSISTANT_TITLE = \"Langfuse Assistant\";",
+        "langfuseClient?: Langfuse;",
+        "langfuseClient?: Langfuse;",
+        "logger.warn(\"Failed to initialize Langfuse docs MCP\", {",
+        "logger.warn(\"Failed to record in-app agent Langfuse tracing\", {",
+        "logger.warn(\"Failed to record in-app agent Langfuse tracing\", {",
+        "throw new Error(`Failed to initialize Langfuse MCP: ${errors.langfuse}`);"
+      ],
+      "link": [
+        "const LANGFUSE_DOCS_MCP_URL = \"https://langfuse.com/api/mcp\";"
+      ]
+    },
+    "worker/src/features/in-app-agent/runtime/instrumentation.ts": {
+      "text": [
+        "logger.warn(\"Failed to flush in-app agent Langfuse tracing\", error);",
+        "logger.warn(\"Failed to initialize in-app agent Langfuse tracing\", error);"
+      ]
+    },
+    "worker/src/features/in-app-agent/runtime/model.ts": {
+      "text": [
+        "`Unsupported Langfuse AI provider: ${(_exhaustive as InAppAgentModelConfig).provider}`,"
+      ]
+    },
+    "worker/src/features/in-app-agent/runtime/promptClient.ts": {
+      "text": [
+        "client = new Langfuse({",
+        "export function getInAppAgentPromptClient(): Langfuse {",
+        "let client: Langfuse | null = null;"
+      ]
+    },
+    "worker/src/features/in-app-agent/runtime/tools.ts": {
+      "text": [
+        "\"Propose a user-confirmed navigation action to a known Langfuse page. This does not navigate automatically. Always include params; pass {} when the destination takes none.\","
+      ]
+    },
+    "worker/src/features/mixpanel/transformers.ts": {
+      "text": [
+        "event: \"[Langfuse] Generation\",",
+        "event: \"[Langfuse] Observation\",",
+        "event: \"[Langfuse] Score\",",
+        "event: \"[Langfuse] Trace\","
+      ]
+    },
+    "worker/src/features/slack/slackMessageBuilder.ts": {
+      "text": [
+        "text: `*Langfuse Notification*\\n${payload.type} event: *${action}*`,"
+      ]
+    },
+    "worker/src/queues/webhooks.ts": {
+      "text": [
+        "text: \"Langfuse Notification\","
+      ]
+    },
+    "worker/src/scripts/upsertLangfuseDashboards.ts": {
+      "text": [
+        "`Error upserting Langfuse dashboards after ${Date.now() - startTime}ms: ${",
+        "`Finished upserting Langfuse dashboards and widgets in ${Date.now() - startTime}ms`,",
+        "logger.debug(`Starting upsert of Langfuse dashboards (force = ${force})`);"
+      ]
+    }
+  }
+}
