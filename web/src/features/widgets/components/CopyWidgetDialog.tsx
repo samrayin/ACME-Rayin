@@ -42,13 +42,14 @@ export function CopyWidgetDialog({
           <DialogTitle>Edit your copy of this widget</DialogTitle>
         </DialogHeader>
         <DialogBody>
+          {/* ACME (CHG-2026-146, ADR-0029): "built-in", neutral wording. */}
           <p className="text-muted-foreground py-4 text-sm">
             <span className="text-foreground font-bold">
               &ldquo;{widgetName}&rdquo;
             </span>{" "}
-            is maintained by Langfuse and can&rsquo;t be edited directly.
-            We&rsquo;ll replace this tile with your own editable copy and open
-            it in the widget editor — the rest of the dashboard stays unchanged.
+            is built-in and can&rsquo;t be edited directly. We&rsquo;ll replace
+            this tile with your own editable copy and open it in the widget
+            editor — the rest of the dashboard stays unchanged.
           </p>
         </DialogBody>
         <DialogFooter>
