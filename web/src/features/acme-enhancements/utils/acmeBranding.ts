@@ -10,6 +10,14 @@ export function acmePageTitle(page?: string): string {
   return page ? `${page} | ${ACME_PRODUCT_NAME}` : ACME_PRODUCT_NAME;
 }
 
+/**
+ * CHG-2026-146 / ADR-0029: the label for the models, evaluator templates and
+ * dashboard widgets that ship with the console, where upstream says
+ * "Maintained by Langfuse" or "Langfuse maintained". Display only: the stored
+ * values (`owner: "LANGFUSE"`, a template with no project) are unchanged.
+ */
+export const ACME_BUILT_IN_LABEL = "Built-in";
+
 // Langfuse reserves this prefix for the traces it writes itself (evaluator
 // runs, prompt experiments, natural-language filters, ...): public ingestion
 // strips it from customer environments, so only Langfuse's own carry it.

@@ -5,6 +5,7 @@ import {
   CardTitle,
 } from "@/src/components/ui/card";
 import { Badge } from "@/src/components/ui/badge";
+import { ACME_BUILT_IN_LABEL } from "@/src/features/acme-enhancements/utils/acmeBranding";
 
 export type MatchedModelCardProps = {
   model: {
@@ -29,9 +30,10 @@ export function MatchedModelCard({ model }: MatchedModelCardProps) {
           <span className="font-mono text-base font-bold">
             {model.modelName}
           </span>
+          {/* ACME (CHG-2026-146, ADR-0029): "Built-in" for "Langfuse". */}
           {isLangfuseModel && (
             <Badge variant="secondary" className="text-xs">
-              Langfuse
+              {ACME_BUILT_IN_LABEL}
             </Badge>
           )}
         </div>

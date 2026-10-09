@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ReferenceProps } from "@scalar/api-reference";
 import type { NextApiRequest, NextApiResponse } from "next";
+import { ACME_PRODUCT_NAME } from "@/src/features/acme-enhancements/utils/acmeBranding";
 
 const contentSecurityPolicy = [
   "default-src 'none'",
@@ -65,10 +66,12 @@ const apiReferenceConfiguration = {
   `,
 } satisfies NonNullable<ReferenceProps["configuration"]>;
 
+// ACME (CHG-2026-146, ADR-0029): the page is titled "EYEON API Reference".
+// The MCP name above belongs to the API surface and is unchanged.
 const apiReferenceHtml = `<!doctype html>
 <html>
   <head>
-    <title>Langfuse API Reference</title>
+    <title>${ACME_PRODUCT_NAME} API Reference</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
   </head>

@@ -1,0 +1,43 @@
+name: ACME Langfuse text guard
+
+# CHG-2026-146, ADR-0029. EYEON's screens say EYEON or use neutral wording;
+# internal names (LANGFUSE_* settings, @langfuse/* packages, SDK snippets, the
+# API and MCP surface) and the MIT notice stay. The existing "Langfuse" text
+# and langfuse.com links are removed in phases after the upstream sync
+# (CHG-2026-100). Until then this check stops new ones: it fails on any
+# visible "Langfuse" text or langfuse.com link in web/src, packages/shared/src
+# or worker/src that is not in the frozen baseline
+# (acme-governance/langfuse-text-baseline.json).
+#
+# The baseline only shrinks. After removing text, run the script with
+# --shrink and commit the smaller baseline; it reports entries that no longer
+# occur. Nothing in the script adds entries.
+
+on:
+  pull_request:
+    paths:
+      - "web/src/**"
+      - "packages/shared/src/**"
+      - "worker/src/**"
+      - "scripts/ci/check_langfuse_text.py"
+      - "scripts/ci/tests/test_check_langfuse_text.py"
+      - "acme-governance/langfuse-text-baseline.json"
+      - ".github/workflows/acme-langfuse-text-guard.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  langfuse-text:
+    name: No new visible "Langfuse" text
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Test the guard
+        run: python3 -m unittest discover -s scripts/ci/tests -v
+
+      - name: Compare with the frozen baseline
+        run: python3 scripts/ci/check_langfuse_text.py

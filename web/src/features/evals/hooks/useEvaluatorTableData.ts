@@ -13,6 +13,7 @@ import {
 import { generateJobExecutionCounts } from "@/src/features/evals/utils/job-execution-utils";
 import { requiresLegacyMigrationAction } from "@/src/features/evals/utils/typeHelpers";
 import { RAGAS_TEMPLATE_PREFIX } from "@/src/features/evals/types";
+import { ACME_BUILT_IN_LABEL } from "@/src/features/acme-enhancements/utils/acmeBranding";
 
 export type EvaluatorDataRow = {
   id: string;
@@ -127,12 +128,14 @@ export const useEvaluatorTableData = ({
           isResultLoading:
             lazyExecutionCounts.isLoading &&
             !lazyExecutionCounts.jobExecutionCountsByEvaluatorId[jobConfig.id],
+          // ACME (CHG-2026-146, ADR-0029): "Built-in" for "Langfuse
+          // maintained"; MaintainerTooltip keys its icon on these labels.
           maintainer: jobConfig.evalTemplate
             ? jobConfig.evalTemplate.projectId
               ? "User maintained"
               : jobConfig.evalTemplate.name.startsWith(RAGAS_TEMPLATE_PREFIX)
-                ? "Langfuse and Ragas maintained"
-                : "Langfuse maintained"
+                ? `${ACME_BUILT_IN_LABEL} (Ragas)`
+                : ACME_BUILT_IN_LABEL
             : "Not available",
           totalCost: costData,
           isLegacy: requiresLegacyMigrationAction({

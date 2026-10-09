@@ -7091,3 +7091,101 @@ ESLint (no warnings) and Prettier pass on every changed code file. Fresh typeche
 - **README:** the deploy/azure README lists the eight variables.
 
 **Checks:** `terraform fmt -check` passes on the new blocks (it still reports two older alignment lines elsewhere in `main.tf` and `versions.tf`, left as they are); `bash -n` on the script. `terraform validate` and `plan` were not run here: the configuration still awaits its state reconciliation, and no `apply` may run until that is done (see the deploy/azure README).
+
+## 2026-10-09 — User-visible "Langfuse" text: the rules, the ten most visible strings and a guard (CHG-2026-146, ADR-0029)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-146 · owner: Anees Ur Rahman · Tier 1 |
+| **ADR** | [ADR-0029](acme-governance/adr/ADR-0029-langfuse-text.md), **Proposed**: it accepts ADR-0019 apart from §2 and supersedes §2. The owner accepts it after review |
+| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
+| **Impact** | Client-visible: ten places in the console say EYEON or use neutral wording, and built-in models, evaluators and widgets are labelled "Built-in". No behaviour, data, API, MCP or permission change. A new pull-request check fails on new visible "Langfuse" text or langfuse.com links. No downtime |
+| **Schema change** | None |
+| **Rollback** | Revert the commit and redeploy the previous console image. The guard and its baseline go with the revert |
+| **Feature flag** | None (display text) |
+
+**What:** the owner's rulings of 2026-10-09, quoted in ADR-0029 §1: supersede ADR-0019 §2; remove docs links and onboarding videos for now, with no offline help in this change; "Built-in" replaces "Maintained by Langfuse"; now, the ADR, the ten most visible strings and a CI guard with a frozen baseline; after the upstream update, the rest in phases.
+
+- **ADR-0029 (Proposed):**
+  - **Accepted:** ADR-0019's decisions and addenda §11 to §13, with the product name now EYEON (CHG-2026-121).
+  - **The rules replacing §2:**
+    - screens say EYEON or use neutral wording;
+    - the API reference is "EYEON API Reference";
+    - exactly one "Built on open-source Langfuse (MIT)" line, on an About / Open-source licences page that the ADR defines and a later phase builds;
+    - "Built-in" replaces "Maintained by Langfuse";
+    - langfuse.com docs links and the onboarding videos are removed for now.
+  - **Unchanged:** internal names (`langfuse-*` environments, `LANGFUSE_*`, `@langfuse/*`, SDK snippets, the API and MCP surface, `owner: "LANGFUSE"`, identifiers) and the MIT licence and copyright notices.
+  - **Also recorded:** the fresh counts on main at `ab9c908f1` and the prototype plan's earlier estimates.
+- **The ten strings,** ranked by how often a person meets them (ADR-0029 §3.4):
+  1. **The "Maintained by" labels** become "Built-in" (one item): the models table, the model page, the model-match card, the evaluator tables (with "Built-in (Ragas)"), the evaluator template pickers ("Built-in evaluators"), the evaluator peek, and the dashboard widget badge and its copy dialog. One constant, `ACME_BUILT_IN_LABEL`.
+  2. **The API reference's title:** "EYEON API Reference".
+  3. **The Organizations page banner:** "the Agent Skill, MCP server, and CLI."
+  4. **The version-update banner:** "EYEON just got an update".
+  5. **The error toast's button:** "Report issue".
+  6. **The Organizations page's "Get Started" card:** "…to get started with EYEON."
+  7. **Project settings, General:** "When connecting to EYEON, use this hostname / baseurl."
+  8. **The tracing empty state's description:** "…add observability with EYEON…".
+  9. **The tracing empty state's first step:** "…send traces to EYEON."
+  10. **The Prompt Management empty state:** "Prompt Management helps you…".
+
+  The sign-in and sign-up pages, the sidebar, the top bar, the command palette and Home were checked; no visible text there qualified (ADR-0029 §3.4).
+- **The guard:** `scripts/ci/check_langfuse_text.py` (Python, standard library) runs in `.github/workflows/acme-langfuse-text-guard.yml`.
+  - **What it scans:** the read-only scan's method, over `web/src`, `packages/shared/src` and `worker/src`, with tests, stories, `ee/` and generated folders excluded. It gives identical counts to that scan on main.
+  - **The baseline:** `acme-governance/langfuse-text-baseline.json` maps each path and category to the trimmed line texts allowed there, as a multiset. Lines over 240 characters are kept as a prefix, a length and a SHA-256.
+  - **Failing:** it fails on any hit beyond the baseline, listing file, line and text, with how to fix it.
+  - **Stale entries:** it reports baseline entries that no longer occur, and `--shrink` removes them. Nothing in the script adds entries.
+  - **The attribution line:** never baselined, and allowed once.
+  - **The workflow:** pull requests touching those roots, the script, its tests, the baseline or the workflow; `contents: read`; checkout pinned by SHA with `persist-credentials: false`; no secrets.
+- **Baseline counts:**
+  - **Visible text:** 439 lines in 206 files (`web/src` 269 lines in 155 files, `packages/shared/src` 139 in 37, `worker/src` 31 in 14).
+  - **langfuse.com links:** 298 lines in 140 files (`web/src` 260 in 121, `packages/shared/src` 35 in 16, `worker/src` 3 in 3).
+  - **In all:** 737 entries. The ten edits took `web/src` text from 292 lines in 170 files to 269 in 155. No links were removed in this step.
+
+**Why it matters:** EYEON is sold under its own name to buyers who may install it air-gapped, where langfuse.com links and videos are dead ends. ADR-0019 §2 had kept the upstream's name on purpose. The owner has now ruled otherwise. Without a guard, every change and every upstream sync could add new "Langfuse" text while the old text is being removed.
+
+**Choices:**
+- **Python, not Node:** it uses the same regular-expression engine as the scan the counts came from (parity checked), and `python3` is on the runners with no setup, as for the other ACME gates.
+- **Long lines fingerprinted:** without it, test fixtures holding lines of up to 77,000 characters would make the baseline about 850 KB instead of about 100 KB, and the match is still exact.
+- **"Report issue" and "the Agent Skill, MCP server, and CLI":** neutral rather than EYEON. The button opens the console's support drawer, whatever channel it offers. The skill and the CLI are Langfuse's own open-source tools that work against EYEON's API, so naming either product would mislead.
+- **The maintainer icon now keys on the "Built-in" label,** and its accessible name reads "Maintainer: …".
+- **The model page's field** is headed "Maintainer", as the models table's column is.
+
+**Upstream sync (CHG-2026-100):**
+- **Upstream files:** 19, each edit a few lines and marked "ACME (CHG-2026-146)": `docs.ts`, `AgentToolsBanner.tsx`, `VersionUpdateBannerView.tsx`, `ErrorNotification.tsx`, `ProjectOverview.tsx`, `HostNameProject.tsx`, `TracesSetupOnboardingCard.tsx`, `PromptsOnboarding.tsx`, `DashboardWidget.tsx`, `CopyWidgetDialog.tsx`, `models.tsx`, `[modelId].tsx`, `MatchedModelCard.tsx`, `useEvaluatorTableData.ts`, `typeHelpers.ts`, `maintainer-tooltip.tsx`, `evaluator-selector.tsx`, `template-selector.tsx` and `peek-evaluator-config-detail.tsx`.
+- **The sync will bring new upstream text that the guard fails on.** How that PR treats it is open question 1 in ADR-0029, for the owner.
+
+**Release:** web image only. The guard runs in CI. No setting, flag or migration.
+
+**Tests:**
+- **The guard's unit tests:** 24 new (`scripts/ci/tests`).
+  - which paths are scanned and excluded;
+  - which lines count as text, as a link, as both, or not at all (identifiers, setting names, packages, comments, imports);
+  - CRLF, trimming and line numbers;
+  - long-line fingerprints;
+  - the multiset: moved lines are not new, an extra copy is new, and new files and categories are new;
+  - stale entries with their counts;
+  - `--shrink` removing only stale entries and never adding;
+  - counts per root;
+  - malformed baselines;
+  - the attribution line, allowed once and never baselined;
+  - end to end in a scratch repository: clean, new text failing with its location and the help, `--shrink`, and a missing baseline;
+  - the committed baseline being well formed and in scope.
+- **The guard on this tree:** no new hits, and counts equal to the baseline.
+- **Client tests:** 20 new (`acmeLangfuseText.clienttest.tsx`).
+  - the version-update banner, the Organizations banner and the error toast, which still opens support;
+  - the copy dialog, the model-match badge, the evaluator maintainer labels, and the maintainer icon following the label;
+  - each replaced upstream line pinned, so a sync cannot bring it back unnoticed.
+- **Existing tests that pass:** the branding tests (7) and the version-update banner (7).
+- **Server-unit:** `api-spec-route.servertest.ts` (11) passes with the new title. Its MCP name assertion is unchanged.
+
+ESLint (no warnings) and Prettier pass on every changed code file. Fresh typecheck passed with only the 2 tolerated Enterprise-file errors.
+
+**Not done here (later phases, after CHG-2026-100):**
+- the bulk text and links;
+- the 9 email templates;
+- the icons in `web/public` and their alt text;
+- the onboarding videos;
+- building the About / Open-source licences page.
+
+Offline EYEON help is a separate item. `CHANGE-ID-REGISTER.md` is not edited here; its claim is a separate PR.
