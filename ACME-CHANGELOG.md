@@ -7190,6 +7190,22 @@ ESLint (no warnings) and Prettier pass on every changed code file. Fresh typeche
 
 Offline EYEON help is a separate item. `CHANGE-ID-REGISTER.md` is not edited here; its claim is a separate PR.
 
+## 2026-10-09 — Alerts moves to the Settings section (CHG-2026-148)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-148 · owner: Anees Ur Rahman · Tier 2 |
+| **ADR** | None (a sidebar placement; the sections are ADR-0016's) |
+| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Dates** | Dev: not yet released · Staging: not available · Prod: not yet |
+| **Impact** | The Alerts entry appears under Settings instead of Observability, in the classic sidebar and in the EYEON rail's Settings panel. Nothing else changes |
+| **Schema change** | None |
+| **Rollback** | Revert the commit |
+
+**What:** the owner, 2026-10-09: "Move Alerts to Settings." Alert rules are configuration, so the entry now sits in the Settings section, right after the project and organization Settings entries.
+- **Unchanged:** the page, its address, its `alerts:read` scope, and upstream's visibility rule (shown only once the V4 write mode is past `legacy`).
+- **Tests:** the role navigation test pins Alerts to Settings, after the two Settings entries, and checks it is no longer under Observability. The pinned sidebars of the content-free roles are unchanged, because none of them holds `alerts:read`.
+
 ## 2026-10-09 — EYEON Home becomes a command centre (CHG-2026-147, ADR-0030)
 
 | | |
