@@ -119,6 +119,12 @@ export function EyeonSparkline({
   );
 }
 
+const RING_SIZE = {
+  md: "size-32",
+  // CHG-2026-147: three rings side by side on a phone, full size from sm.
+  responsive: "size-20 sm:size-28 xl:size-32",
+} as const;
+
 /**
  * A share as a ring, filled clockwise from 12 o'clock. `fraction` is 0..1;
  * null draws the empty track, for a share that does not exist (no checks).
@@ -130,19 +136,21 @@ export function EyeonRing({
   centerText,
   caption,
   tone = "accent",
+  size = "md",
 }: {
   label: string;
   fraction: number | null;
   centerText: string;
   caption?: string;
   tone?: EyeonTone;
+  size?: keyof typeof RING_SIZE;
 }) {
   const arc = fraction === null ? "" : ringArcPath(60, 60, 50, fraction);
   return (
     <div className="flex flex-col items-center gap-1">
       <svg
         viewBox="0 0 120 120"
-        className={cn("size-32", EYEON_TONE_TEXT[tone])}
+        className={cn(RING_SIZE[size], EYEON_TONE_TEXT[tone])}
         role="img"
         aria-label={label}
       >

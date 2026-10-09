@@ -22,6 +22,8 @@ import {
   Eye,
   EyeOff,
   GripVertical,
+  Maximize2,
+  Minimize2,
   RotateCcw,
 } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
@@ -36,6 +38,8 @@ import { type CardSpan } from "@/src/features/acme-enhancements/utils/eyeonHomeL
 // grip is hidden from assistive technology and takes no focus, because the
 // buttons do the same job. While arranging, a widget's own content is inert,
 // so a click on a tile cannot open its page by mistake.
+// CHG-2026-147 (ADR-0030): a frame can also offer "Wider" and "Narrower",
+// for pages whose widgets each person may size (the command centre).
 
 type ButtonRef = (element: HTMLButtonElement | null) => void;
 
@@ -127,6 +131,7 @@ export function EyeonArrangeFrame({
   onMoveEarlier,
   onMoveLater,
   onHide,
+  resize,
   buttonRef,
   children,
 }: {
@@ -142,7 +147,19 @@ export function EyeonArrangeFrame({
   onMoveEarlier: () => void;
   onMoveLater: () => void;
   onHide: () => void;
-  buttonRef: (action: "earlier" | "later" | "hide") => ButtonRef;
+  /**
+   * The width the person chose (which `span` may widen to fill a row), with
+   * the controls to change it. Without it, the frame offers no sizing.
+   */
+  resize?: {
+    size: CardSpan;
+    sizeText: string;
+    onWider: () => void;
+    onNarrower: () => void;
+  };
+  buttonRef: (
+    action: "earlier" | "later" | "hide" | "wider" | "narrower",
+  ) => ButtonRef;
   children: ReactNode;
 }) {
   const sortable = useSortable({ id, disabled: !arranging });
@@ -206,6 +223,34 @@ export function EyeonArrangeFrame({
           >
             <ArrowRight className="h-4 w-4" aria-hidden="true" />
           </Button>
+          {resize ? (
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                ref={buttonRef("narrower")}
+                aria-label={`Make ${name} narrower (now ${resize.sizeText})`}
+                title="Narrower"
+                disabled={resize.size <= 1}
+                onClick={resize.onNarrower}
+              >
+                <Minimize2 className="h-4 w-4" aria-hidden="true" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                ref={buttonRef("wider")}
+                aria-label={`Make ${name} wider (now ${resize.sizeText})`}
+                title="Wider"
+                disabled={resize.size >= 3}
+                onClick={resize.onWider}
+              >
+                <Maximize2 className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            </>
+          ) : null}
           <Button
             type="button"
             variant="ghost"
@@ -237,6 +282,7 @@ export function EyeonArrangeBar({
   onDone,
   buttonRef,
   storageRefused,
+  intro = "Move or hide tiles and cards.",
 }: {
   hidden: { key: string; name: string; onShow: () => void }[];
   onReset: () => void;
@@ -247,6 +293,8 @@ export function EyeonArrangeBar({
   buttonRef: (key: string) => ButtonRef;
   /** The browser refused to keep the last change. */
   storageRefused: boolean;
+  /** What can be done here, before the line on where it is kept. */
+  intro?: string;
 }) {
   return (
     <section
@@ -255,9 +303,9 @@ export function EyeonArrangeBar({
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm">
-          Move or hide tiles and cards. Your arrangement is kept in this
-          browser, for you only: it changes nothing anyone else sees, and what
-          each role may see stays the same.
+          {intro} Your arrangement is kept in this browser, for you only: it
+          changes nothing anyone else sees, and what each role may see stays the
+          same.
         </p>
         <div className="flex flex-wrap gap-2">
           <Button
