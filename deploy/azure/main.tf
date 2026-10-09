@@ -22,6 +22,21 @@
 # (AUTH_AZURE_AD_ALLOW_ACCOUNT_LINKING) stays unset on purpose: CHG-2026-108
 # removed it, and nothing here may set it.
 locals {
+  # CHG-2026-145: the EYEON page switches, always rendered as "true" or
+  # "false", so a plan shows each one and an apply cannot drop it. Until then
+  # they were set only on the live web Deployment, and a revert to an older
+  # template on 2026-10-08 switched one off unnoticed.
+  cairo_eyeon_flags = {
+    CAIRO_EYEON_OVERVIEW_ENABLED            = var.eyeon_overview_enabled
+    CAIRO_EYEON_GUARDRAIL_DECISIONS_ENABLED = var.eyeon_guardrail_decisions_enabled
+    CAIRO_EYEON_ENFORCEMENT_ENABLED         = var.eyeon_enforcement_enabled
+    CAIRO_EYEON_HOME_ENABLED                = var.eyeon_home_enabled
+    CAIRO_EYEON_RAIL_ENABLED                = var.eyeon_rail_enabled
+    CAIRO_EYEON_GATEWAY_HEALTH_ENABLED      = var.eyeon_gateway_health_enabled
+    CAIRO_EYEON_SPEND_ENABLED               = var.eyeon_spend_enabled
+    CAIRO_ACME_AI_ENABLED                   = var.acme_ai_enabled
+  }
+
   cairo_access_env = concat(
     [{ name = "CAIRO_GUARDRAIL_MODE_MAX", value = var.guardrail_mode_max }],
     length(var.sso_enforced_domains) > 0 ? [
@@ -35,6 +50,7 @@ locals {
     var.gateway_traces_project_id != "" ? [
       { name = "CAIRO_GATEWAY_TRACES_PROJECT_ID", value = var.gateway_traces_project_id },
     ] : [],
+    [for name, on in local.cairo_eyeon_flags : { name = name, value = on ? "true" : "false" }],
   )
 }
 

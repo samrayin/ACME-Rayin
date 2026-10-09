@@ -7070,3 +7070,24 @@ ESLint (no warnings) and Prettier pass on every changed code file. Fresh typeche
 **Release:** the image settings take effect with the next web and worker image builds; the Storybook setting with the next local or CI run. No migration, no runtime setting on the cluster.
 
 **Checks:** ESLint and Prettier clean on the Storybook config. The Dockerfiles change only by three `ENV` lines on their first stage.
+
+## 2026-10-08 — The EYEON switches declared in deploy/azure (CHG-2026-145)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-145 · owner: Anees Ur Rahman · Tier 1 |
+| **ADR** | None (it declares existing settings; the pattern is CHG-2026-118's) |
+| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Dates** | Dev: not applied (code and plan only) · Staging: not available · Prod: not yet |
+| **Impact** | None until someone runs `terraform apply`, which is not part of this change. Afterwards, an apply keeps the EYEON pages as the private variables file declares them, instead of dropping the switches |
+| **Schema change** | None |
+| **Rollback** | Revert the commit |
+
+**What:** the owner, 2026-10-08: "Yes. Start". The EYEON page switches existed only on the live web Deployment, like the settings CHG-2026-118 moved into deploy/azure. A Helm upgrade or `terraform apply` from this configuration would have dropped them, and a revert to an older template at 13:03 UTC that day switched Gateway health off without anyone noticing.
+- **Variables:** `variables.tf` declares eight booleans, all defaulting to false, so a new deployment starts with every EYEON page off: `eyeon_overview_enabled`, `eyeon_guardrail_decisions_enabled`, `eyeon_enforcement_enabled`, `eyeon_home_enabled`, `eyeon_rail_enabled`, `eyeon_gateway_health_enabled`, `eyeon_spend_enabled` and `acme_ai_enabled`.
+- **Rendering:** `main.tf` passes them to the console's environment beside `CAIRO_GUARDRAIL_MODE_MAX`, always as `"true"` or `"false"`, so a plan shows each one.
+- **Dev values:** they go in the private variables file in the operations repository (`envs/dev/deploy-azure.tfvars`) as the console runs them now: seven pages on, ACME AI off.
+- **Drift check:** `scripts/release/check-declared-settings.sh` now also compares each switch with the live Deployment and prints its value (the switches name no environment or person).
+- **README:** the deploy/azure README lists the eight variables.
+
+**Checks:** `terraform fmt -check` passes on the new blocks (it still reports two older alignment lines elsewhere in `main.tf` and `versions.tf`, left as they are); `bash -n` on the script. `terraform validate` and `plan` were not run here: the configuration still awaits its state reconciliation, and no `apply` may run until that is done (see the deploy/azure README).

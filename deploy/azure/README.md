@@ -57,11 +57,22 @@ terraform plan -var-file=<path to the operations repository>/envs/dev/deploy-azu
 | `sso_enforced_domains` | `AUTH_DOMAINS_WITH_SSO_ENFORCEMENT` | not set: no domain is SSO-only |
 | `guardrail_admins` | `CAIRO_GUARDRAIL_ADMINS` | not set: nobody can change guardrail policy or mode |
 | `gateway_traces_project_id` | `CAIRO_GATEWAY_TRACES_PROJECT_ID`, the project the gateway's traces go to (CHG-2026-126) | not set: the Applications detail screen shows each request's trace id without a link |
+| `eyeon_overview_enabled` | `CAIRO_EYEON_OVERVIEW_ENABLED` (CHG-2026-132) | `false`: the page is off |
+| `eyeon_guardrail_decisions_enabled` | `CAIRO_EYEON_GUARDRAIL_DECISIONS_ENABLED` (CHG-2026-133) | `false` |
+| `eyeon_enforcement_enabled` | `CAIRO_EYEON_ENFORCEMENT_ENABLED` (CHG-2026-138) | `false` |
+| `eyeon_home_enabled` | `CAIRO_EYEON_HOME_ENABLED` (CHG-2026-136) | `false`: the classic Home |
+| `eyeon_rail_enabled` | `CAIRO_EYEON_RAIL_ENABLED` (CHG-2026-135) | `false`: the classic sidebar |
+| `eyeon_gateway_health_enabled` | `CAIRO_EYEON_GATEWAY_HEALTH_ENABLED` (CHG-2026-139) | `false` |
+| `eyeon_spend_enabled` | `CAIRO_EYEON_SPEND_ENABLED` (CHG-2026-143) | `false` |
+| `acme_ai_enabled` | `CAIRO_ACME_AI_ENABLED` (CHG-2026-141) | `false`: no ACME AI |
+
+The EYEON switches (CHG-2026-145) are always rendered, as `"true"` or
+`"false"`, so a plan shows each one.
 
 A plan without the file would therefore lower dev's ceiling to record, reopen
-password sign-in for users, and leave no guardrail administrator. Account
-linking (`AUTH_AZURE_AD_ALLOW_ACCOUNT_LINKING`) stays unset; there is no
-variable for it.
+password sign-in for users, leave no guardrail administrator, and switch every
+EYEON page off. Account linking (`AUTH_AZURE_AD_ALLOW_ACCOUNT_LINKING`) stays
+unset; there is no variable for it.
 
 To check that these values, and the gateway manifests, match the live
 environment (read-only):
