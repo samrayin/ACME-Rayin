@@ -7077,7 +7077,7 @@ ESLint (no warnings) and Prettier pass on every changed code file. Fresh typeche
 |---|---|
 | **Change ID** | CHG-2026-145 · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | None (it declares existing settings; the pattern is CHG-2026-118's) |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Approval** | Owner, 2026-10-09: reviewed and merged #400, and the dev values in the private operations repository's companion PR. Code and plan only: no `terraform apply` was run or approved, and none may run until the deploy/azure state reconciliation is done. No pre-merge review report, per the owner's dev decision (PL-087); an independent read-only review by another session found no blockers. Not a production approval |
 | **Dates** | Dev: not applied (code and plan only) · Staging: not available · Prod: not yet |
 | **Impact** | None until someone runs `terraform apply`, which is not part of this change. Afterwards, an apply keeps the EYEON pages as the private variables file declares them, instead of dropping the switches |
 | **Schema change** | None |
@@ -7098,7 +7098,7 @@ ESLint (no warnings) and Prettier pass on every changed code file. Fresh typeche
 |---|---|
 | **Change ID** | CHG-2026-146 · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | [ADR-0029](acme-governance/adr/ADR-0029-langfuse-text.md), **Proposed**: it accepts ADR-0019 apart from §2 and supersedes §2. The owner accepts it after review |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Approval** | Owner, 2026-10-09: reviewed and merged #405 ("405 is merged"). **Not released:** the console text reaches dev with the next console release, on the owner's go. ADR-0029 stays Proposed until the owner accepts it. The guard passed on the PR; the other failing checks were the same as on `main` before the merge. No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
 | **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
 | **Impact** | Client-visible: ten places in the console say EYEON or use neutral wording, and built-in models, evaluators and widgets are labelled "Built-in". No behaviour, data, API, MCP or permission change. A new pull-request check fails on new visible "Langfuse" text or langfuse.com links. No downtime |
 | **Schema change** | None |
