@@ -7190,6 +7190,55 @@ ESLint (no warnings) and Prettier pass on every changed code file. Fresh typeche
 
 Offline EYEON help is a separate item. `CHANGE-ID-REGISTER.md` is not edited here; its claim is a separate PR.
 
+## 2026-10-09 — EYEON Home becomes a command centre (CHG-2026-147, ADR-0030)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-147 · owner: Anees Ur Rahman · Tier 1 |
+| **ADR** | ADR-0030 (Proposed); supersedes ADR-0028's "the overview as Home" and its arrangement format |
+| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Dates** | Dev: not yet released · Staging: not available · Prod: not yet |
+| **Impact** | With `CAIRO_EYEON_HOME_ENABLED` on (it is in dev), a role that gets EYEON Home now sees the command centre instead of the overview. The Overview entry is unchanged. Role landings and the flag are unchanged |
+| **Schema change** | None. No new router or read |
+| **Rollback** | Revert the commit, or switch `CAIRO_EYEON_HOME_ENABLED` off for the classic Home |
+
+**What:** the owner, 2026-10-09: "My home page needs complete revamping.. create amazing dasboard with useful infomraiton.. you should be able to move the widgets across.. act as a CEO + CISO". Home now answers, in this order: what needs you, are we safe, what does AI cost and is it used.
+- **Briefing:**
+  - one line on what needs attention;
+  - sentences on activity, guardrails, the month's spend and model health;
+  - the mode chip;
+  - three rings: checks decided in enforce mode, calls answered without error, and models that passed the last health check. Each ring is an exact share, not a score.
+- **Headline figures:** AI calls, spend this month, risks flagged (and how many were let through), enforced share, applications and healthy models. Each opens its page.
+- **Thirteen widgets:**
+  - Needs your attention: a ranked list of "Act now" and "Watch" items, each linked to its evidence;
+  - Guardrail posture;
+  - Risks stopped and let through;
+  - Spend this month;
+  - AI adoption;
+  - Gateway and models;
+  - What the guardrails caught: policy types and personal-data types, counts only;
+  - Control integrity: guardrail pods on the current settings, gateways in the served mode, the judge, and the request log's completeness;
+  - Top applications;
+  - Applications at risk;
+  - Model mix;
+  - Closest to budget;
+  - What EYEON cannot see.
+- **Arranging:**
+  - widgets move anywhere (drag by the grip, or buttons);
+  - each can be a third, two thirds or the full width;
+  - each can be hidden and shown again;
+  - three starting views: Everything, Executive, Security.
+
+  The arrangement is kept per person and project in the browser only.
+- **Where the figures come from:**
+  - **No reads of its own.** Home asks the EYEON pages' own summaries (overview, Spend, Gateway health, Guardrail decisions, Enforcement and policy), each only for a role that opens that page. Every figure matches its page, and no role sees more than it does there.
+  - **Switched off or unreadable:** a page switched off, a request log switched off, or a source that fails to load is said in words, never shown as zero.
+- **Kit changes:** the shared arrange frame gains optional "Wider" and "Narrower" buttons, and the arrange bar takes its own intro text. The ring gains a responsive size for phones. The overview page is unchanged.
+- **Tests:**
+  - New: layout (views, sizing, sanitising, storage), the briefing, attention, rings and links, and the rendered page (roles, honest states, move, resize, hide and show, reset, inert content, read-back).
+  - The Home landing test now expects the command centre.
+- **Storybook:** stories for Owner, Auditor, Enforcing and Loading. They were checked in a real browser at 1440 px and 375 px, with a mouse drag, a resize and the Security view.
+
 ## 2026-10-09 — Alerts moves to the Settings section (CHG-2026-148)
 
 | | |

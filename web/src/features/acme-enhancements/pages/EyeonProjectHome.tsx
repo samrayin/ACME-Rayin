@@ -4,7 +4,7 @@ import { useSession } from "next-auth/react";
 import Page from "@/src/components/layouts/page";
 import { NoDataOrLoading } from "@/src/components/NoDataOrLoading";
 import ProjectHomePage from "@/src/features/dashboard/ProjectHomePage";
-import EyeonOverviewPage from "@/src/features/acme-enhancements/pages/EyeonOverviewPage";
+import EyeonCommandCentrePage from "@/src/features/acme-enhancements/pages/EyeonCommandCentrePage";
 import { projectHomeLanding } from "@/src/features/acme-enhancements/utils/eyeonHomeLanding";
 import { useLandsOnGuardrails } from "@/src/features/rbac/hooks/useIsSecurityAnalyst";
 import { useHasProjectAccess } from "@/src/features/rbac/utils/checkProjectAccess";
@@ -12,7 +12,8 @@ import { api } from "@/src/utils/api";
 
 // ACME (CHG-2026-136, ADR-0028): the project home. With
 // CAIRO_EYEON_HOME_ENABLED and CAIRO_EYEON_OVERVIEW_ENABLED on, a role that
-// can open the EYEON overview gets it as Home; every other role, and every
+// can open the EYEON overview gets EYEON Home: since CHG-2026-147 (ADR-0030)
+// the command centre rather than the overview itself. Every other role, and every
 // role while the flag is off, keeps the classic Home (ProjectHomePage,
 // unchanged). The Security Analyst and the Auditor are sent to the page they
 // can use before any Home renders: the Guardrail decisions page while its
@@ -71,7 +72,7 @@ export default function EyeonProjectHome() {
     if (redirectTo) router.replace(redirectTo);
   }, [redirectTo, router]);
 
-  if (landing.kind === "eyeonHome") return <EyeonOverviewPage asHome />;
+  if (landing.kind === "eyeonHome") return <EyeonCommandCentrePage />;
   if (landing.kind === "classicHome") return <ProjectHomePage />;
   return (
     <Page withPadding scrollable headerProps={{ title: "Home" }}>

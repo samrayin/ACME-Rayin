@@ -47,11 +47,13 @@ vi.mock("@/src/utils/api", () => {
 vi.mock("@/src/features/dashboard/ProjectHomePage", () => ({
   default: () => <p>Classic Home</p>,
 }));
-vi.mock("@/src/features/acme-enhancements/pages/EyeonOverviewPage", () => ({
-  default: ({ asHome }: { asHome?: boolean }) => (
-    <p>{asHome ? "EYEON overview as Home" : "EYEON overview"}</p>
-  ),
-}));
+// CHG-2026-147 (ADR-0030): EYEON Home is the command centre now.
+vi.mock(
+  "@/src/features/acme-enhancements/pages/EyeonCommandCentrePage",
+  () => ({
+    default: () => <p>EYEON command centre as Home</p>,
+  }),
+);
 vi.mock("@/src/components/layouts/page", () => ({
   default: ({ children }: { children: ReactNode }) => <main>{children}</main>,
 }));
@@ -100,17 +102,19 @@ describe("EYEON Home flag (CHG-2026-136)", () => {
     signedInAs(role);
     render(<EyeonProjectHome />);
     expect(screen.getByText("Classic Home")).toBeInTheDocument();
-    expect(screen.queryByText(/EYEON overview/)).toBeNull();
+    expect(screen.queryByText(/EYEON command centre/)).toBeNull();
     expect(h.replace).not.toHaveBeenCalled();
   });
 
   it.each(["OWNER", "ADMIN"])(
-    "flag on: %s gets the EYEON overview as Home",
+    "flag on: %s gets the EYEON command centre as Home",
     (role) => {
       signedInAs(role);
       flags({ home: true });
       render(<EyeonProjectHome />);
-      expect(screen.getByText("EYEON overview as Home")).toBeInTheDocument();
+      expect(
+        screen.getByText("EYEON command centre as Home"),
+      ).toBeInTheDocument();
       expect(screen.queryByText("Classic Home")).toBeNull();
       expect(h.replace).not.toHaveBeenCalled();
     },
@@ -120,7 +124,9 @@ describe("EYEON Home flag (CHG-2026-136)", () => {
     signedInAs("NONE", true);
     flags({ home: true });
     render(<EyeonProjectHome />);
-    expect(screen.getByText("EYEON overview as Home")).toBeInTheDocument();
+    expect(
+      screen.getByText("EYEON command centre as Home"),
+    ).toBeInTheDocument();
   });
 
   it("falls back to the classic Home when the flag cannot be read", () => {
@@ -136,7 +142,7 @@ describe("EYEON Home flag (CHG-2026-136)", () => {
     render(<EyeonProjectHome />);
     expect(screen.getByText("Loading")).toBeInTheDocument();
     expect(screen.queryByText("Classic Home")).toBeNull();
-    expect(screen.queryByText(/EYEON overview/)).toBeNull();
+    expect(screen.queryByText(/EYEON command centre/)).toBeNull();
   });
 
   it("shows neither Home while the session loads", () => {
@@ -180,7 +186,7 @@ describe("role landings (CHG-2026-136)", () => {
         );
         // Never a Home, not even for a moment, and Home's flag is not asked.
         expect(screen.queryByText("Classic Home")).toBeNull();
-        expect(screen.queryByText(/EYEON overview/)).toBeNull();
+        expect(screen.queryByText(/EYEON command centre/)).toBeNull();
         expect(h.asked.has("home")).toBe(false);
         unmount();
       }

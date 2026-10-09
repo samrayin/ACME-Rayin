@@ -145,7 +145,12 @@ export function showWidget<Id extends string>(
   return { ...zone, hidden: zone.hidden.filter((x) => x !== id) };
 }
 
-function sanitiseZone<Id extends string>(
+/**
+ * One group's stored arrangement, kept to what the page knows: unknown ids
+ * and duplicates are dropped, and widgets missing from the stored order come
+ * back in their default place. CHG-2026-147: also used by the command centre.
+ */
+export function sanitiseZone<Id extends string>(
   value: unknown,
   defaults: readonly Id[],
 ): ArrangeZone<Id> {
