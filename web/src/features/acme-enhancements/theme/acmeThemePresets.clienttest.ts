@@ -148,7 +148,7 @@ describe("dark-mode accents (CHG-2026-127)", () => {
     expect(darkBlock).not.toContain(ACME_ACCENT_COLOR_PRESETS.teal.primary);
   });
 
-  it("colours the wordmark's ON and the active sidebar item in dark mode", () => {
+  it("colours the active sidebar item in dark mode", () => {
     const css = acmeThemeCss({
       ...ACME_THEME_DEFAULT,
       darkAccentColor: "cyan",

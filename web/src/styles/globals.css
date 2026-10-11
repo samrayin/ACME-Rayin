@@ -522,9 +522,10 @@
        palette. Near-black, faintly teal surfaces; ink greys for text; status
        colours kept apart from the brand accents (allow green, redact amber,
        block red-pink, info periwinkle); charts lead with lime, cyan and
-       magenta. The accent itself (primary, links, rings, the active sidebar
-       item and the wordmark's "ON") still follows the chosen dark accent
-       (CHG-2026-127); lime is the default. Light mode is not touched. */
+       magenta. The accent itself (primary, links, rings and the active
+       sidebar item) still follows the chosen dark accent (CHG-2026-127);
+       lime is the default. Light mode is not touched. The EYEON logo is an
+       image with fixed colours (CHG-2026-150). */
     /* Surface ladder — "layers become one step lighter with each added
        layer" (Carbon's dark-theme layering model; Hex and Cloudflare Kumo
        follow the same structure). The GLOBAL FRAME (header/sidebar chrome)

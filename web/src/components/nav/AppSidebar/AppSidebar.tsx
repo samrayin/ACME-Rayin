@@ -68,6 +68,10 @@ import {
   APP_SHELL_CHROME_ROW_TEST_ID,
 } from "@/src/components/layouts/app-shell-chrome";
 import { cn } from "@/src/utils/tailwind";
+// ACME (CHG-2026-150): the EYEON logo, and the header row beside the rail.
+import { EyeonSidebarLogo } from "@/src/features/acme-enhancements/components/eyeon/brand/EyeonSidebarLogo";
+import { EYEON_RAIL_HEADER_ROW_CLASS } from "@/src/features/acme-enhancements/components/eyeon/rail/eyeonRailLayout";
+import { acmeHeaderBackgroundClass } from "@/src/features/acme-enhancements/theme/acmeThemePresets";
 
 const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
 
@@ -183,6 +187,12 @@ type AppSidebarProps = {
     darkModeHref?: string;
     /** ACME (CHG-2026-124): the organization's own logo, as a data URL. */
     customerSrc?: string;
+    /**
+     * ACME (CHG-2026-150): the logo row's background, the page header's own
+     * (light in the light theme, with the project's tint or gradient; dark
+     * in the dark theme). Without it, the plain header background.
+     */
+    rowClassName?: string;
   };
   versionState: SidebarVersionState;
   showDemoBadge: boolean;
@@ -233,6 +243,14 @@ export function AppSidebar({
           className={cn(
             APP_SHELL_CHROME_ROW_CLASS,
             "min-w-0 gap-2 px-3 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0",
+            // ACME (CHG-2026-150): beside the EYEON rail the row also spans
+            // the rail's top row, one header with the logo at the rail's
+            // left. It takes the page header's background, so in the light
+            // theme the logo row is light and the black-lettered logo shows
+            // (owner's option B, 2026-10-11); in the dark theme the header
+            // and the sidebar share one colour.
+            EYEON_RAIL_HEADER_ROW_CLASS,
+            logo.rowClassName ?? acmeHeaderBackgroundClass(undefined),
           )}
         >
           <Link href="/" className="flex items-center">
@@ -240,6 +258,12 @@ export function AppSidebar({
               logoLightModeHref={logo.lightModeHref}
               logoDarkModeHref={logo.darkModeHref}
               customerLogoSrc={logo.customerSrc}
+              // ACME (CHG-2026-150): the EYEON logo image.
+              brand={
+                <EyeonSidebarLogo
+                  besideCustomerLogo={Boolean(logo.customerSrc)}
+                />
+              }
             />
           </Link>
         </div>

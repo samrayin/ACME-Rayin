@@ -54,6 +54,8 @@ import { AcmeThemeStyleInjector } from "@/src/features/acme-enhancements/compone
 import { EyeonRail } from "@/src/features/acme-enhancements/components/eyeon/rail/EyeonRail";
 import { useEyeonRail } from "@/src/features/acme-enhancements/components/eyeon/rail/useEyeonRail";
 import { EyeonSidebarProvider } from "@/src/features/acme-enhancements/components/eyeon/shell/EyeonSidebarProvider";
+// ACME (CHG-2026-150): the sidebar's logo row takes the page header's background.
+import { useAcmeHeaderBackgroundClassName } from "@/src/features/acme-enhancements/theme/useAcmeHeaderBackgroundClassName";
 import {
   PaymentBannerView,
   usePaymentBanner,
@@ -299,8 +301,11 @@ export function AuthenticatedLayout({
               />
             )}
             <div className="pt-banner-offset flex min-h-0 flex-1">
-              {/* ACME (CHG-2026-135): the rail, left of the sidebar. */}
-              {eyeonRail.model && <EyeonRail model={eyeonRail.model} />}
+              {/* ACME (CHG-2026-135): the rail, left of the sidebar.
+                  ACME (CHG-2026-150): compact or expanded, kept per person. */}
+              {eyeonRail.model && (
+                <EyeonRail model={eyeonRail.model} userId={user.id} />
+              )}
               <ConnectedAppSidebar
                 navItems={eyeonRail.sidebarNavigation}
                 secondaryNavItems={navigation.secondaryNavigation}
@@ -413,6 +418,8 @@ function ConnectedAppSidebar({
     organizationId: organization?.id,
     scope: "projects:create",
   });
+  // ACME (CHG-2026-150): the page header's background, for the logo row.
+  const logoRowClassName = useAcmeHeaderBackgroundClassName();
   const [dismissedNotificationIds, setDismissedNotificationIds] =
     useLocalStorage<string[]>(DISMISSED_SIDEBAR_NOTIFICATIONS_KEY, []);
 
@@ -474,6 +481,7 @@ function ConnectedAppSidebar({
         lightModeHref: uiCustomization?.logoLightModeHref,
         darkModeHref: uiCustomization?.logoDarkModeHref,
         customerSrc: customerLogo.data?.src,
+        rowClassName: logoRowClassName,
       }}
       versionState={versionState}
       v4UpgradeUiEnabled={v4UpgradeUiEnabled}

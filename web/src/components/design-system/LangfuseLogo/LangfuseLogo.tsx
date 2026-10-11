@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { LangfuseIcon } from "@/src/components/design-system/LangfuseIcon/LangfuseIcon";
 import { cn } from "@/src/utils/tailwind";
 import { PlusIcon } from "lucide-react";
@@ -6,11 +7,17 @@ export const LangfuseLogo = ({
   logoLightModeHref,
   logoDarkModeHref,
   customerLogoSrc,
+  brand,
 }: {
   logoLightModeHref?: string;
   logoDarkModeHref?: string;
   /** ACME (CHG-2026-124): the organization's own logo, as a data URL. */
   customerLogoSrc?: string;
+  /**
+   * ACME (CHG-2026-150): the EYEON logo, passed in by the app (a
+   * design-system file does not import feature code).
+   */
+  brand?: ReactNode;
 }) => {
   if (logoLightModeHref && logoDarkModeHref) {
     // logo is a url, maximum aspect ratio of 1:3 needs to be supported according to docs
@@ -56,22 +63,15 @@ export const LangfuseLogo = ({
           />
         </div>
       ) : null}
-      {/* ACME (CHG-2026-121, was CHG-2026-081): EYEON, "EYE" in white and
-          "ON" in the accent colour (owner's choice, 2026-10-06), at 24 px on
-          its own, or 20 px beside a customer logo so both fit the sidebar.
-          The ACME logo that stood beside it is removed (owner, 2026-10-06).
-          The wordmark keeps its extra-bold logo weight: it is lettering, not
-          body type. */}
-      <span
-        title="EYEON"
-        className={cn(
-          // eslint-disable-next-line @repo/no-raw-font-weight
-          "truncate leading-none font-extrabold tracking-wide text-white group-data-[collapsible=icon]:hidden",
-          customerLogoSrc ? "text-xl" : "text-2xl",
-        )}
-      >
-        EYE<span className="text-sidebar-accent-foreground">ON</span>
-      </span>
+      {/* ACME (CHG-2026-150, was CHG-2026-121): the EYEON logo, an image
+          with fixed colours, in place of the "EYE" + "ON" text wordmark
+          (AppSidebar passes it in). Collapsed to icons, the sidebar shows
+          the icon below instead, as before. */}
+      {brand ? (
+        <span className="flex shrink-0 group-data-[collapsible=icon]:hidden">
+          {brand}
+        </span>
+      ) : null}
       <div className="hidden scale-120 group-data-[collapsible=icon]:block">
         <LangfuseIcon size={28} />
       </div>

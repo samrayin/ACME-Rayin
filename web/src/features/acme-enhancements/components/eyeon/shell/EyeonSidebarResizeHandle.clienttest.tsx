@@ -485,7 +485,7 @@ function RailShell() {
   return (
     <EyeonSidebarProvider userId={USER}>
       <div className="flex">
-        {rail.model && <EyeonRail model={rail.model} />}
+        {rail.model && <EyeonRail model={rail.model} userId={USER} />}
         <Sidebar collapsible="icon">
           <NavMain items={rail.sidebarNavigation} />
           <SidebarRail />
@@ -503,8 +503,15 @@ describe("with the EYEON rail (CHG-2026-142)", () => {
     const { container } = render(<RailShell />);
 
     const before = railNav().className;
+    // CHG-2026-150: the compact rail hands the sidebar its width, and the
+    // fixed panel sits that far from the window's edge.
     expect(before).toContain("w-22");
-    expect(before).toContain("[&~[data-side=left]>.fixed]:left-22");
+    expect(before).toContain(
+      "[&~[data-side=left]]:[--eyeon-rail-width:5.5rem]",
+    );
+    expect(before).toContain(
+      "[&~[data-side=left]>.fixed]:left-(--eyeon-rail-width)",
+    );
     // The panel the rail shifts is the one whose width follows the drag.
     const panel = container.querySelector<HTMLElement>(
       '[data-side="left"] > .fixed',
