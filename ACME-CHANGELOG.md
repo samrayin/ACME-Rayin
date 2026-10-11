@@ -7291,7 +7291,7 @@ Offline EYEON help is a separate item. `CHANGE-ID-REGISTER.md` is not edited her
 |---|---|
 | **Change ID** | CHG-2026-150 · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | [ADR-0026](acme-governance/adr/ADR-0026-adopting-the-eyeon-prototype.md) §12.5 (addendum) |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Approval** | Owner, 2026-10-11: chose option B in the prototype ("Proceed with B and build it now"), reviewed and merged #410, and approved the release ("release 410"); live in dev as console `acme-v4.38.0.52` (TRACED, revision 113). No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
 | **Dates** | Dev: not yet released · Staging: not available · Prod: not yet |
 | **Impact** | Client-visible. The "EYE" + "ON" text wordmark becomes the owner's logo image, in the sidebar, on the phone's top bar and in the UI Customization preview. With the EYEON rail on (`CAIRO_EYEON_RAIL_ENABLED`), the logo row reads as one header across the rail and the page list, and the rail can be expanded to show each name beside its icon. No data, API, permission or schema change. No downtime |
 | **Schema change** | None |
