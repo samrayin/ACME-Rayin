@@ -212,9 +212,9 @@ export const ACME_THEME_DEFAULT: AcmeTheme = {
 
 /**
  * The CSS that applies a theme: the light-mode accent only while the page is
- * light, and the dark-mode accent (with the sidebar's active item and the
- * EYEON wordmark's "ON", which use --sidebar-accent-foreground) only while
- * it is dark. `:root.dark` and `:root:not(.dark)` outrank globals.css's
+ * light, and the dark-mode accent (with the sidebar's active item, which
+ * uses --sidebar-accent-foreground) only while it is dark. The EYEON logo is
+ * an image with fixed colours (CHG-2026-150) and follows no accent. `:root.dark` and `:root:not(.dark)` outrank globals.css's
  * `.dark` and `:root`, whatever the order of the stylesheets.
  *
  * Built only from the fixed presets above, never from user text.

@@ -418,11 +418,6 @@
         "link: \"https://langfuse.com/changelog/2026-05-29-mcp-update\","
       ]
     },
-    "web/src/components/nav/topbar-brand.tsx": {
-      "text": [
-        "aria-label=\"Langfuse home\""
-      ]
-    },
     "web/src/components/onboarding/AnnotationQueuesOnboarding.tsx": {
       "link": [
         "href: \"https://langfuse.com/docs/scores/annotation\",",

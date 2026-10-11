@@ -16,6 +16,9 @@ import {
   ACME_LOGO_TYPES,
   type AcmeLogoType,
 } from "@/src/features/acme-enhancements/server/acmeCustomerLogoCheck";
+import { EyeonSidebarLogo } from "@/src/features/acme-enhancements/components/eyeon/brand/EyeonSidebarLogo";
+import { acmeHeaderBackgroundClass } from "@/src/features/acme-enhancements/theme/acmeThemePresets";
+import { cn } from "@/src/utils/tailwind";
 
 // ACME (CHG-2026-124, ADR-0025): "Add Logo" on the UI Customization page. The
 // organization's Owners and Admins upload the customer's own logo; everyone in
@@ -75,10 +78,18 @@ async function precheck(file: File): Promise<string | null> {
   return null;
 }
 
-/** How the sidebar header will look, on the sidebar's own colours. */
+/**
+ * How the sidebar's logo row will look. It has the page header's plain
+ * background (CHG-2026-150): light in the light theme, dark in the dark one.
+ */
 function SidebarPreview({ src }: { src?: string }) {
   return (
-    <div className="bg-sidebar flex h-11 w-46 items-center gap-2 rounded-md px-3">
+    <div
+      className={cn(
+        "flex h-11 w-46 items-center gap-2 rounded-md border px-3",
+        acmeHeaderBackgroundClass(undefined),
+      )}
+    >
       {src ? (
         <div className="flex h-8 shrink-0 items-center rounded-md bg-white px-1.5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -89,12 +100,8 @@ function SidebarPreview({ src }: { src?: string }) {
           />
         </div>
       ) : null}
-      <span
-        // eslint-disable-next-line @repo/no-raw-font-weight
-        className={`${src ? "text-xl" : "text-2xl"} leading-none font-extrabold tracking-wide text-white`}
-      >
-        EYE<span className="text-sidebar-accent-foreground">ON</span>
-      </span>
+      {/* CHG-2026-150: the EYEON logo as the logo row shows it. */}
+      <EyeonSidebarLogo besideCustomerLogo={Boolean(src)} />
     </div>
   );
 }

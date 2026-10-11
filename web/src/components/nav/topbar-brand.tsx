@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useUiCustomization } from "@/src/ee/features/ui-customization/useUiCustomization";
 import { PlusIcon } from "lucide-react";
 import { LangfuseIcon } from "@/src/components/design-system/LangfuseIcon/LangfuseIcon";
+// ACME (CHG-2026-150): the EYEON logo image.
+import { EyeonLogo } from "@/src/features/acme-enhancements/components/eyeon/brand/EyeonLogo";
 
 /**
  * Compact Langfuse brand mark for the top bar.
@@ -33,7 +35,8 @@ export const TopbarBrand = ({
   return (
     <Link
       href="/"
-      aria-label="Langfuse home"
+      // ACME (CHG-2026-150): the product's own name.
+      aria-label="EYEON home"
       className={cn("flex shrink-0 items-center gap-1", className)}
     >
       {logoLight && logoDark ? (
@@ -56,13 +59,10 @@ export const TopbarBrand = ({
           <LangfuseIcon size={16} />
         </>
       ) : variant === "wordmark" ? (
-        // ACME (CHG-2026-121): the EYEON wordmark on its own, "ON" in the
-        // accent colour, as in the sidebar; the ACME logo is removed (owner,
-        // 2026-10-06). It keeps the sidebar wordmark's extra-bold logo weight.
-        // eslint-disable-next-line @repo/no-raw-font-weight
-        <span className="text-foreground text-lg leading-none font-extrabold tracking-wide">
-          EYE<span className="text-primary">ON</span>
-        </span>
+        // ACME (CHG-2026-150, was CHG-2026-121): the EYEON logo on its own,
+        // 20 px high. The phone's top bar follows the theme, so the logo
+        // does too: the light-theme logo in light mode, the dark one in dark.
+        <EyeonLogo size="sm" />
       ) : (
         <LangfuseIcon size={28} />
       )}

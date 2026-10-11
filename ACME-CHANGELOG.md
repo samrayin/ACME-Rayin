@@ -7284,3 +7284,60 @@ Offline EYEON help is a separate item. `CHANGE-ID-REGISTER.md` is not edited her
 2. Replace only its `litellm-config.yaml` key with `main`'s file. The two hook files stay untouched.
 3. Restart the gateway (2 replicas, rolling) and watch the rollout.
 4. Check: the startup logs show no errors; the readiness check answers; the model catalogue lists four models; a guardrail check still gets a verdict.
+
+## 2026-10-11 — The EYEON logo, one header row, and a rail that widens (CHG-2026-150)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-150 · owner: Anees Ur Rahman · Tier 1 |
+| **ADR** | [ADR-0026](acme-governance/adr/ADR-0026-adopting-the-eyeon-prototype.md) §12.5 (addendum) |
+| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Dates** | Dev: not yet released · Staging: not available · Prod: not yet |
+| **Impact** | Client-visible. The "EYE" + "ON" text wordmark becomes the owner's logo image, in the sidebar, on the phone's top bar and in the UI Customization preview. With the EYEON rail on (`CAIRO_EYEON_RAIL_ENABLED`), the logo row reads as one header across the rail and the page list, and the rail can be expanded to show each name beside its icon. No data, API, permission or schema change. No downtime |
+| **Schema change** | None |
+| **Rollback** | Revert the commit and redeploy the previous console image. A stored `cairo.railExpanded.v1:<userId>` key is then ignored. The rail and its toggle also go with its flag off |
+| **Feature flag** | None for the logo. The rail and its expanded form stay behind `CAIRO_EYEON_RAIL_ENABLED` (server-only, off by default) |
+
+**What:** the owner's instruction of 2026-10-11, "EyeOn to be replaced with Logo (one for light theme and another for dark theme)", with the owner's chosen options: the logo row becomes one section, and the rail can be widened and narrowed.
+- **The logo:** `EyeonLogo` shows the owner's two images, black lettering for the light theme and white lettering for the dark theme, each with the red radar mark. The colours are fixed: the logo no longer follows the accent colour.
+  - **Where:** the sidebar header, the phone's top bar and the UI Customization preview, the three places the text wordmark was.
+  - **Which image:** the logo follows the theme everywhere: black lettering in the light theme, white in the dark theme. The sidebar is navy in the light theme, where black lettering cannot be read (about 1.4:1), so the logo row takes the page header's background instead, light in the light theme (owner's option B, 2026-10-11: "Proceed with B and build it now"). In the dark theme the header and the sidebar share one colour, so nothing changes there.
+  - **Sizes,** as ADR-0025 set them: 24 pixels high on its own, 20 pixels beside a customer's logo. The phone's top bar shows it at 20 pixels.
+  - **The files:** `web/public/eyeon/eyeon-logo-light.png` and `eyeon-logo-dark.png`, 172 × 64 pixels, 6,029 and 7,146 bytes, trimmed from the 2000-pixel originals, which are not committed.
+  - **The top bar's brand link** is named "EYEON home" instead of "Langfuse home".
+  - **Collapsed to icons,** the sidebar still shows the ACME mark (`/icon.svg`), unchanged.
+- **One header row (with the rail on):** the rail hands the sidebar its width as one CSS variable. The sidebar's panel sits that far from the window's edge, and the sidebar's header row, which holds the logo, reaches back over the rail's empty top row by the same width. The top row has no divider, and the logo starts at the rail's left edge. Below it, the rail and the page list stay two columns with their divider. Collapsed to icons, the header row keeps to the sidebar. With the rail off, on a phone or outside a project, nothing changes.
+- **A rail that widens (with the rail on):**
+  - **Compact** is today's rail. **Expanded** is 13rem, with each icon and its full name on one line; "Governance Controls" and "Prompt Management" fit without wrapping.
+  - **The toggle:** a button at the foot of the rail ("Expand navigation" or "Collapse navigation", with `aria-expanded` and a tooltip naming the shortcut), or Ctrl+\ (Cmd+\ on a Mac). The shortcut is not used by the console, the code editor or the browsers' default shortcuts, and does nothing while typing.
+  - **Kept per person** in this browser, under `cairo.railExpanded.v1:<userId>`, as the sidebar width is. Compact is the default and is kept as nothing. The choice is read on the first render, so the rail opens as it was left.
+  - **The rail's width, the sidebar's position and the header row** move together over 200 ms, so the logo stays still.
+- **A defect fixed:** in the compact rail, a long active name such as "Observability" ran past its highlight. The name now has 72 pixels instead of 64, and a still longer one breaks inside its highlight.
+
+**Why it matters:** the owner supplied the product's logo and wants it in place of the typed wordmark, and wants the top of the navigation to read as one header. A wider rail with names on one line is easier to scan for people who prefer labels to icons.
+
+**Choices:**
+- **The logo row takes the page header's background (option B),** not the sidebar's navy, so the black-lettered logo can show in the light theme. The owner compared this with a navy row and the white-lettered logo in both themes (option A) in the prototype, and chose B. The rail and the page list below stay navy.
+- **One CSS variable, not shared React state:** the rail and the sidebar are siblings. The variable is set only while the rail is on screen, so the classic sidebar is untouched, and the logo stays where it was already drawn, beside the customer's logo and the collapsed icon.
+- **Ctrl+\ for the shortcut:** the obvious neighbours are taken. Ctrl+Shift+B is the bookmarks bar, Alt+Shift switches the keyboard language on Windows, and Shift-Mod-\ and Mod-Alt-\ belong to the code editor.
+- **The sidebar's maximum stays a quarter of the window.** On the narrowest desktop window, subtracting the rail would gain at most 8 pixels. At 1280 pixels, with the rail expanded and the sidebar at its widest, the page keeps 752 pixels.
+- **"Reset sidebar width" still resets only the width.** The item names the width, and the rail has its own always-visible toggle.
+- **Not chosen by the owner:** merging the rail and the page list into one panel, and categories opening as a tree.
+
+**Upstream sync (CHG-2026-100):** each upstream edit is marked "ACME (CHG-2026-150)".
+- `LangfuseLogo.tsx`: the text wordmark becomes a `brand` slot, because a design-system file may not import feature code.
+- `AppSidebar.tsx`: two imports, the `brand` prop and one class on the header row.
+- `topbar-brand.tsx`: the import, the logo and the link's name.
+- `AuthenticatedLayout.tsx`: the rail gets the signed-in person's id.
+- `globals.css`: a comment.
+
+The new code is under `features/acme-enhancements/components/eyeon/` (`brand/` and `rail/`). Tests fail if a sync drops the logo or the header row's class from `AppSidebar.tsx`.
+
+**Release:** web image only. No setting, flag or migration.
+
+**Tests:** 41 new client tests.
+- **The logo** (11): both images and their theme classes, the sidebar's single image, the alternative text, the two heights, the files' size and dimensions, the sidebar header with and without a customer's logo, the top bar's link name, and `AppSidebar.tsx` passing the logo in.
+- **The kept choice and the shortcut** (18): the key, reads and writes, refused storage, Ctrl+\ and Cmd+\, the key's position, held Shift or Alt, other keys, repeats, typing targets, the labels, and the width the rail hands the sidebar equalling its own.
+- **The rail** (12): compact by default, expanding and collapsing with the button, opening as left with no compact render first, a choice per person, refused storage, the shortcut and where it does not fire, the tooltip and `aria-keyshortcuts`, no toggle with the rail off, the top row without a divider, the header row's class and `AppSidebar.tsx` carrying it.
+
+Updated: the rail's offset assertions in the rail (CHG-2026-135) and resize-handle (CHG-2026-142) tests, and one test name in the theme presets test. 14 related client test files pass (276 tests). Fresh typecheck passed with only the 2 tolerated Enterprise-file errors. ESLint (no warnings) and Prettier pass on every changed code file. The Langfuse-text guard reports no new hits, and its baseline loses the removed "Langfuse home" line (`--shrink`). Storybook stories: the logo (Default, Small, Variant Matrix) and the rail (Compact, Expanded).

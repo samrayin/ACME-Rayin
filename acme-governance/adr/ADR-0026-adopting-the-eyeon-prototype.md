@@ -212,3 +212,81 @@ Both are on the CHG-2026-100 conflict list. Tests read them and fail if a sync d
 - **The window's maximum:** the widest the sidebar may be is a quarter of the window's inner width, kept between 11.5rem and 24rem (at the default font size, 11.5rem up to a 736-pixel window and 24rem from 1536 pixels). The sidebar shows the kept width within that maximum; the kept width itself is unchanged, so it comes back when the window widens. The window is re-measured on resize, at most once per animation frame, and the listener and any pending frame are removed with the sidebar. The handle's `aria-valuemax`, End, the arrow keys and a drag all stop at the maximum. A key or a drag that leaves the width where it is keeps nothing, so a narrow window cannot shrink the kept width by accident; Enter always resets.
 
 Upstream: `AuthenticatedLayout.tsx` passes `userId={user.id}` on its marked `EyeonSidebarProvider` line; `sidebar.tsx` is unchanged. **Flag:** none. **Rollback:** redeploy the previous image; it reads only the old per-browser key, which is gone once moved, so the sidebar opens at the default until resized. **Schema:** none.
+
+### 12.5 CHG-2026-150: the EYEON logo, one header row, and a rail that widens (addendum)
+**Date:** 2026-10-11. **Change:** CHG-2026-150, Tier 1. **Approval:** Pending. The owner reviews and merges; no self-approval. **Owner's instruction:** "EyeOn to be replaced with Logo (one for light theme and another for dark theme)", with the owner's chosen options of 2026-10-11: the logo row becomes one section, and the rail can be widened and narrowed.
+
+**Decision 1: the supplied logo replaces the text wordmark.**
+- **The component:** `EyeonLogo` (`features/acme-enhancements/components/eyeon/brand/`) shows the owner's two images: the light-theme logo (black lettering) and the dark-theme logo (white lettering), both with the red radar mark in the O. The colours are fixed: the logo no longer follows the accent colour, as the "ON" of the text wordmark did.
+- **The files:** `web/public/eyeon/eyeon-logo-light.png` and `eyeon-logo-dark.png`, 172 × 64 pixels (twice the largest display height of 32 pixels), 6,029 and 7,146 bytes. Both are cut from the 2000 × 1000 originals with the same box, their joint content plus a little padding, so they swap without moving. The originals are not committed. The images are served as they are (`unoptimized`), with the base path, as upstream's icon is.
+- **How the theme is applied:** next-themes puts the `dark` class on `<html>`, and Tailwind's `dark:` variant matches that class and everything inside it. The personal theme (CHG-2026-074) and the dark palette (CHG-2026-130) change accent and surface tokens only, so neither changes which logo shows.
+- **Which image shows where, and the logo row (owner's option B, 2026-10-11):** the owner asked for one logo per theme. The sidebar itself is navy in the light theme (`210 55% 15%`) and near-black in the dark theme, and black lettering on that navy is about 1.4:1 contrast. So the logo row does not use the sidebar's colour: it takes the **page header's background** (`acmeHeaderBackgroundClass`, the class the page header uses, with the project's tint or gradient), passed in by the connected sidebar as `logo.rowClassName`. The logo row and the page header then read as one top band, as in the prototype's top bar.
+  - **Light theme:** the logo row is light, and the light-theme logo (black lettering) shows. The rail and the page list below stay navy.
+  - **Dark theme:** the page header and the sidebar share one colour (`197 47% 2.9%`), so nothing changes, and the dark-theme logo (white lettering) shows.
+  - **Everywhere** the logo follows the theme (`dark:hidden` and `hidden dark:block`): the logo row, the phone's top bar and the UI Customization preview, which shows the row on the plain header background.
+  - **Options shown to the owner,** in the prototype (2026-10-11): A, a navy logo row with the white-lettered logo in both themes (what was first built); B, the light logo row above. The owner chose B: "Proceed with B and build it now".
+- **Sizes, unchanged from ADR-0025 §5:** 24 pixels high on its own and 20 pixels beside a customer's logo (`EyeonSidebarLogo`, used by both the sidebar and the preview, so the two cannot drift apart). The phone's top bar shows it at 20 pixels.
+- **Where it replaces the wordmark:**
+  - the sidebar header (`LangfuseLogo.tsx`);
+  - the phone's top bar (`topbar-brand.tsx`, its `wordmark` variant);
+  - the UI Customization preview (`AcmeCustomerLogoCard.tsx`).
+
+  `LangfuseLogo.tsx` sits in the design system, which may not import feature code (an ESLint boundary rule), so it now takes the logo as a `brand` slot, which `AppSidebar.tsx` fills.
+- **The top bar's brand link** is named "EYEON home" instead of "Langfuse home". The Langfuse-text baseline (ADR-0029) loses that entry (`--shrink`); nothing is added.
+- **Collapsed to icons,** the sidebar shows `/icon.svg` through upstream's `LangfuseIcon` (alternative text "Langfuse"): the ACME mark that replaced upstream's icon file, not EYEON text. Per the owner's rule it is left as it is, and so is the top bar's `icon` variant, which shows the same file.
+
+**Decision 2: the logo row is one section.**
+- **The mechanism:** the rail hands its width to the docked sidebar as one CSS variable, `--eyeon-rail-width`, through the sibling selector it already used to move the sidebar (`[&~[data-side=left]]`). Two things read that variable:
+  - the sidebar's fixed panel, whose left edge sits that far from the window's edge (it replaces `left-22`);
+  - the sidebar's header row, which holds the logo. A negative left margin of the same width makes the row start at the rail's left edge, spanning the rail's top row (`EYEON_RAIL_HEADER_ROW_CLASS`, one class added to the row in `AppSidebar.tsx`).
+
+  The rail's own top row stays as an empty spacer of the same height and bottom border. The rail's right border moves from the whole rail to the part below that row. The result is one header row, with one bottom line and no divider in it, and the logo at the rail's left edge plus the row's usual 12-pixel padding. Below it, the rail and the page list stay two columns, divided by the rail's edge.
+- **Why this one:**
+  - The logo stays where it was already rendered (the sidebar header, with the customer's logo and the collapsed icon). There is no second copy to hide, and no state crosses between the rail and the sidebar, which are siblings.
+  - Without the rail (its flag off, on a phone, or outside a project), the variable is not set. The margin is then zero and the panel sits as upstream has it, so the classic sidebar looks exactly as before, and the phone's sheet is unchanged.
+- **Rejected:**
+  - drawing the logo in the rail's top row and over the sidebar: it would need the sidebar's logo hidden, a stacking order above the fixed panel, and the customer's logo moved;
+  - a full-width header above both columns: it would need `sidebar.tsx`'s fixed panel to start lower;
+  - a React context carrying the rail's width: more upstream edits in `AppSidebar.tsx` and the layout.
+- **Motion:** the rail's width, the panel's position and the header row's margin all change over 200 ms, linear: `sidebar.tsx`'s own timing. So the logo stays still while the rail widens or narrows, and when the rail first appears.
+- **Collapsed (icon) sidebar:** the header row keeps to the sidebar, so upstream's icon stays centred above the sidebar's own icons. The rail's top row still has no divider.
+- **Resizable sidebar (§12.4):** unaffected. A drag is measured from where it started, and it does not change the rail's width.
+
+**Decision 3: the rail can be widened and narrowed.**
+- **Compact** is today's rail: 5.5rem, each icon in a circle with its name under it. **Expanded** is 13rem: each icon in a 32-pixel circle with its full name beside it on one line. At that width "Governance Controls" and "Prompt Management" measure about 124 to 126 pixels in Segoe UI and Arial at the console's small text size, and the name has 140 pixels. A wider font cuts the name short with an ellipsis, with the full name as its title, rather than wrapping it.
+- **The toggle:** a button at the foot of the rail, named "Expand navigation" or "Collapse navigation", with `aria-expanded`, `aria-controls` (the rail) and `aria-keyshortcuts`. Its tooltip names the shortcut.
+- **The shortcut: Ctrl+\ (Cmd+\ on a Mac).**
+  - **Checked against the console's own shortcuts,** by searching every keyboard handler in `web/src`: Ctrl/Cmd+B collapses the sidebar, Ctrl/Cmd+K opens the command palette, Ctrl/Cmd+I opens the assistant, Ctrl/Cmd+F searches a list, Ctrl/Cmd+Enter submits, J and K step through detail pages, and digits, arrows and Enter work the annotation queue. None uses the backslash.
+  - **The code editor** (CodeMirror) binds the backslash only with Shift or Alt held (`Shift-Mod-\`, `Mod-Alt-\`), inside the editor.
+  - **Browsers:** Chrome, Edge, Firefox and Safari do not bind Ctrl+\ or Cmd+\ by default. Combinations with Shift or Alt are left alone: Ctrl+Shift+B is Chrome's bookmarks bar, Alt+Shift switches the keyboard language on Windows, and AltGr reports Alt.
+  - **When it does not fire:** while typing (a text field, a text area, a select, an editor, or a text box or combo box role), on a held key's repeats, or when something else has already handled the key.
+  - **Keyboard layouts:** it matches the backslash character, or the key in the backslash position (`code`), so a keyboard that types the backslash with AltGr still has it.
+- **Kept per person:** under `cairo.railExpanded.v1:<userId>` in localStorage, in the same style as the sidebar width's key (§12.4). The value is `true` while expanded; compact, the default, is kept as nothing. The key is read on the rail's first render, so the rail opens as it was left, with no compact frame first. Every read and write is guarded, and nothing is sent to the server. If the browser refuses storage, the choice lasts while the rail stays on screen.
+- **The sidebar's maximum** stays a quarter of the window (§12.4 follow-up) and does not subtract the rail.
+  - On the narrowest desktop window (768 pixels), the sidebar's minimum (184 pixels) is almost the quarter (192), so subtracting the rail would gain at most 8 pixels.
+  - On wider windows the page keeps most of the screen: at 1280 pixels, with the rail expanded and the sidebar at its widest, the page keeps 752 pixels.
+  - Subtracting would also make the sidebar narrow itself whenever the rail is expanded. The rail collapses with one click or the shortcut.
+- **The reset:** "Reset sidebar width" in the user menu still resets only the width.
+  - Its name says width, and its disabled state follows the kept width.
+  - The rail has its own always-visible toggle, which already returns it to compact in one click.
+  - Coupling the two would change an item the owner has just approved.
+- **The compact label defect:** in compact mode, a long active name such as "Observability" (about 67 to 69 pixels at the small text size) ran past its 64-pixel highlight. The rail's list now has 4 pixels of side padding instead of 6, and its items none instead of 2, so the name has 72 pixels. A name that is still too long breaks inside its highlight (`overflow-wrap: anywhere`) rather than running past it.
+- **The flag:** the rail, and so its expanded form, still shows only with `CAIRO_EYEON_RAIL_ENABLED` on (server-only, off by default), inside a project and on desktop.
+
+**Options the owner did not choose:**
+- merging the rail and the page list into one panel;
+- categories opening as a tree.
+
+**Upstream files touched,** each marked "ACME (CHG-2026-150)":
+- `LangfuseLogo.tsx`: the text wordmark becomes the `brand` slot;
+- `AppSidebar.tsx`: two imports, the `brand` prop and the header row's class;
+- `topbar-brand.tsx`: the import, the logo and the link's name;
+- `AuthenticatedLayout.tsx`: the rail gets the signed-in person's id;
+- `globals.css`: a comment only.
+
+The first three are on the CHG-2026-100 conflict list. Tests read `AppSidebar.tsx` and fail if a sync drops the logo or the header row's class. CHG-2026-135's test still guards the structure the rail moves.
+
+**Open questions for the owner:**
+1. Settled 2026-10-11: the logo row takes the page header's background, so the black-lettered logo shows in the light theme (option B, above).
+
+**Rollback:** revert the commit and redeploy the previous console image. A stored `cairo.railExpanded.v1:<userId>` key is then ignored. Turning `CAIRO_EYEON_RAIL_ENABLED` off removes the rail and its toggle; the logo has no flag. **Schema:** none.
