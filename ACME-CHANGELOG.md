@@ -7098,7 +7098,7 @@ ESLint (no warnings) and Prettier pass on every changed code file. Fresh typeche
 |---|---|
 | **Change ID** | CHG-2026-146 · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | [ADR-0029](acme-governance/adr/ADR-0029-langfuse-text.md), **Proposed**: it accepts ADR-0019 apart from §2 and supersedes §2. The owner accepts it after review |
-| **Approval** | Owner, 2026-10-09: reviewed and merged #405 ("405 is merged"). **Not released:** the console text reaches dev with the next console release, on the owner's go. ADR-0029 stays Proposed until the owner accepts it. The guard passed on the PR; the other failing checks were the same as on `main` before the merge. No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
+| **Approval** | Owner, 2026-10-09: reviewed and merged #405 ("405 is merged"). Owner, 2026-10-11: approved the release ("release now"); live in dev as console `acme-v4.38.0.51` (TRACED, revision 112). ADR-0029 stays Proposed until the owner accepts it. No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
 | **Dates** | Dev: not yet · Staging: not available · Prod: not yet |
 | **Impact** | Client-visible: ten places in the console say EYEON or use neutral wording, and built-in models, evaluators and widgets are labelled "Built-in". No behaviour, data, API, MCP or permission change. A new pull-request check fails on new visible "Langfuse" text or langfuse.com links. No downtime |
 | **Schema change** | None |
@@ -7196,7 +7196,7 @@ Offline EYEON help is a separate item. `CHANGE-ID-REGISTER.md` is not edited her
 |---|---|
 | **Change ID** | CHG-2026-147 · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | ADR-0030 (Proposed); supersedes ADR-0028's "the overview as Home" and its arrangement format |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Approval** | Owner: reviewed and merged #406. Owner, 2026-10-11: approved the release ("release now"); live in dev as console `acme-v4.38.0.51` (TRACED, revision 112), with the Home flag unchanged. ADR-0030 stays Proposed until the owner accepts it. No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
 | **Dates** | Dev: not yet released · Staging: not available · Prod: not yet |
 | **Impact** | With `CAIRO_EYEON_HOME_ENABLED` on (it is in dev), a role that gets EYEON Home now sees the command centre instead of the overview. The Overview entry is unchanged. Role landings and the flag are unchanged |
 | **Schema change** | None. No new router or read |
@@ -7245,7 +7245,7 @@ Offline EYEON help is a separate item. `CHANGE-ID-REGISTER.md` is not edited her
 |---|---|
 | **Change ID** | CHG-2026-148 · owner: Anees Ur Rahman · Tier 2 |
 | **ADR** | None (a sidebar placement; the sections are ADR-0016's) |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Approval** | Owner: reviewed and merged #403. Owner, 2026-10-11: approved the release ("release now"); live in dev as console `acme-v4.38.0.51` (TRACED, revision 112). No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
 | **Dates** | Dev: not yet released · Staging: not available · Prod: not yet |
 | **Impact** | The Alerts entry appears under Settings instead of Observability, in the classic sidebar and in the EYEON rail's Settings panel. Nothing else changes |
 | **Schema change** | None |
@@ -7261,7 +7261,7 @@ Offline EYEON help is a separate item. `CHANGE-ID-REGISTER.md` is not edited her
 |---|---|
 | **Change ID** | CHG-2026-149 · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | None (a model list change; models are set in the gateway config, ADR-0010) |
-| **Approval** | Pending. The owner reviews and merges; the live step needs the owner's go |
+| **Approval** | Owner: reviewed and merged #404 and gave the go for the live step, which the session that built it applied to the dev gateway on 2026-10-09 (configuration file from `main`, rolling restart, same image; recorded in the operations repository, #121). The console release `acme-v4.38.0.51` carries the same file but does not touch the gateway. No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
 | **Dates** | Dev: not applied (the live ConfigMap still lists the three) · Staging: not available · Prod: not yet |
 | **Impact** | After the live step, the gateway serves four models: `cairo-chat`, `groq-judge`, `groq-safeguard` and `cairo-evaluator`. The three retired models disappear from the LLM Gateway model catalogue and from Gateway health. A call that names one of them gets the gateway's "model not found" error instead of the provider's error |
 | **Schema change** | None |
