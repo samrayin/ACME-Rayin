@@ -7348,7 +7348,7 @@ Updated: the rail's offset assertions in the rail (CHG-2026-135) and resize-hand
 |---|---|
 | **Change ID** | CHG-2026-151 · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | [ADR-0031](acme-governance/adr/ADR-0031-guardrail-sector-packs.md) (Proposed): phase 1 is built here; phase 2 (CHG-2026-152, per department as a gateway team) is design only |
-| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Approval** | Owner, 2026-10-12: reviewed and merged #413 (and rayin-guardrails #34), and approved both releases ("release both"): rayin-guardrails `v0.7.0` first, then console `acme-v4.38.0.53` (TRACED, revision 114; the migration applied at the first pod's start). ADR-0031 stays Proposed until the owner accepts it. No pre-merge review report, per the owner's dev decision (PL-087). Not a production approval |
 | **Dates** | Dev: not yet released · Staging: not available · Prod: not yet |
 | **Impact** | Client-visible. The Guardrails page's Policies card gains a "Sector policy packs" section, and the Enforcement and policy page shows the packs in force. With all six packs enabled, the default, the guardrail behaves exactly as before. No API, permission or role change |
 | **Schema change** | Yes: migration `20261011120000_acme_guardrail_sector_packs` adds `acme_guardrail_settings.sectors` (`TEXT[] NOT NULL`, **a column with a default**: all six packs) and a CHECK (at least one known pack, no NULL, a flat list). A constant default rewrites no row, so the append-only triggers do not fire and every existing version reads all six. No new grants: the runtime role's table grants cover the column |
