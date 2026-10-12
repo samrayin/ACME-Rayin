@@ -7412,7 +7412,7 @@ Updated: the Enforcement page's figures and router tests (the packs in force), i
 |---|---|
 | **Change ID** | CHG-2026-153 · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | [ADR-0026](acme-governance/adr/ADR-0026-adopting-the-eyeon-prototype.md) §12.6 (addendum) |
-| **Approval** | Pending. The owner reviews and merges; no self-approval. The owner approved the design and the patch on 2026-10-12 ("approved. run through the repo and do the changes") after reading the spec and a measured before-and-after page. That is not a review of this diff |
+| **Approval** | Owner, 2026-10-12: approved the design and the patch ("approved. run through the repo and do the changes") after reading the spec and a measured before-and-after page, and merged #416 (2026-10-12, 20:04 UTC). Not released yet. No pre-merge review report: the security-review gate was red for a missing API key, as on `main`, and the CI checks that failed on the pull request had failed on `main` too. Not a production approval |
 | **Dates** | Dev: not yet released · Staging: not available · Prod: not yet |
 | **Impact** | Client-visible, with the EYEON rail on (`CAIRO_EYEON_RAIL_ENABLED`). In a window 700 pixels tall or less the rail is one rem wider, its list scrolls in a scrollbar made for it, and names no longer break mid-word. Settings and Support stay on screen above the expand button in every window. In a window 800 pixels tall or less the compact rail tightens. In a taller window the rail keeps its width and looks as before, apart from 2 pixels less padding beside the names and a hairline above Settings and Support |
 | **Schema change** | None |
