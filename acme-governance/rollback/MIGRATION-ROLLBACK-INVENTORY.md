@@ -84,3 +84,18 @@ CHECK and the column; every row stays. The previous image does not read the
 column, so a release rollback does not need it. Rehearsed locally on Postgres
 16.4 with the Azure-like roles on 2026-10-07: up, four checks, down and up
 again, all PASS (see its `ROLLBACK.md`).
+
+Added with CHG-2026-151: `20261011120000_acme_guardrail_sector_packs` adds
+`sectors` to `acme_guardrail_settings` (the enabled sector policy packs,
+ADR-0031 phase 1): `TEXT[] NOT NULL`, default all six packs, with a CHECK that
+holds it to at least one known pack id. No row is rewritten, so the
+append-only triggers are not fired. **Reversible with data loss limited to the
+stored selections, while the version in force enables all six packs**:
+`down.sql` drops the CHECK and the column and refuses, changing nothing, when
+the version in force narrows the packs, because rayin-guardrails reads a
+version without the field as all six. Save a version with all six first. The
+previous image does not read the column. Rehearsed locally on Postgres 16.4
+with the Azure-like roles on 2026-10-11 and 2026-10-12: up through Prisma,
+twelve checks, the down guard under three runners, down and up again, all as
+expected; applying it as `rayin_migrator` is refused because that role does
+not own the table (see its `ROLLBACK.md`).

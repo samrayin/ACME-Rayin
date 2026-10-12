@@ -29,6 +29,11 @@
  * is best effort too: if it fails, the trial is still served as record.
  * 503 when no settings are stored: the pod keeps what it has and reports
  * "settings unknown".
+ *
+ * CHG-2026-151 (ADR-0031 phase 1): the body also carries `sectors`, the
+ * enabled sector policy packs, never empty. rayin-guardrails applies them to
+ * its answer scope; a pod without pack support ignores the field, which is
+ * why that service is released first.
  */
 import { z } from "zod";
 import { createAuthedProjectAPIRoute } from "@/src/features/public-api/server/createAuthedProjectAPIRoute";
@@ -49,6 +54,7 @@ import {
   settingsForAudit,
   toSyncResponse,
 } from "@/src/features/acme-enhancements/server/acmeGuardrailSettings";
+import { SECTOR_PACK_IDS } from "@/src/features/acme-enhancements/utils/guardrailSectorPacks";
 
 const GuardrailsSettingsSyncBody = z.object({
   // The pod's own name (HOSTNAME): a DNS-1123 label. It becomes a primary key.
@@ -63,6 +69,8 @@ const GuardrailsSettingsSyncResponse = z.object({
   pii_entities: z.array(z.string()),
   jailbreak_enabled: z.boolean(),
   topical_enabled: z.boolean(),
+  // The enabled sector packs: at least one known id (CHG-2026-151).
+  sectors: z.array(z.enum(SECTOR_PACK_IDS)).min(1),
   updated_at: z.string(),
   // While a trial is served as enforce: when it switches back (SF-2026-024).
   revert_at: z.iso.datetime().nullable(),

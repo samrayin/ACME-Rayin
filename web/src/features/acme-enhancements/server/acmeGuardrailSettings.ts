@@ -20,10 +20,20 @@
  * an automatic switch-back time, after which it reads as record and the next
  * pull writes an audited automatic version (owner decision D-B2).
  *
+ * CHG-2026-151 (ADR-0031 phase 1) adds the sector policy packs to the same
+ * versions: `sectors`, the packs whose answer scope is enabled. Every new
+ * version carries them, whichever field it changes (saveSettings, saveMode,
+ * applyExpiredRevert), and EYEON never stores an empty or unknown selection.
+ *
  * The decision logic is in pure functions, unit-tested without a database
  * (acmeGuardrailSettings.servertest.ts); the Prisma calls are thin wrappers.
  */
 import { type PrismaClient } from "@langfuse/shared/src/db";
+import {
+  parseSectorSelection,
+  SECTOR_PACK_IDS,
+  type SectorPackId,
+} from "@/src/features/acme-enhancements/utils/guardrailSectorPacks";
 
 /** Keep in step with rayin-guardrails' own ALL_PII_ENTITIES. */
 export const ALL_PII_ENTITIES = [
@@ -45,6 +55,8 @@ type GuardrailPolicy = {
   piiEntities: PiiEntity[];
   jailbreakEnabled: boolean;
   topicalEnabled: boolean;
+  /** The enabled sector packs: at least one, in pack order (CHG-2026-151). */
+  sectors: SectorPackId[];
 };
 
 export type GuardrailSettingsVersion = GuardrailPolicy & {
@@ -185,15 +197,28 @@ export function canEditGuardrailSettings(input: {
 }
 
 /**
- * Returns the policy in a canonical form: entities de-duplicated and in the
- * order of ALL_PII_ENTITIES, so two equal policies compare equal. Throws on
- * an unknown entity rather than storing a value rayin-guardrails would
+ * A sector-pack selection in canonical form (CHG-2026-151): checked with the
+ * shared zod schema (at least one pack, known ids only), de-duplicated, in
+ * pack order. Throws rather than storing a selection rayin-guardrails would
  * reject.
+ */
+export function normaliseSectors(sectors: unknown): SectorPackId[] {
+  const parsed = parseSectorSelection(sectors);
+  if (!parsed.ok) throw new GuardrailSettingsValidationError(parsed.message);
+  return parsed.sectors;
+}
+
+/**
+ * Returns the policy in a canonical form: entities de-duplicated and in the
+ * order of ALL_PII_ENTITIES, and sector packs in pack order, so two equal
+ * policies compare equal. Throws on an unknown entity or pack, or no pack,
+ * rather than storing a value rayin-guardrails would reject.
  */
 export function normalisePolicy(policy: {
   piiEntities: readonly string[];
   jailbreakEnabled: boolean;
   topicalEnabled: boolean;
+  sectors: readonly string[];
 }): GuardrailPolicy {
   for (const e of policy.piiEntities) {
     if (!(ALL_PII_ENTITIES as readonly string[]).includes(e)) {
@@ -207,15 +232,20 @@ export function normalisePolicy(policy: {
     piiEntities: ALL_PII_ENTITIES.filter((e) => wanted.has(e)),
     jailbreakEnabled: policy.jailbreakEnabled,
     topicalEnabled: policy.topicalEnabled,
+    sectors: normaliseSectors(policy.sectors),
   };
+}
+
+function sameList(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((e, i) => e === b[i]);
 }
 
 export function policiesEqual(a: GuardrailPolicy, b: GuardrailPolicy): boolean {
   return (
     a.jailbreakEnabled === b.jailbreakEnabled &&
     a.topicalEnabled === b.topicalEnabled &&
-    a.piiEntities.length === b.piiEntities.length &&
-    a.piiEntities.every((e, i) => e === b.piiEntities[i])
+    sameList(a.piiEntities, b.piiEntities) &&
+    sameList(a.sectors, b.sectors)
   );
 }
 
@@ -365,6 +395,7 @@ export function settingsForAudit(s: GuardrailSettingsVersion) {
     piiEntities: s.piiEntities,
     jailbreakEnabled: s.jailbreakEnabled,
     topicalEnabled: s.topicalEnabled,
+    sectors: s.sectors,
     reason: s.reason,
   };
 }
@@ -391,6 +422,8 @@ export function servedMode(
  *   the pods and gateways end it on time even if later pulls fail
  *   (SF-2026-024).
  * - The ceiling defaults to record, so a caller that forgets it errs safe.
+ * - The enabled sector packs, always sent (CHG-2026-151): rayin-guardrails
+ *   reads a body without them as all six.
  */
 export function toSyncResponse(
   current: GuardrailSettingsVersion,
@@ -404,6 +437,7 @@ export function toSyncResponse(
     pii_entities: [...current.piiEntities],
     jailbreak_enabled: current.jailbreakEnabled,
     topical_enabled: current.topicalEnabled,
+    sectors: [...current.sectors],
     updated_at: current.createdAt.toISOString(),
     revert_at:
       mode === "enforce" && current.revertAt
@@ -425,6 +459,9 @@ function toVersion(row: {
   piiEntities: string[];
   jailbreakEnabled: boolean;
   topicalEnabled: boolean;
+  // A NOT NULL column with a CHECK (at least one known pack); read as all
+  // six if ever absent, which is what rayin-guardrails does (CHG-2026-151).
+  sectors?: string[] | null;
   reason: string;
   createdBy: string;
   createdByEmail: string | null;
@@ -433,7 +470,10 @@ function toVersion(row: {
   automatic: boolean;
 }): GuardrailSettingsVersion {
   return {
-    ...normalisePolicy(row),
+    ...normalisePolicy({
+      ...row,
+      sectors: row.sectors ?? [...SECTOR_PACK_IDS],
+    }),
     version: row.version,
     // A CHECK constraint holds the column to these two values; anything else
     // is read as record, the mode that changes nothing.
@@ -495,6 +535,10 @@ async function withVersionRetry<T>(attempt: () => Promise<T>): Promise<T> {
  * the trial's switch-back time; once the trial has ended, the new version is
  * record.
  *
+ * Sector packs (CHG-2026-151): a save that sends `sectors` sets them, checked
+ * before anything is read; one that sends none keeps the packs in force (all
+ * six when nothing is stored yet).
+ *
  * `audit` runs inside the same transaction, after the new version is
  * written, so a change and its audit-log entry commit together or not at all
  * (ADR-0005-B Q1). It is not called when nothing changed.
@@ -502,7 +546,13 @@ async function withVersionRetry<T>(attempt: () => Promise<T>): Promise<T> {
 export async function saveSettings(
   db: Db,
   input: {
-    policy: GuardrailPolicy;
+    policy: {
+      piiEntities: readonly string[];
+      jailbreakEnabled: boolean;
+      topicalEnabled: boolean;
+      /** Omitted: the packs in force are kept. */
+      sectors?: readonly string[];
+    };
     reason: string;
     userId: string;
     userEmail: string | null;
@@ -511,13 +561,25 @@ export async function saveSettings(
   },
   audit: AuditFn,
 ): Promise<SaveResult> {
-  const policy = normalisePolicy(input.policy);
+  const requestedSectors = input.policy.sectors;
+  // Validates everything sent, the packs included, before any read.
+  const requested = normalisePolicy({
+    ...input.policy,
+    sectors: requestedSectors ?? SECTOR_PACK_IDS,
+  });
   const reason = validateReason(input.reason);
   const now = input.now ?? new Date();
 
   return withVersionRetry(() =>
     db.$transaction(async (tx) => {
       const before = await getCurrentSettings(tx);
+      const policy: GuardrailPolicy = {
+        ...requested,
+        sectors:
+          requestedSectors === undefined && before
+            ? before.sectors
+            : requested.sectors,
+      };
       if (before && policiesEqual(before, policy)) {
         return { changed: false as const, current: before };
       }
@@ -531,6 +593,7 @@ export async function saveSettings(
           piiEntities: policy.piiEntities,
           jailbreakEnabled: policy.jailbreakEnabled,
           topicalEnabled: policy.topicalEnabled,
+          sectors: policy.sectors,
           reason,
           createdBy: input.userId,
           createdByEmail: input.userEmail,
@@ -591,6 +654,8 @@ export async function saveMode(
           piiEntities: before.piiEntities,
           jailbreakEnabled: before.jailbreakEnabled,
           topicalEnabled: before.topicalEnabled,
+          // A mode change keeps the sector packs in force (CHG-2026-151).
+          sectors: before.sectors,
           reason,
           createdBy: input.userId,
           createdByEmail: input.userEmail,
@@ -644,6 +709,8 @@ export async function applyExpiredRevert(
           piiEntities: before.piiEntities,
           jailbreakEnabled: before.jailbreakEnabled,
           topicalEnabled: before.topicalEnabled,
+          // The switch-back keeps the sector packs in force (CHG-2026-151).
+          sectors: before.sectors,
           reason:
             expired && before.revertAt
               ? `Automatic switch-back to record: the enforce trial in version ${before.version} ended at ${before.revertAt.toISOString()}.`

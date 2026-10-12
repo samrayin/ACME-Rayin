@@ -109,6 +109,7 @@ function version(
     automatic: boolean;
     createdBy: string;
     topicalEnabled: boolean;
+    sectors: string[];
   }> = {},
 ) {
   return {
@@ -118,6 +119,15 @@ function version(
     piiEntities: ["BH_CPR", "EMAIL_ADDRESS"],
     jailbreakEnabled: true,
     topicalEnabled: extra.topicalEnabled ?? false,
+    // CHG-2026-151: the column's default unless a version narrows it.
+    sectors: extra.sectors ?? [
+      "banking",
+      "government",
+      "healthcare",
+      "hr",
+      "retail_telecom",
+      "education",
+    ],
     reason: `Reason typed for version ${v}`,
     createdBy: extra.createdBy ?? `SECRET-USER-ID-${v}`,
     // The automatic switch-back stores no email (applyExpiredRevert).
@@ -139,7 +149,10 @@ const VERSIONS = [
     createdBy: "automatic",
   }),
   version(4, NOW - 10 * DAY, "record"),
-  version(5, NOW - 2 * HOUR, "enforce"),
+  // Stored out of order on purpose: the page gets them in pack order.
+  version(5, NOW - 2 * HOUR, "enforce", {
+    sectors: ["government", "banking"],
+  }),
 ];
 const CURRENT = VERSIONS[VERSIONS.length - 1]!;
 
@@ -802,6 +815,14 @@ describe("EYEON Enforcement and policy: access and reads (CHG-2026-138)", () => 
         entities: ["EMAIL_ADDRESS", "BH_CPR"],
         available: 7,
         redactions: { enforced: 2, notEnforced: 3 },
+      },
+      // CHG-2026-151: the packs in force, by id and label, in pack order.
+      sectorPacks: {
+        inForce: [
+          { id: "banking", label: "Banking and finance" },
+          { id: "government", label: "Government services" },
+        ],
+        available: 6,
       },
       oversized: {
         refusals: { enforced: 1, notEnforced: 0, prompts: 1, answers: 0 },

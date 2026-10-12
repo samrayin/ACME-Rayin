@@ -455,3 +455,160 @@ describe("the console's ceiling caps the mode it shows and serves (SF-2026-023)"
     }
   });
 });
+
+// CHG-2026-151 (ADR-0031 phase 1): the sector policy packs are saved through
+// updateConfig, with the policy's authority and the content-free roles'
+// allow-lists unchanged. A refused selection gets a message in words, before
+// the database is touched.
+describe("sector policy packs through updateConfig (CHG-2026-151)", () => {
+  const envRecord = env as unknown as Record<string, string | undefined>;
+  const saved = {
+    admins: envRecord.CAIRO_GUARDRAIL_ADMINS,
+    disableSignup: envRecord.AUTH_DISABLE_SIGNUP,
+    guardrailsUrl: envRecord.RAYIN_GUARDRAILS_URL,
+  };
+
+  beforeEach(() => {
+    envRecord.CAIRO_GUARDRAIL_ADMINS = ADMIN_EMAIL;
+    envRecord.AUTH_DISABLE_SIGNUP = "true";
+    // No pod to nudge after a save.
+    envRecord.RAYIN_GUARDRAILS_URL = undefined;
+    touched.mockClear();
+  });
+
+  afterEach(() => {
+    envRecord.CAIRO_GUARDRAIL_ADMINS = saved.admins;
+    envRecord.AUTH_DISABLE_SIGNUP = saved.disableSignup;
+    envRecord.RAYIN_GUARDRAILS_URL = saved.guardrailsUrl;
+  });
+
+  const STORED = {
+    id: "v1",
+    version: 1,
+    mode: "record",
+    revertAt: null,
+    automatic: false,
+    piiEntities: ["EMAIL_ADDRESS"],
+    jailbreakEnabled: true,
+    topicalEnabled: true,
+    sectors: [
+      "banking",
+      "government",
+      "healthcare",
+      "hr",
+      "retail_telecom",
+      "education",
+    ],
+    reason: "Initial version",
+    createdBy: "migration",
+    createdByEmail: null,
+    createdAt: new Date("2026-10-01T12:00:00.000Z"),
+  };
+
+  /** A client that stores versions and audit rows in memory. */
+  function storingPrisma() {
+    const rows: Record<string, unknown>[] = [STORED];
+    const audits: { data: { after?: string } }[] = [];
+    const settings = {
+      findFirst: async () => rows[rows.length - 1],
+      findMany: async () => [...rows].reverse(),
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        const row = {
+          ...data,
+          id: `v${String(data.version)}`,
+          createdAt: new Date(),
+        };
+        rows.push(row);
+        return row;
+      },
+    };
+    const tx = {
+      acmeGuardrailSettings: settings,
+      auditLog: {
+        create: async (args: { data: { after?: string } }) => {
+          audits.push(args);
+          return {};
+        },
+      },
+    };
+    const db = {
+      ...readOnlyPrisma,
+      acmeGuardrailSettings: settings,
+      $transaction: async (fn: (t: unknown) => Promise<unknown>) => fn(tx),
+    };
+    return { db, rows, audits };
+  }
+
+  const PACKS_SAVE = { ...SAVE, sectors: ["hr", "banking", "hr"] };
+
+  it.each(["SECURITY", "AUDITOR", "ANALYST"])(
+    "refuses a %s, even with a listed email, before the database",
+    async (role) => {
+      await expect(
+        callerFor(role, ADMIN_EMAIL).updateConfig(PACKS_SAVE),
+      ).rejects.toMatchObject({ code: "FORBIDDEN" });
+      expect(touched).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not offer the packs for editing to a listed Security Analyst or Auditor", async () => {
+    for (const role of ["SECURITY", "AUDITOR"]) {
+      const config = await callerFor(
+        role,
+        ADMIN_EMAIL,
+        readOnlyPrisma,
+      ).getConfig({ projectId: PROJECT });
+      expect(config).toMatchObject({ canEdit: false, readOnlyRole: true });
+    }
+  });
+
+  it("refuses an empty selection with a message, before the database", async () => {
+    await expect(
+      callerFor("ADMIN", ADMIN_EMAIL).updateConfig({ ...SAVE, sectors: [] }),
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: expect.stringMatching(/Choose at least one sector policy pack/),
+    });
+    expect(touched).not.toHaveBeenCalled();
+  });
+
+  it("refuses an unknown pack id with a message, before the database", async () => {
+    await expect(
+      callerFor("ADMIN", ADMIN_EMAIL).updateConfig({
+        ...SAVE,
+        sectors: ["banking", "casino"],
+      }),
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: expect.stringMatching(/Unknown sector policy pack "casino"/),
+    });
+    expect(touched).not.toHaveBeenCalled();
+  });
+
+  it("saves a listed administrator's packs in pack order, audited, and shows them", async () => {
+    const { db, rows, audits } = storingPrisma();
+    const caller = callerFor("ADMIN", ADMIN_EMAIL, db);
+    const result = await caller.updateConfig(PACKS_SAVE);
+    expect(result).toMatchObject({ changed: true, version: 2 });
+    expect(rows[1]).toMatchObject({ version: 2, sectors: ["banking", "hr"] });
+    expect(JSON.parse(audits[0]!.data.after ?? "{}")).toMatchObject({
+      version: 2,
+      sectors: ["banking", "hr"],
+    });
+
+    const config = await caller.getConfig({ projectId: PROJECT });
+    expect(config.current?.sectors).toEqual(["banking", "hr"]);
+  });
+
+  it("keeps the packs in force when a save sends none", async () => {
+    const { db, rows } = storingPrisma();
+    const caller = callerFor("ADMIN", ADMIN_EMAIL, db);
+    await caller.updateConfig(PACKS_SAVE);
+    await caller.updateConfig({ ...SAVE, piiEntities: ["PERSON"] });
+    expect(rows[2]).toMatchObject({
+      version: 3,
+      piiEntities: ["PERSON"],
+      sectors: ["banking", "hr"],
+    });
+  });
+});

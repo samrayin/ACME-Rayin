@@ -44,6 +44,14 @@ function settings(
     piiEntities: ["EMAIL_ADDRESS"],
     jailbreakEnabled: true,
     topicalEnabled: true,
+    sectors: [
+      "banking",
+      "government",
+      "healthcare",
+      "hr",
+      "retail_telecom",
+      "education",
+    ],
     reason: "SECRET-REASON",
     createdBy: "SECRET-USER",
     createdByEmail: "SECRET-EMAIL",
@@ -489,7 +497,11 @@ describe("policiesInForce", () => {
 
   it("maps refusals to the policies, and the rest to other labels", () => {
     const p = policiesInForce(
-      settings({ topicalEnabled: false, piiEntities: [] }),
+      settings({
+        topicalEnabled: false,
+        piiEntities: [],
+        sectors: ["banking", "hr"],
+      }),
       [
         refusal("jailbreak", "Jailbreak or misuse", 2, 1),
         refusal("oversized", "Too large to check", 0, 1),
@@ -514,6 +526,14 @@ describe("policiesInForce", () => {
         entities: [],
         available: 7,
         redactions: { enforced: 3, notEnforced: 4 },
+      },
+      // CHG-2026-151: the packs in force, by id and label, in pack order.
+      sectorPacks: {
+        inForce: [
+          { id: "banking", label: "Banking and finance" },
+          { id: "hr", label: "HR and staff services" },
+        ],
+        available: 6,
       },
       oversized: {
         refusals: { enforced: 0, notEnforced: 1, prompts: 1, answers: 0 },

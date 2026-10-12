@@ -34,13 +34,23 @@ import {
   toSyncResponse,
   validateReason,
   type GuardrailSettingsVersion,
+  normaliseSectors,
+  settingsForAudit,
 } from "@/src/features/acme-enhancements/server/acmeGuardrailSettings";
 import { buildEventRow } from "@/src/features/acme-enhancements/server/acmeGuardrailsEventsIngestService";
+import {
+  parseSectorSelection,
+  SECTOR_PACK_IDS,
+  SECTOR_PACKS,
+  sectorsInPackOrder,
+} from "@/src/features/acme-enhancements/utils/guardrailSectorPacks";
 
 // ADR-0005-B part a (CHG-2026-089). Pure logic, plus saveSettings against a
 // fake client: no live database, matching the other server/unit tests.
 
 const ALL = [...ALL_PII_ENTITIES];
+/** CHG-2026-151: all six sector packs, in pack order (the column default). */
+const SIX = [...SECTOR_PACK_IDS];
 
 type Row = {
   version: number;
@@ -48,6 +58,7 @@ type Row = {
   piiEntities: string[];
   jailbreakEnabled: boolean;
   topicalEnabled: boolean;
+  sectors?: string[];
   reason: string;
   createdBy: string;
   createdByEmail: string | null;
@@ -64,6 +75,7 @@ function v1(): Row {
     piiEntities: [...ALL],
     jailbreakEnabled: true,
     topicalEnabled: true,
+    sectors: [...SIX],
     reason: "Initial version",
     createdBy: "migration",
     createdByEmail: null,
@@ -188,6 +200,7 @@ describe("normalisePolicy / policiesEqual", () => {
       piiEntities: ["BH_CPR", "EMAIL_ADDRESS", "BH_CPR"],
       jailbreakEnabled: true,
       topicalEnabled: false,
+      sectors: SIX,
     });
     expect(p.piiEntities).toEqual(["EMAIL_ADDRESS", "BH_CPR"]);
   });
@@ -198,6 +211,7 @@ describe("normalisePolicy / policiesEqual", () => {
         piiEntities: ["NOT_A_TYPE"],
         jailbreakEnabled: true,
         topicalEnabled: true,
+        sectors: SIX,
       }),
     ).toThrow(GuardrailSettingsValidationError);
   });
@@ -207,14 +221,18 @@ describe("normalisePolicy / policiesEqual", () => {
       piiEntities: ["PERSON", "EMAIL_ADDRESS"],
       jailbreakEnabled: true,
       topicalEnabled: true,
+      sectors: ["hr", "banking"],
     });
     const b = normalisePolicy({
       piiEntities: ["EMAIL_ADDRESS", "PERSON"],
       jailbreakEnabled: true,
       topicalEnabled: true,
+      sectors: ["banking", "hr", "hr"],
     });
     expect(policiesEqual(a, b)).toBe(true);
     expect(policiesEqual(a, { ...b, topicalEnabled: false })).toBe(false);
+    // CHG-2026-151: another selection of packs is another policy.
+    expect(policiesEqual(a, { ...b, sectors: ["banking"] })).toBe(false);
   });
 });
 
@@ -239,6 +257,7 @@ describe("toSyncResponse", () => {
       pii_entities: ALL,
       jailbreak_enabled: true,
       topical_enabled: true,
+      sectors: SIX,
       updated_at: "2026-10-01T12:00:00.000Z",
       revert_at: null,
     });
@@ -1064,5 +1083,266 @@ describe("an enforce version the ceiling does not allow is written down (P2-269-
     );
     expect(result.changed).toBe(false);
     expect(settings.create).not.toHaveBeenCalled();
+  });
+});
+
+// ------------------------------------------------------- sector packs
+
+// CHG-2026-151 (ADR-0031 phase 1): the sector policy packs. Validation (at
+// least one, known ids, de-duplicated, stored in pack order), and every path
+// that writes a version carrying them forward.
+
+/** A version that enables two packs only. */
+function narrowed(version: number, sectors = ["hr", "banking"]): Row {
+  return { ...v1(), version, sectors, reason: "Narrow the answer scope" };
+}
+
+describe("the sector pack list (CHG-2026-151)", () => {
+  it("has the six packs of rayin-guardrails, in pack order, each with a label and a scope", () => {
+    expect(SIX).toEqual([
+      "banking",
+      "government",
+      "healthcare",
+      "hr",
+      "retail_telecom",
+      "education",
+    ]);
+    expect(SECTOR_PACKS.map((p) => p.id)).toEqual(SIX);
+    for (const p of SECTOR_PACKS) {
+      expect(p.label.length).toBeGreaterThan(0);
+      expect(p.scope.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("orders and de-duplicates a selection", () => {
+    expect(sectorsInPackOrder(["education", "banking", "education"])).toEqual([
+      "banking",
+      "education",
+    ]);
+  });
+});
+
+describe("normaliseSectors (CHG-2026-151)", () => {
+  it("stores a selection de-duplicated and in pack order", () => {
+    expect(normaliseSectors(["hr", "banking", "hr"])).toEqual([
+      "banking",
+      "hr",
+    ]);
+  });
+
+  it("refuses an empty selection, with a message in words", () => {
+    expect(() => normaliseSectors([])).toThrow(
+      GuardrailSettingsValidationError,
+    );
+    expect(() => normaliseSectors([])).toThrow(
+      /Choose at least one sector policy pack/,
+    );
+  });
+
+  it("refuses an unknown pack id, naming it", () => {
+    expect(() => normaliseSectors(["banking", "casino"])).toThrow(
+      GuardrailSettingsValidationError,
+    );
+    expect(() => normaliseSectors(["banking", "casino"])).toThrow(
+      /Unknown sector policy pack "casino"/,
+    );
+  });
+
+  it("refuses a value that is not a list of ids", () => {
+    for (const bad of [null, undefined, "banking", [1], [null]]) {
+      expect(() => normaliseSectors(bad)).toThrow(
+        GuardrailSettingsValidationError,
+      );
+    }
+  });
+
+  it("is the shared zod schema's answer", () => {
+    expect(parseSectorSelection(["education", "banking"])).toEqual({
+      ok: true,
+      sectors: ["banking", "education"],
+    });
+    expect(parseSectorSelection([])).toMatchObject({ ok: false });
+  });
+});
+
+describe("saveSettings with sector packs (CHG-2026-151)", () => {
+  const policy = {
+    piiEntities: [...ALL],
+    jailbreakEnabled: true,
+    topicalEnabled: true,
+  };
+
+  it("stores the packs sent, in pack order, and audits them before and after", async () => {
+    const { db, rows } = fakeDb([v1()]);
+    const audit = vi.fn(async () => {});
+    const result = await saveSettings(
+      db,
+      {
+        ...SAVE_INPUT,
+        policy: { ...policy, sectors: ["education", "banking", "banking"] },
+      },
+      audit,
+    );
+    expect(result.changed).toBe(true);
+    expect(rows.find((r) => r.version === 2)?.sectors).toEqual([
+      "banking",
+      "education",
+    ]);
+    const [, change] = audit.mock.calls[0] as unknown as [
+      unknown,
+      { before: GuardrailSettingsVersion; current: GuardrailSettingsVersion },
+    ];
+    expect(settingsForAudit(change.before).sectors).toEqual(SIX);
+    expect(settingsForAudit(change.current).sectors).toEqual([
+      "banking",
+      "education",
+    ]);
+  });
+
+  it("does nothing when only the order of the packs differs", async () => {
+    const { db, settings } = fakeDb([narrowed(1)]);
+    const result = await saveSettings(
+      db,
+      { ...SAVE_INPUT, policy: { ...policy, sectors: ["hr", "banking"] } },
+      async () => {},
+    );
+    expect(result.changed).toBe(false);
+    expect(settings.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses an empty or unknown selection before touching the database", async () => {
+    for (const sectors of [[], ["casino"]]) {
+      const { db, settings } = fakeDb([v1()]);
+      await expect(
+        saveSettings(
+          db,
+          { ...SAVE_INPUT, policy: { ...policy, sectors } },
+          async () => {},
+        ),
+      ).rejects.toThrow(GuardrailSettingsValidationError);
+      expect(
+        (db as unknown as { $transaction: { mock: { calls: unknown[] } } })
+          .$transaction.mock.calls,
+      ).toHaveLength(0);
+      expect(settings.create).not.toHaveBeenCalled();
+    }
+  });
+
+  it("keeps the packs in force when a save sends none", async () => {
+    const { db, rows } = fakeDb([v1(), narrowed(2)]);
+    await saveSettings(
+      db,
+      { ...SAVE_INPUT, policy: { ...policy, piiEntities: ["PERSON"] } },
+      async () => {},
+    );
+    expect(rows.find((r) => r.version === 3)).toMatchObject({
+      piiEntities: ["PERSON"],
+      sectors: ["banking", "hr"],
+    });
+  });
+
+  it("starts with all six when nothing is stored and none are sent", async () => {
+    const { db, rows } = fakeDb([]);
+    await saveSettings(db, { ...SAVE_INPUT, policy }, async () => {});
+    expect(rows.find((r) => r.version === 1)?.sectors).toEqual(SIX);
+  });
+
+  it("keeps an enforce trial and its switch-back time when only the packs change", async () => {
+    const revertAt = new Date(NOW.getTime() + 10 * MINUTE);
+    const { db, rows } = fakeDb([v1(), enforceRow(2, revertAt)]);
+    await saveSettings(
+      db,
+      {
+        ...SAVE_INPUT,
+        policy: { ...policy, sectors: ["government"] },
+        now: NOW,
+      },
+      async () => {},
+    );
+    expect(rows.find((r) => r.version === 3)).toMatchObject({
+      mode: "enforce",
+      revertAt,
+      sectors: ["government"],
+    });
+  });
+});
+
+describe("every other version carries the packs forward (CHG-2026-151)", () => {
+  it("saveMode copies the packs in force", async () => {
+    const { db, rows } = fakeDb([v1(), narrowed(2)]);
+    await saveMode(
+      db,
+      {
+        ...SAVE_INPUT,
+        mode: "enforce",
+        revertAt: new Date(NOW.getTime() + 30 * MINUTE),
+        now: NOW,
+      },
+      async () => {},
+    );
+    expect(rows.find((r) => r.version === 3)).toMatchObject({
+      mode: "enforce",
+      sectors: ["banking", "hr"],
+    });
+  });
+
+  it("the automatic switch-back after a trial copies the packs in force", async () => {
+    const { db, rows } = fakeDb([
+      v1(),
+      { ...enforceRow(2, NOW), sectors: ["healthcare"] },
+    ]);
+    const result = await applyExpiredRevert(
+      db,
+      { projectId: "proj-1", now: NOW },
+      async () => {},
+    );
+    expect(result.changed).toBe(true);
+    expect(rows.find((r) => r.version === 3)).toMatchObject({
+      mode: "record",
+      automatic: true,
+      sectors: ["healthcare"],
+    });
+  });
+
+  it("the automatic switch-back under a record ceiling copies them too", async () => {
+    const { db, rows } = fakeDb([
+      v1(),
+      { ...enforceRow(2, null), sectors: ["hr", "education"] },
+    ]);
+    await applyExpiredRevert(
+      db,
+      { projectId: "proj-1", now: NOW, ceiling: "record" },
+      async () => {},
+    );
+    expect(rows.find((r) => r.version === 3)).toMatchObject({
+      automatic: true,
+      sectors: ["hr", "education"],
+    });
+  });
+});
+
+describe("the packs a pod is served (CHG-2026-151)", () => {
+  it("serves the packs in force, as stored", async () => {
+    const { db } = fakeDb([v1(), narrowed(2)]);
+    const current = (await getCurrentSettings(db)) as GuardrailSettingsVersion;
+    expect(toSyncResponse(current, NOW).sectors).toEqual(["banking", "hr"]);
+  });
+
+  it("reads a row without the field as all six, as rayin-guardrails does", async () => {
+    const row = v1();
+    delete row.sectors;
+    const { db } = fakeDb([row]);
+    const current = (await getCurrentSettings(db)) as GuardrailSettingsVersion;
+    expect(current.sectors).toEqual(SIX);
+    expect(toSyncResponse(current, NOW).sectors).toEqual(SIX);
+  });
+
+  it("never serves an empty or unknown selection: reading one throws", async () => {
+    for (const sectors of [[], ["casino"]]) {
+      const { db } = fakeDb([{ ...v1(), sectors }]);
+      await expect(getCurrentSettings(db)).rejects.toThrow(
+        GuardrailSettingsValidationError,
+      );
+    }
   });
 });

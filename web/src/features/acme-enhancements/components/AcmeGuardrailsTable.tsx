@@ -57,6 +57,12 @@ import { cn } from "@/src/utils/tailwind";
 import { useReadPath } from "@/src/features/events/hooks/useReadPath";
 import { type QueryType, type ViewVersion } from "@langfuse/shared/query";
 import { AcmeGuardrailsEnforcement } from "@/src/features/acme-enhancements/components/AcmeGuardrailsEnforcement";
+// ACME (CHG-2026-151): the Policies card's sector policy packs.
+import { AcmeGuardrailSectorPacks } from "@/src/features/acme-enhancements/components/AcmeGuardrailSectorPacks";
+import {
+  isSectorPackId,
+  type SectorPackId,
+} from "@/src/features/acme-enhancements/utils/guardrailSectorPacks";
 import {
   type GatewayMode,
   type GuardrailAction,
@@ -527,8 +533,10 @@ const SETTINGS_REASON_MIN_LENGTH = 10;
 // versions, and every rayin-guardrails pod pulls the current one. This card
 // shows the stored version and which version each pod reports; only the
 // deployment's guardrail administrators can save a new one, and only from a
-// role that is not read-only (CHG-2026-091).
-function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
+// role that is not read-only (CHG-2026-091). CHG-2026-151: it also edits the
+// sector policy packs, saved with the rest in the same version. Exported for
+// its client test.
+export function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
   const utils = api.useUtils();
   // Polled so "n of n pods on version v" follows a save without a reload.
   const config = api.acmeGuardrails.getConfig.useQuery(
@@ -543,6 +551,7 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
     piiEntities: string[];
     jailbreakEnabled: boolean;
     topicalEnabled: boolean;
+    sectors: SectorPackId[];
   } | null>(null);
   const [reason, setReason] = useState("");
   const storedVersion = config.data?.current?.version;
@@ -554,6 +563,7 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
         piiEntities: current.piiEntities,
         jailbreakEnabled: current.jailbreakEnabled,
         topicalEnabled: current.topicalEnabled,
+        sectors: current.sectors.filter(isSectorPackId),
       });
     }
     // Deliberately keyed on the stored version only: see above.
@@ -640,6 +650,10 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
     draft.piiEntities.length !== current.piiEntities.length ||
     draft.piiEntities.some(
       (e) => !(current.piiEntities as readonly string[]).includes(e),
+    ) ||
+    draft.sectors.length !== current.sectors.length ||
+    draft.sectors.some(
+      (s) => !(current.sectors as readonly string[]).includes(s),
     );
 
   const piiOn = draft.piiEntities.length > 0;
@@ -780,6 +794,14 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
           />
         </div>
 
+        <AcmeGuardrailSectorPacks
+          selected={draft.sectors}
+          onChange={(sectors) => setDraft({ ...draft, sectors })}
+          readOnly={!canEdit}
+          pending={update.isPending}
+          topicalEnabled={draft.topicalEnabled}
+        />
+
         {isDirty && (
           <div className="bg-muted flex flex-col gap-2 rounded-md p-3 text-sm">
             <div className="flex items-center gap-3">
@@ -812,6 +834,7 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
                     piiEntities: current.piiEntities,
                     jailbreakEnabled: current.jailbreakEnabled,
                     topicalEnabled: current.topicalEnabled,
+                    sectors: current.sectors.filter(isSectorPackId),
                   });
                 }}
               >
@@ -831,6 +854,7 @@ function AcmeGuardrailsPolicies({ projectId }: { projectId: string }) {
                     ),
                     jailbreakEnabled: draft.jailbreakEnabled,
                     topicalEnabled: draft.topicalEnabled,
+                    sectors: draft.sectors,
                     reason,
                   })
                 }

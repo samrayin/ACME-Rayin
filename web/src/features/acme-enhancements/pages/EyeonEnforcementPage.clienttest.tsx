@@ -182,6 +182,14 @@ function summary(overrides: Record<string, unknown> = {}) {
         available: 7,
         redactions: split(1, 9),
       },
+      // CHG-2026-151: two of the six sector packs in force.
+      sectorPacks: {
+        inForce: [
+          { id: "banking", label: "Banking and finance" },
+          { id: "hr", label: "HR and staff services" },
+        ],
+        available: 6,
+      },
       oversized: { refusals: refusals(0, 0, 0, 0) },
       other: { refusals: refusals(0, 0, 0, 0), types: [] },
     },
@@ -427,6 +435,54 @@ describe("EYEON Enforcement and policy page (CHG-2026-138)", () => {
     expect(screen.getByText("BH_CPR")).toBeTruthy();
     expect(screen.getAllByText("Off").length).toBe(1);
     expect(screen.getAllByText("On").length).toBe(2);
+  });
+
+  // CHG-2026-151 (ADR-0031 phase 1).
+  it("shows the sector packs in force, the ones not enabled, and that conduct rules always apply", () => {
+    show();
+    const list = screen.getByRole("list", {
+      name: "Sector policy packs in force",
+    });
+    expect(
+      within(list)
+        .getAllByRole("listitem")
+        .map((li) => li.textContent),
+    ).toEqual(["Banking and finance", "HR and staff services"]);
+    expect(screen.getByText("2 of 6 enabled")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Not enabled: Government services, Healthcare, Retail and telecom, Education.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Packs set only which topics answers may cover\. Every pack's conduct rules and the universal protections/,
+      ),
+    ).toBeTruthy();
+    // Display only: still no switch on this page.
+    expect(screen.queryAllByRole("switch")).toHaveLength(0);
+  });
+
+  it("names no pack as not enabled when all six are in force", () => {
+    const base = summary();
+    show({
+      policies: {
+        ...base.policies,
+        sectorPacks: {
+          inForce: [
+            { id: "banking", label: "Banking and finance" },
+            { id: "government", label: "Government services" },
+            { id: "healthcare", label: "Healthcare" },
+            { id: "hr", label: "HR and staff services" },
+            { id: "retail_telecom", label: "Retail and telecom" },
+            { id: "education", label: "Education" },
+          ],
+          available: 6,
+        },
+      },
+    });
+    expect(screen.getByText("6 of 6 enabled")).toBeTruthy();
+    expect(screen.queryByText(/^Not enabled:/)).toBeNull();
   });
 
   it("says when no settings are stored", () => {

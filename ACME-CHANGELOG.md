@@ -7341,3 +7341,67 @@ The new code is under `features/acme-enhancements/components/eyeon/` (`brand/` a
 - **The rail** (12): compact by default, expanding and collapsing with the button, opening as left with no compact render first, a choice per person, refused storage, the shortcut and where it does not fire, the tooltip and `aria-keyshortcuts`, no toggle with the rail off, the top row without a divider, the header row's class and `AppSidebar.tsx` carrying it.
 
 Updated: the rail's offset assertions in the rail (CHG-2026-135) and resize-handle (CHG-2026-142) tests, and one test name in the theme presets test. 14 related client test files pass (276 tests). Fresh typecheck passed with only the 2 tolerated Enterprise-file errors. ESLint (no warnings) and Prettier pass on every changed code file. The Langfuse-text guard reports no new hits, and its baseline loses the removed "Langfuse home" line (`--shrink`). Storybook stories: the logo (Default, Small, Variant Matrix) and the rail (Compact, Expanded).
+
+## 2026-10-12 — Guardrail sector policy packs chosen in EYEON (CHG-2026-151, ADR-0031 phase 1)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-151 · owner: Anees Ur Rahman · Tier 1 |
+| **ADR** | [ADR-0031](acme-governance/adr/ADR-0031-guardrail-sector-packs.md) (Proposed): phase 1 is built here; phase 2 (CHG-2026-152, per department as a gateway team) is design only |
+| **Approval** | Pending. The owner reviews and merges; no self-approval |
+| **Dates** | Dev: not yet released · Staging: not available · Prod: not yet |
+| **Impact** | Client-visible. The Guardrails page's Policies card gains a "Sector policy packs" section, and the Enforcement and policy page shows the packs in force. With all six packs enabled, the default, the guardrail behaves exactly as before. No API, permission or role change |
+| **Schema change** | Yes: migration `20261011120000_acme_guardrail_sector_packs` adds `acme_guardrail_settings.sectors` (`TEXT[] NOT NULL`, **a column with a default**: all six packs) and a CHECK (at least one known pack, no NULL, a flat list). A constant default rewrites no row, so the append-only triggers do not fire and every existing version reads all six. No new grants: the runtime role's table grants cover the column |
+| **Rollback** | `acme-governance/rollback/20261011120000_acme_guardrail_sector_packs/` (`down.sql`, `ROLLBACK.md`): enable all six packs in the console first, then redeploy the previous image; `down.sql` refuses while the version in force narrows the packs. Rolling rayin-guardrails back to v0.6.1 is safe only while the selection is all six |
+| **Release order** | **rayin-guardrails v0.7.0 (rayin-guardrails #34) must be released first**, then this console release. Released first, the console would offer a choice that v0.6.1 ignores |
+| **Feature flag** | None. The default, all six, changes nothing |
+
+**What:** the owner, 2026-10-11: "how to create this in enforcement policies for my guardrail so it can be enabled and utilized across departments". The owner chose "Gateway team" as what a department is, and "Phase 1, then 2". Phase 1 lets a guardrail administrator choose, in EYEON, which of rayin-guardrails' six sector packs (CHG-2026-109) apply to the whole deployment.
+- **What a pack decides:** only the answer scope, that is, which topics answers may cover. Every pack's conduct rules and the universal rules (personal data, fraud, general harm, jailbreak and prompt injection) apply whatever is enabled. Both screens say so beside the packs.
+- **The packs:** Banking and finance (`banking`), Government services (`government`), Healthcare (`healthcare`), HR and staff services (`hr`), Retail and telecom (`retail_telecom`), Education (`education`). One shared, client-safe list (`guardrailSectorPacks.ts`) holds the ids, labels and scopes for the server and both screens.
+- **Stored in the settings versions:** each audited, append-only version carries `sectors`, in pack order.
+  - **Validation:** a save is checked by the shared zod schema, so an empty selection or an unknown id is refused as a bad request, with a message in words, before anything is read. Repeats are dropped.
+  - **Carry-forward:** a save without `sectors` keeps the packs in force. Every other new version copies them: the enforcement switch (`saveMode`) and the automatic switch-back, after a trial or under a record ceiling (`applyExpiredRevert`).
+  - **Audit:** the audit entry's before and after include the packs.
+- **Served to the pods:** `POST /api/public/guardrails-settings` includes `sectors` with every version. rayin-guardrails v0.7.0:
+  - applies them, counting a repeated id once;
+  - reads a version without them as all six;
+  - refuses a version with an empty list, an unknown id, an explicit null, a string or non-string items (`invalid_settings`), and keeps its last settings;
+  - shows them on `GET /v1/config`.
+
+  EYEON never stores such a selection: the zod check, and a CHECK in the database.
+- **Who changes them:** as for the rest of the policy. A named guardrail administrator (`CAIRO_GUARDRAIL_ADMINS`), with open sign-up closed, whose project role is not content-free. Security Analyst, Business Analyst and Auditor stay read-only; `updateConfig` is on none of their allow-lists.
+- **Policies card:** six switches, each with its label and a one-line scope, and the note.
+  - Saving goes through the card's existing save flow, with its required reason.
+  - The last enabled pack cannot be switched off.
+  - The section is read-only wherever the card is.
+  - With the Topical Rail off, it says the packs change no answer until that check is on.
+- **Enforcement and policy page:** the packs in force by label, "n of 6 enabled", those not enabled, and the note. The router returns them as ids and labels from the settings it already reads. Display only, as before. Its "Not on this page" list now says EYEON stores which packs are enabled, not their wording.
+
+**Phase 2 (CHG-2026-152), design only, in ADR-0031 §3.3:**
+- a department is a gateway team, and each team's packs are set in EYEON;
+- a team with none uses the deployment's packs;
+- the gateway hook sends the team from the authenticated key (`user_api_key_team_id`), never from caller fields;
+- the guardrails service caches one rules engine per pack set, with a bound set after measuring memory;
+- each decision records the team and the packs applied, and Guardrail decisions can filter by department.
+
+Not chosen: a department as an EYEON project, a selection per application key, and LiteLLM's per-team guardrails (an Enterprise feature).
+
+**Migration rehearsal (local, 2026-10-11 and 2026-10-12):** a throwaway Postgres 16.4 with the Azure-like roles; nothing live was touched.
+- **Up:** every earlier migration through Prisma, seeded versions, then this migration as the admin login: applied, with the table not rewritten and the triggers intact.
+- **As `rayin_migrator`:** refused, "must be owner": that role does not own the ACME tables created after `20260917090000`. This is a pre-existing gap for the planned move of migrations to that role (Readiness Ledger P0-5).
+- **Twelve checks:** constraint, grant and trigger checks, all as expected.
+- **Down and up again:** the down guard refused under three runners while two packs were in force; with all six in force, down and up again passed. Details in the `ROLLBACK.md`.
+
+**Upstream sync (CHG-2026-100):** the only upstream file touched is `packages/shared/prisma/schema.prisma`, inside ACME's own `AcmeGuardrailSettings` model, marked "ACME (CHG-2026-151, ADR-0031)". Every other changed file is ACME's own: the guardrail settings, their router and the public settings endpoint, the Enforcement and policy page and router, the Guardrails table, and the migration.
+
+**Release:** the guardrails service first, then the web image. The migration runs on start-up. No setting or flag.
+
+**Tests:** 41 new tests.
+- **Server unit** (30 new):
+  - **Settings logic** (19): the pack list; validation (empty, unknown, null, a string, non-string items, repeats, pack order); saving the packs and auditing them; no change for a reordering; refusal before the database; carry-forward through a save without packs, from nothing, through an enforce trial, through `saveMode` and through both automatic switch-backs; the packs served, all six for a row read without the field, and a stored invalid selection never served.
+  - **The router** (8): the Security Analyst, Business Analyst and Auditor refused before the database, even with a listed email; the packs not offered for editing to the read-only roles; messages for an empty and an unknown selection; a save, its audit entry and the read-back; a save without packs keeping them.
+  - **The public endpoint** (3), end to end: the packs as stored, all six, and no settings for another project's key.
+- **Client** (11 new): the six switches with their scopes and the note, switching off and on in pack order, the last pack locked on, read-only, the Topical Rail note, the Policies card read-only for a content-free role and for a non-administrator, a save through the existing flow with the reason, and the Enforcement page's packs (some, and all six).
+
+Updated: the Enforcement page's figures and router tests (the packs in force), its client fixture, and the settings fixtures in the overview test. 8 server unit test files pass (268 tests, including the overview and Guardrail decisions routers, which read settings rows without the field) and 2 client test files (28 tests). Fresh typecheck passed with only the 2 tolerated Enterprise-file errors, also against a throwaway Prisma client generated from the new schema. ESLint (no warnings) and Prettier pass on every changed code file. The Langfuse-text guard reports no new hits.
