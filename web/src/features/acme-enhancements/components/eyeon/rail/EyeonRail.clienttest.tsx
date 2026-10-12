@@ -246,6 +246,19 @@ describe("EyeonRail (CHG-2026-135)", () => {
       expect(control).toHaveFocus();
     }
   });
+
+  it("scrolls only the list: Settings and Support stay pinned above the button (CHG-2026-153)", async () => {
+    render(<Shell />);
+    await within(rail()).findByRole("button", { name: "Support" });
+
+    const scroller = rail().querySelector<HTMLElement>(".scrollbar-rail");
+    expect(scroller).not.toBeNull();
+    expect(scroller).toHaveClass("overflow-y-auto");
+    expect(within(scroller!).getByText("Observability")).toBeInTheDocument();
+    for (const name of ["Settings", "Support"]) {
+      expect(scroller).not.toContainElement(category(name));
+    }
+  });
 });
 
 describe("the rail beside the docked sidebar (CHG-2026-135)", () => {

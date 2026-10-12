@@ -44,13 +44,17 @@ type RailMode = "compact" | "expanded";
 const ITEM_CLASS =
   "group/rail text-sidebar-foreground hover:bg-sidebar-hover hover:text-sidebar-hover-foreground focus-visible:ring-sidebar-ring flex w-full rounded-md focus-visible:ring-2 focus-visible:outline-hidden";
 
+// ACME (CHG-2026-153): in a short window the compact rail
+// tightens (a smaller circle and gaps), so the list fits in most windows
+// without scrolling. 800px is where the list at full size stops fitting.
 const ITEM_LAYOUT_CLASS: Record<RailMode, string> = {
-  compact: "flex-col items-center gap-1 py-1.5",
+  compact:
+    "flex-col items-center gap-1 py-1.5 [@media(max-height:800px)]:gap-0.5 [@media(max-height:800px)]:py-1",
   expanded: "flex-row items-center gap-2 px-1.5 py-1",
 };
 
 const CIRCLE_SIZE_CLASS: Record<RailMode, string> = {
-  compact: "size-9",
+  compact: "size-9 [@media(max-height:800px)]:size-8",
   expanded: "size-8",
 };
 
@@ -58,7 +62,10 @@ const LABEL_LAYOUT_CLASS: Record<RailMode, string> = {
   // Under the icon, as wide as the rail allows. A name too long for one line
   // ("Observability" in a wide font) breaks inside its highlight rather than
   // running past it.
-  compact: "max-w-full text-center text-xs [overflow-wrap:anywhere]",
+  // `text-balance` sets a two-line name as two even lines ("Governance" over
+  // "Controls"), not a full line and a short one.
+  compact:
+    "max-w-full px-0.5 text-center text-xs text-balance [overflow-wrap:anywhere]",
   // Beside the icon, on one line.
   expanded: "min-w-0 truncate text-sm",
 };
@@ -75,6 +82,16 @@ function EyeonRailItem({
   onChoose: () => void;
 }) {
   const Icon = category.icon;
+  const itemRef = useRef<HTMLLIElement>(null);
+  // External system: the DOM. In a short window the list scrolls, so the
+  // current category is brought into view rather than left below the fold. A
+  // no-op where it is already on screen.
+  useEffect(() => {
+    const element = itemRef.current;
+    if (active && element && typeof element.scrollIntoView === "function") {
+      element.scrollIntoView({ block: "nearest" });
+    }
+  }, [active]);
   // "page" when the page on screen belongs to the active category; "true"
   // when the person chose another category's list on this page.
   const ariaCurrent = active
@@ -110,7 +127,7 @@ function EyeonRailItem({
   );
 
   return (
-    <li>
+    <li ref={itemRef}>
       {category.href ? (
         <Link
           href={category.href}
@@ -271,6 +288,10 @@ export function EyeonRail({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [toggle]);
 
+  // Settings and Support are pinned above the button; only the rest scrolls.
+  const scrolling = model.categories.filter((category) => !category.bottom);
+  const pinned = model.categories.filter((category) => category.bottom);
+
   const renderCategory = (category: EyeonRailCategory) => (
     <EyeonRailItem
       key={category.id}
@@ -297,19 +318,19 @@ export function EyeonRail({
           header row reaches over it, so the logo starts here. */}
       <div aria-hidden className={APP_SHELL_CHROME_ROW_CLASS} />
       <div className="flex min-h-0 flex-1 flex-col border-r">
-        <div className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-1 py-1.5">
+        {/* ACME (CHG-2026-153): only this list scrolls, in the rail's own
+            scrollbar (globals.css, `scrollbar-rail`): a wide grab area, in
+            the sidebar's colours, beside the names rather than over them. */}
+        <div className="scrollbar-rail flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-0.5 py-1.5">
           <ul className="flex flex-col gap-1">
-            {model.categories
-              .filter((category) => !category.bottom)
-              .map(renderCategory)}
-          </ul>
-          <div className="min-h-4 flex-1" />
-          <ul className="flex flex-col gap-1">
-            {model.categories
-              .filter((category) => category.bottom)
-              .map(renderCategory)}
+            {scrolling.map(renderCategory)}
           </ul>
         </div>
+        {pinned.length > 0 && (
+          <ul className="flex shrink-0 flex-col gap-1 border-t px-0.5 py-1.5">
+            {pinned.map(renderCategory)}
+          </ul>
+        )}
         <div
           className={cn(
             "flex shrink-0 px-1 pt-1 pb-2",

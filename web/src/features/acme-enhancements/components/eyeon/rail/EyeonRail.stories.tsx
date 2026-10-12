@@ -14,6 +14,12 @@ import { railExpandedKey } from "@/src/features/acme-enhancements/components/eye
  * is the current page's category, so its long name shows in its highlight.
  * Use the toolbar's theme switch for dark mode.
  *
+ * CHG-2026-153 (ADR-0026 §12.6): in a window 800 pixels tall or less the
+ * compact rail tightens, and in one 700 pixels tall or less it is a rem
+ * wider, its list scrolls in its own scrollbar and Settings and Support stay
+ * pinned above the button. Both follow the window, not the story's frame: set
+ * the Storybook viewport to a short height to see them.
+ *
  * Story-only data: one page per category, every category visible.
  */
 
