@@ -136,6 +136,7 @@ describe("overviewMode", () => {
     piiEntities: [],
     jailbreakEnabled: true,
     topicalEnabled: true,
+    sectors: ["banking"],
     reason: "a reason",
     createdBy: "someone",
     createdByEmail: null,

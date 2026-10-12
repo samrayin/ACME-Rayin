@@ -57,6 +57,10 @@ import {
   type GatewayMode,
   type GuardrailAction,
 } from "@/src/features/acme-enhancements/utils/guardrailVerdictLabel";
+import {
+  SECTOR_PACKS,
+  SECTOR_PACKS_NOTE,
+} from "@/src/features/acme-enhancements/utils/guardrailSectorPacks";
 
 // ACME (CHG-2026-138, ADR-0027): the EYEON Enforcement and policy page,
 // composed from the EYEON kit (components/eyeon). It follows the prototype's
@@ -736,7 +740,7 @@ function PoliciesCard({
   return (
     <EyeonCard
       title="Policies in force"
-      subtitle={`What EYEON stores about the guardrail policies (each check on or off, and the personal-data types), with what each flagged on gateway traffic, ${period}.`}
+      subtitle={`What EYEON stores about the guardrail policies (each check on or off, the personal-data types and the sector packs), with what each flagged on gateway traffic, ${period}.`}
       link={{ href, label: "Open Guardrails" }}
       footnote="Counts follow each decision's policy label and the mode the gateway reported: Blocked and Redacted only where it enforced."
     >
@@ -827,9 +831,53 @@ function PoliciesCard({
               {splitText("block", p.other.refusals)}.
             </p>
           ) : null}
+          <SectorPacksInForce packs={p.sectorPacks} />
         </>
       )}
     </EyeonCard>
+  );
+}
+
+/**
+ * CHG-2026-151 (ADR-0031 phase 1): the sector policy packs in force, by
+ * label, and the ones not enabled. Display only, as the rest of the page.
+ */
+function SectorPacksInForce({
+  packs,
+}: {
+  packs: NonNullable<Summary["policies"]>["sectorPacks"];
+}) {
+  const enabled = new Set<string>(packs.inForce.map((p) => p.id));
+  const notEnabled = SECTOR_PACKS.filter((p) => !enabled.has(p.id));
+  return (
+    <div className="flex flex-col gap-2 border-t pt-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <span className="font-bold">Sector policy packs</span>
+        <span className="text-muted-foreground text-xs tabular-nums">
+          {packs.inForce.length.toLocaleString()} of{" "}
+          {packs.available.toLocaleString()} enabled
+        </span>
+      </div>
+      <ul
+        className="flex flex-wrap gap-1"
+        aria-label="Sector policy packs in force"
+      >
+        {packs.inForce.map((pack) => (
+          <li key={pack.id}>
+            <Badge variant="success" className="gap-1">
+              <CheckCircle2 aria-hidden className="size-3" />
+              {pack.label}
+            </Badge>
+          </li>
+        ))}
+      </ul>
+      {notEnabled.length > 0 ? (
+        <p className="text-muted-foreground text-xs">
+          Not enabled: {notEnabled.map((p) => p.label).join(", ")}.
+        </p>
+      ) : null}
+      <p className="text-muted-foreground text-xs">{SECTOR_PACKS_NOTE}</p>
+    </div>
   );
 }
 
@@ -965,9 +1013,9 @@ function HowCard({ data, href }: { data: Summary; href: string }) {
 
 const NOT_RECORDED = [
   {
-    what: "The policy definitions: the topic list, the jailbreak threshold, the input size limit",
+    what: "The policy definitions: each sector pack's rules, the jailbreak threshold, the input size limit",
     reason:
-      "They live in the guardrails service, not in EYEON's database. Showing them needs that service to report them with its settings pull, or EYEON to store them as versioned settings.",
+      "They live in the guardrails service, not in EYEON's database. EYEON stores which sector packs are enabled, shown above, not their wording. Showing the rest needs that service to report them with its settings pull, or EYEON to store them as versioned settings.",
   },
   {
     what: "The mode each guardrail pod applies",

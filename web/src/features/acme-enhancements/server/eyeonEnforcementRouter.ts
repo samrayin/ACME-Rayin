@@ -253,7 +253,9 @@ export const eyeonEnforcementRouter = createTRPCRouter({
           alertRate: judge.alertRate,
           alert: judge.alert,
         },
-        // Null when no guardrail settings are stored yet.
+        // Null when no guardrail settings are stored yet. Includes the sector
+        // packs in force, by id and label, from the same settings read
+        // (CHG-2026-151): no extra read.
         policies: policiesInForce(
           settings,
           refusalsByType(refusalGroups),

@@ -672,6 +672,8 @@ export const acmeGuardrailsRouter = createTRPCRouter({
               piiEntities: current.piiEntities,
               jailbreakEnabled: current.jailbreakEnabled,
               topicalEnabled: current.topicalEnabled,
+              // CHG-2026-151: the enabled sector packs, in pack order.
+              sectors: current.sectors,
               reason: current.reason,
               // Shown to the administrators only: the settings are visible
               // from every organisation, the editor's email need not be
@@ -859,6 +861,12 @@ export const acmeGuardrailsRouter = createTRPCRouter({
   // the settings apply to every project and every gateway caller, so no
   // organisation or project role is the right authority (§3.4, test B12).
   // Every rayin-guardrails pod applies it on its next pull (within 30 s).
+  //
+  // CHG-2026-151 (ADR-0031 phase 1): `sectors`, the enabled sector packs, is
+  // checked by the shared zod schema in saveSettings (at least one, known
+  // ids), so a refused selection gets a message in words, as BAD_REQUEST,
+  // before anything is read. Omitted, the packs in force are kept. Only
+  // bounded here.
   updateConfig: protectedProjectProcedure
     .input(
       z.object({
@@ -866,6 +874,7 @@ export const acmeGuardrailsRouter = createTRPCRouter({
         piiEntities: z.array(z.enum(ALL_PII_ENTITIES)),
         jailbreakEnabled: z.boolean(),
         topicalEnabled: z.boolean(),
+        sectors: z.array(z.string().max(64)).max(32).optional(),
         reason: z.string().max(REASON_MAX_LENGTH),
       }),
     )
@@ -900,6 +909,7 @@ export const acmeGuardrailsRouter = createTRPCRouter({
               piiEntities: input.piiEntities,
               jailbreakEnabled: input.jailbreakEnabled,
               topicalEnabled: input.topicalEnabled,
+              sectors: input.sectors,
             },
             reason: input.reason,
             userId: ctx.session.user.id,

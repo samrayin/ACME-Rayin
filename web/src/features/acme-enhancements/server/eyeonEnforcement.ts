@@ -38,6 +38,11 @@ import {
   type ModeSplit,
   type RefusalType,
 } from "@/src/features/acme-enhancements/server/eyeonGuardrailDecisions";
+import {
+  SECTOR_PACK_IDS,
+  type SectorPackId,
+  sectorPackLabel,
+} from "@/src/features/acme-enhancements/utils/guardrailSectorPacks";
 
 // ------------------------------------------------------------ the mode now
 
@@ -413,6 +418,15 @@ export type PoliciesInForce = {
     available: number;
     redactions: ModeSplit;
   };
+  /**
+   * The sector policy packs whose answer scope is enabled (CHG-2026-151):
+   * ids and labels, in pack order, and how many packs there are. They set
+   * only which topics answers may cover; conduct rules apply regardless.
+   */
+  sectorPacks: {
+    inForce: { id: SectorPackId; label: string }[];
+    available: number;
+  };
   /** Refusals of text too large to check; its limit is not stored here. */
   oversized: { refusals: PolicyRefusals };
   /** Refusals under any other label, by the scorecard's type names. */
@@ -432,10 +446,11 @@ function refusalsOf(types: readonly RefusalType[]): PolicyRefusals {
 
 /**
  * What EYEON stores about the guardrail policies (the settings in force:
- * the jailbreak and topic checks on or off, the personal-data types), each
- * with what it flagged in the period. Refusals are matched to a policy by
- * the Applications scorecard's mapping of the policy label (refusalsByType);
- * the label itself is never passed on. Null when no settings are stored.
+ * the jailbreak and topic checks on or off, the personal-data types, the
+ * sector packs), each with what it flagged in the period, where a policy
+ * label maps to one. Refusals are matched to a policy by the Applications
+ * scorecard's mapping of the policy label (refusalsByType); the label itself
+ * is never passed on. Null when no settings are stored.
  */
 export function policiesInForce(
   settings: GuardrailSettingsVersion | null,
@@ -461,6 +476,13 @@ export function policiesInForce(
       entities: [...settings.piiEntities],
       available: availableEntities,
       redactions: { ...redactions },
+    },
+    sectorPacks: {
+      inForce: settings.sectors.map((id) => ({
+        id,
+        label: sectorPackLabel(id),
+      })),
+      available: SECTOR_PACK_IDS.length,
     },
     oversized: { refusals: of("oversized") },
     other: {

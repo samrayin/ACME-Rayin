@@ -1078,6 +1078,11 @@ model AcmeGuardrailSettings {
   revertAt         DateTime? @map("revert_at")
   // True for a version written by the automatic switch-back.
   automatic        Boolean   @default(false)
+  // ACME (CHG-2026-151, ADR-0031): the sector policy packs whose answer
+  // scope is enabled, in pack order. Never empty and only known ids (a CHECK
+  // constraint holds it there). Rows from before the column carry all six,
+  // which is also what rayin-guardrails applies when it is absent.
+  sectors          String[]  @default(["banking", "government", "healthcare", "hr", "retail_telecom", "education"]) @map("sectors")
 
   @@map("acme_guardrail_settings")
 }
