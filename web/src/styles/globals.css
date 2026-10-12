@@ -879,6 +879,56 @@
   }
 }
 
+/* The EYEON rail's scrollbar (CHG-2026-153). Like `scrollbar-visible`, it
+   paints a bar whenever the content overflows, but it is made for a narrow
+   rail that people have to grab, and coloured from the sidebar's own tokens
+   (`muted-foreground` is nearly invisible on the dark rail). The lane is
+   `--scrollbar-rail-width` (1rem) wide, so the grab area is wider than the
+   browser's own; the thumb inside it is 10px at rest and 12px under the
+   pointer, in `sidebar-foreground` at a contrast of at least 3:1, with no
+   arrow buttons, and turns `sidebar-primary` while dragged. The borders are
+   transparent and `background-clip` keeps the colour to the padding box, so
+   the thumb grows without the lane moving. The standard properties are gated
+   for the reason `scrollbar-visible` gives. */
+@utility scrollbar-rail {
+  overscroll-behavior: contain;
+
+  &::-webkit-scrollbar {
+    width: var(--scrollbar-rail-width, 1rem);
+  }
+
+  &::-webkit-scrollbar-button {
+    display: none;
+  }
+
+  &::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    min-height: 2.5rem;
+    border: 3px solid transparent;
+    border-radius: 9999px;
+    background-clip: padding-box;
+    background-color: hsl(var(--sidebar-foreground) / 0.55);
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    border-width: 2px;
+    background-color: hsl(var(--sidebar-foreground) / 0.8);
+  }
+
+  &::-webkit-scrollbar-thumb:active {
+    border-width: 2px;
+    background-color: hsl(var(--sidebar-primary));
+  }
+
+  @supports not selector(::-webkit-scrollbar) {
+    scrollbar-width: auto;
+    scrollbar-color: hsl(var(--sidebar-foreground) / 0.55) transparent;
+  }
+}
+
 /* Tailwind's `sr-only` verbatim, plus `top: 0; left: 0`. Without them the box
    sits at its static position, and since it is absolute, its containing block
    is the nearest positioned ancestor — usually far outside the scroll container

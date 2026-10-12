@@ -207,4 +207,25 @@ describe("the width the rail hands the sidebar (CHG-2026-150)", () => {
     expect(EYEON_RAIL_WIDTH_CLASS.compact).toContain("w-22");
     expect(EYEON_RAIL_WIDTH_CLASS.expanded).toContain("w-52");
   });
+
+  // CHG-2026-153: in a short window the rail is wider by the scrollbar's lane,
+  // and the sidebar is handed the same wider width.
+  it.each(Object.entries(EYEON_RAIL_WIDTH_CLASS))(
+    "%s: on a short window the variable is still the rail's own width, one rem wider",
+    (_mode, classes) => {
+      const base = /(?:^| )w-(\d+)(?: |$)/.exec(classes)?.[1];
+      const short = /\[@media\(max-height:700px\)\]:w-(\d+)(?: |$)/.exec(
+        classes,
+      )?.[1];
+      const handed =
+        /\[@media\(max-height:700px\)\]:\[&~\[data-side=left\]\]:\[--eyeon-rail-width:([\d.]+)rem\]/.exec(
+          classes,
+        )?.[1];
+      expect(base).toBeDefined();
+      expect(short).toBeDefined();
+      expect(handed).toBeDefined();
+      expect(Number(short) * REM_PER_STEP).toBe(Number(handed));
+      expect((Number(short) - Number(base)) * REM_PER_STEP).toBe(1);
+    },
+  );
 });

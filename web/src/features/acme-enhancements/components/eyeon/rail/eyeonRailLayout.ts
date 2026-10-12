@@ -18,13 +18,24 @@
  * Class strings, written out in full for Tailwind to find.
  */
 
-/** The rail's own width, and the same width handed to the sidebar. */
+/**
+ * The rail's own width, and the same width handed to the sidebar.
+ *
+ * ACME (CHG-2026-153): in a window 700px tall or less the list
+ * can overflow, and the browser's scrollbar then takes a lane out of the
+ * names' room ("Governanc|e"). The rail is wider there by the scrollbar's lane
+ * (1rem, `scrollbar-rail` in globals.css), so the names keep the room they
+ * have in a taller window, where there is no scrollbar and the width is as it
+ * was: about 79px, against the longest name's 71px at text-xs.
+ */
 export const EYEON_RAIL_WIDTH_CLASS = {
-  compact: "w-22 [&~[data-side=left]]:[--eyeon-rail-width:5.5rem]",
+  compact:
+    "w-22 [&~[data-side=left]]:[--eyeon-rail-width:5.5rem] [@media(max-height:700px)]:w-26 [@media(max-height:700px)]:[&~[data-side=left]]:[--eyeon-rail-width:6.5rem]",
   // "Governance Controls" and "Prompt Management" fit on one line beside
   // their icons in the system fonts (about 125px at text-sm); longer text
   // is cut short with an ellipsis rather than wrapping.
-  expanded: "w-52 [&~[data-side=left]]:[--eyeon-rail-width:13rem]",
+  expanded:
+    "w-52 [&~[data-side=left]]:[--eyeon-rail-width:13rem] [@media(max-height:700px)]:w-56 [@media(max-height:700px)]:[&~[data-side=left]]:[--eyeon-rail-width:14rem]",
 } as const;
 
 /**

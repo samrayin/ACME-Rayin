@@ -7405,3 +7405,56 @@ Not chosen: a department as an EYEON project, a selection per application key, a
 - **Client** (11 new): the six switches with their scopes and the note, switching off and on in pack order, the last pack locked on, read-only, the Topical Rail note, the Policies card read-only for a content-free role and for a non-administrator, a save through the existing flow with the reason, and the Enforcement page's packs (some, and all six).
 
 Updated: the Enforcement page's figures and router tests (the packs in force), its client fixture, and the settings fixtures in the overview test. 8 server unit test files pass (268 tests, including the overview and Guardrail decisions routers, which read settings rows without the field) and 2 client test files (28 tests). Fresh typecheck passed with only the 2 tolerated Enterprise-file errors, also against a throwaway Prisma client generated from the new schema. ESLint (no warnings) and Prettier pass on every changed code file. The Langfuse-text guard reports no new hits.
+
+## 2026-10-12 — The rail's scrollbar and names (CHG-2026-153)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-153 · owner: Anees Ur Rahman · Tier 1 |
+| **ADR** | [ADR-0026](acme-governance/adr/ADR-0026-adopting-the-eyeon-prototype.md) §12.6 (addendum) |
+| **Approval** | Pending. The owner reviews and merges; no self-approval. The owner approved the design and the patch on 2026-10-12 ("approved. run through the repo and do the changes") after reading the spec and a measured before-and-after page. That is not a review of this diff |
+| **Dates** | Dev: not yet released · Staging: not available · Prod: not yet |
+| **Impact** | Client-visible, with the EYEON rail on (`CAIRO_EYEON_RAIL_ENABLED`). In a window 700 pixels tall or less the rail is one rem wider, its list scrolls in a scrollbar made for it, and names no longer break mid-word. Settings and Support stay on screen above the expand button in every window. In a window 800 pixels tall or less the compact rail tightens. In a taller window the rail keeps its width and looks as before, apart from 2 pixels less padding beside the names and a hairline above Settings and Support |
+| **Schema change** | None |
+| **Rollback** | Revert the commit and redeploy the previous console image. No stored key, setting or migration changes |
+| **Feature flag** | None new. The rail stays behind `CAIRO_EYEON_RAIL_ENABLED` (server-only, off by default) |
+
+**What:** the owner's screenshot of the live rail on 2026-10-12, and the instruction "the native scrollbar should have slightly more width or slidable option.. i will let your select the best option as an UI / UX specialist".
+- **The defect, measured.** The screenshot showed the browser's grey scrollbar beside the rail, "Governanc/e", "Observabili/ty" and "Managem/ent" split mid-word, and the last items out of view. A model of the rail built from `EyeonRail.tsx`'s own numbers reproduces it. In a window 600 pixels tall:
+  - the list was one scrolling box inside the 88-pixel rail, and it held Settings and Support;
+  - the browser's scrollbar took about 15 pixels, leaving 57 pixels for a name against 71 for the longest word, so three names split;
+  - 230 pixels of the list were below the fold, Settings and Support with them.
+- **The scrollbar:** a `scrollbar-rail` utility in `globals.css`, beside `scrollbar-visible`.
+  - A lane of 1rem, wider than the browser's, with a rounded thumb of 10 pixels at rest and 12 under the pointer, no arrow buttons, in the sidebar's own colours (3:1 or better, calculated from the tokens), turning to the sidebar's primary colour while dragged.
+  - It is still the browser's own scrollbar, so the wheel, dragging, a trackpad and the keyboard work. Firefox gets the standard properties behind the gate `scrollbar-visible` explains.
+- **Room for the names:** in a window 700 pixels tall or less the rail is 1rem wider (compact 6.5rem, expanded 14rem), by the lane, and the sidebar is handed the same width. The list and the names take 2 pixels less padding on each side, so a name has 79 pixels with or without a scrollbar.
+- **Settings and Support are pinned** above the expand button, outside the scrolling list. Only the other categories scroll. The items' order, roles and names are unchanged.
+- **Density:** in a window 800 pixels tall or less the compact rail uses a 32-pixel circle and tighter gaps, so the list fits in most windows without scrolling.
+- **The current category** is scrolled into view when it becomes active, and a two-line name is set as two even lines.
+
+**Why it matters:** the rail is how people move around the console. On a laptop-height window it cut names in half and hid Settings and Support, which a person cannot find by scrolling a bar they cannot see.
+
+**Choices:**
+- **The browser's own scrollbar, themed,** not an overlay bar (Radix `ScrollArea`): the overlay is best on width, but its primitives would be composed here and the tests would need `ResizeObserver`. The lane is reserved only on short windows, where a scrollbar can appear, so tall windows lose no width.
+- **700 and 800 pixels** are where the list stops fitting at full size and at the tighter size (about 780 and 690 pixels, from the item heights).
+- **Not chosen:** widening only the native bar (it takes more room from the names, the cause of the splits); hiding the bar behind arrows (less discoverable); a draggable or reorderable rail (not asked for, and the expand button covers width).
+
+**Upstream sync (CHG-2026-100):** `globals.css` gets one utility, marked "ACME (CHG-2026-153)". Everything else is under `features/acme-enhancements/components/eyeon/rail/`. None of the files on the conflict list is touched.
+
+**Release:** web image only. No setting, flag or migration.
+
+**Tests:** 3 new client tests; the 6 test files for the rail and the shell pass (162 tests).
+- **The rail** (1): Settings and Support are outside the scrolling list, and the list uses the rail's scrollbar.
+- **The width handed to the sidebar** (2, compact and expanded): on a short window the variable equals the rail's own width and is one rem wider than the normal one.
+- The existing width assertions in the rail, resize-handle and expanded-state tests are unchanged and pass.
+
+**Verified:**
+- The client tests for the rail and the shell pass (6 files, 162 tests).
+- `eslint --max-warnings 0` on the changed source files is clean. The typecheck passes with only the 2 tolerated Enterprise-file errors (CHG-2026-058). Prettier is clean.
+- Every new class string compiles under Tailwind v4.3.3 into the intended rules.
+- **The real rail, in Storybook, in a browser:**
+  - **A window 600 pixels tall, compact:** the rail is 104 pixels, the scrollbar lane 16, a name has 79 pixels, no name splits, Settings and Support are in view, and the circles are 32 pixels. Expanded: 224 pixels, no name cut short.
+  - **A window 900 pixels tall, compact:** the rail is 88 pixels with no scrollbar, nothing hidden and 36-pixel circles.
+  - **The dark theme:** the thumb is plain on the near-black rail, and the active circle and name keep the lime.
+
+**Not verified:** the rail on a real Windows classic scrollbar in the running portal (the "before" figures come from a model with a stand-in 15-pixel bar); the thumb's contrast ratios, which are calculated from the tokens and not measured on screen; Firefox. The rail is wider by the lane on a short window whether or not a bar shows, because CSS cannot know whether the list overflows.
