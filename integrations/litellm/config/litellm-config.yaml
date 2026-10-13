@@ -263,8 +263,19 @@ guardrails:
 # Langfuse v4 CAIRO runs in events_only mode and rejects /api/public/ingestion.
 # To switch off: remove "langfuse_otel" from callbacks, then restart.
 # Already-written traces remain (P0-11).
+# CAIRO request-log push (ADR-0003 section 4, CHG-2026-009). "generic_api" is
+# LiteLLM's own built-in logger (open source, no licence check). It posts one
+# metadata record per request, success or failure, to CAIRO's receiver, and
+# reads its endpoint and its headers from GENERIC_LOGGER_ENDPOINT and
+# GENERIC_LOGGER_HEADERS. Both are keys of the litellm-provider-keys Secret, so
+# no value is in this file. It does NOT retry: a batch whose POST fails is
+# dropped, and CAIRO's reconcile job recovers it from the spend log.
+# If either variable is missing the proxy logs a non-blocking error and
+# registers NOTHING: the gateway runs and the push does not. Adding or removing
+# this entry takes effect only when the pod restarts. To switch off: remove
+# "generic_api" from callbacks, re-apply the ConfigMap, restart.
 litellm_settings:
-  callbacks: ["cairo_trace_metadata_hook.proxy_handler_instance", "langfuse_otel"]
+  callbacks: ["cairo_trace_metadata_hook.proxy_handler_instance", "langfuse_otel", "generic_api"]
   turn_off_message_logging: true
 
 # Starter virtual keys — one per team/use case, per README.md "Open
