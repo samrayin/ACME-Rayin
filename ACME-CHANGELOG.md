@@ -7552,3 +7552,34 @@ Updated: the Enforcement page's figures and router tests (the packs in force), i
 - **Prisma's parameter binding against a live client.** The lookups are tagged templates; the SQL text and grants were run, the client was not.
 - **The full-chain migration rehearsal** (`rehearsal-db.sh`), which creates a pod on the dev cluster.
 - **The whole-project typecheck, lint and the CI suite.** The files were type-checked together with the repo's compiler options, but not as part of the full project.
+
+## 2026-10-14 — The gateway pushes request logs to CAIRO, with LiteLLM's built-in logger (CHG-2026-009)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-009 · owner: Anees Ur Rahman · Tier 1 |
+| **ADR** | [ADR-0003](acme-governance/adr/ADR-0003-cairo-litellm-control-plane.md) section 4 (the callback). Designed 2026-09-19; held at the gateway-restart gate until now |
+| **Approval** | Pending. The owner reviews and merges; no self-approval. The owner approved enabling the push for dev only (decision DEC-1, 2026-10-13) and the single shared gateway restart (2026-10-14). That is not a review of this diff |
+| **Dates** | Dev: not yet applied · Staging: not available · Prod: not yet |
+| **Impact** | When applied and the gateway restarted: each request through the gateway, success or failure, also posts one metadata record to CAIRO's receiver. Request behaviour is unchanged. No prompt or response text is sent (`turn_off_message_logging` is already on). The receiver is already live and has been fed by the reconcile job; this adds the push path beside it |
+| **Schema change** | None |
+| **Rollback** | [plan](acme-governance/rollback/CHG-2026-009-litellm-request-log-callback/ROLLBACK.md): remove `"generic_api"` from `callbacks`, re-apply the ConfigMap, restart the gateway. Nothing is lost; rows then arrive by reconcile |
+| **Feature flag** | None. The entry in `callbacks` is the switch, and it takes effect only when the pod restarts |
+
+**What:**
+- **`integrations/litellm/config/litellm-config.yaml`:** `"generic_api"` is added to `litellm_settings.callbacks`, with the reason and the way to switch it off.
+- **`integrations/litellm/k8s/secret.example.yaml`:** documents the two keys the logger reads, `GENERIC_LOGGER_ENDPOINT` and `GENERIC_LOGGER_HEADERS`. They are keys of the existing `litellm-provider-keys` Secret, which the Deployment already loads with `envFrom`, so **the Deployment is not changed** and no value is in the repository.
+- **`acme-governance/rollback/CHG-2026-009-litellm-request-log-callback/ROLLBACK.md`:** the rollback plan.
+
+**Why this approach:** this is the built-in logger ADR-0003 names, not a custom module. It is open source with no licence check, and it batches 512 events or 5 seconds off the request path. It does not retry: a batch whose POST fails is dropped, and the reconcile job recovers it from the spend log (the correction of 2026-09-19 stands). A retrying wrapper is the option ADR-0003 leaves to the owner, and it is not chosen here.
+
+**Properties to know:**
+- **A missing variable is silent.** With either key absent the proxy logs a non-blocking error and registers nothing: the gateway runs and the push does not. The first check after a restart is that `PUSH` rows arrive.
+- **At DEBUG log level the logger prints its headers,** which include the secret. The gateway's log level stays above DEBUG while this is enabled.
+- **Secret first.** The two Secret keys must exist before the restart, or the restart enables nothing.
+
+**Release:** a ConfigMap re-apply and one watched rolling restart of the gateway, shared with the trace-metadata hook of CHG-2026-126. Both keys are written by the owner; their values are never printed or logged.
+
+**Verified:** on the pinned image, locally, with a dummy header value: `generic_api` is a known callback name; built inside a running event loop with the two variables it yields `GenericAPILogger` with the endpoint set, an `Authorization` header parsed from the `Key=value` form, no retries, batches of 512 or 5 seconds, and both success and failure hooks; with the variables absent it registers nothing and does not raise.
+
+**Not verified:** the live restart, which is recorded in the deployment record; that the receiver accepts the gateway's batch in this deployment (the first `PUSH` row is that evidence); the retrying option.
