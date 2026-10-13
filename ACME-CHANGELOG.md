@@ -7465,8 +7465,8 @@ Updated: the Enforcement page's figures and router tests (the packs in force), i
 |---|---|
 | **Change ID** | CHG-2026-154 · owner: Anees Ur Rahman · Tier 2 |
 | **ADR** | None (release tooling; no behaviour change in the product) |
-| **Approval** | Owner, 2026-10-13: "yes" to the wrapper as a governed change, after the plan that the build pool exists only for a release window. The owner merged the claim as #418. This PR is for the owner's review and merge, with no pre-merge review report, per the owner's dev decision (PL-087). Not a production approval. |
-| **Dates** | Dev: tooling only, not yet used in a live release · Staging: not available · Prod: not yet |
+| **Approval** | Owner, 2026-10-13: "yes" to the wrapper as a governed change, after the plan that the build pool exists only for a release window. The owner merged the claim as #418. The owner reviewed and merged #419 on 2026-10-13, with no pre-merge review report, per the owner's dev decision (PL-087). Not a production approval. |
+| **Dates** | Dev: merged 2026-10-13; run live the same day in two measurement windows with no product release, not yet used for a release · Staging: not available · Prod: not yet |
 | **Impact** | `release.sh` is unchanged. A release that needs the dedicated build pool is run inside `with-build-pool.sh`, which creates the pool first and deletes it afterwards, even when the release fails or is interrupted. Releases that use no pool (the default ACR agent) are unaffected. |
 | **Schema change** | None |
 | **Rollback** | Revert the commit. Creating and deleting the pool by hand with `az acr agentpool create` and `az acr agentpool delete` still works, as before |
@@ -7483,8 +7483,15 @@ Updated: the Enforcement page's figures and router tests (the packs in force), i
 **Verified:**
 - `scripts/release/test-with-build-pool.sh` runs the script against a fake `az`, with no cloud calls: 21 checks pass. They cover success, a failing command (its status passed through), an existing pool refused and left alone, SIGTERM while the command runs (the command is stopped and the pool deleted), a failed create cleaned up, a delete that keeps failing (status 70), `--check`, `--close`, `--dry-run` and usage errors.
 - The `az acr agentpool` options used (`--tier`, `--count`, `--yes`, `--query`) were read from the installed CLI's own help (Azure CLI 2.90).
+- **Live, 2026-10-13, against the real registry, with no product release** (a throwaway run on the pool, nothing pushed or deployed; times from the registry's activity log):
+  - **Window 1:** creation 6 min 49 s, deletion 2 min 37 s, the pool existed 10 min 45 s (about $0.52 at S3 rates). The machine then lost name resolution for about 85 minutes, starting after the delete was requested. The wrapper kept retrying, confirmed the pool absent when the network returned, and exited 0.
+  - **Window 2:** creation about 7 min 36 s, deletion about 5 min 16 s, window 15 min 39 s, estimated cost $0.75.
+  - After both, the pool was absent (`--check`, and a listing of the registry's pools). The two scripts on `main` are byte-identical to the ones tested.
+  - **Planning figure:** a window carries roughly 10 to 13 minutes of creation and deletion around the builds. With a web build (about 14 minutes) and a worker build, a window is roughly 40 minutes, about $2 (estimate).
+  - Two runs submitted together to a one-instance pool ran one after the other: the second started 18 s after the first ended. The sample is small (both runs failed in about 10 s; not investigated) and not conclusive.
 
 **Not verified:**
-- Against real Azure: how long pool creation and deletion take, and whether a pool with one instance queues a second build. The first live release window should record both.
+- A real release through the wrapper. The two windows ran a throwaway run, not a 14-minute web build, so the queueing of a one-instance pool is not established for real builds.
+- **The cost line overstates after a network outage.** It counts until the deletion is confirmed, not until it was requested: in window 1 it printed $4.74 for a pool that existed 10 min 45 s (about $0.52). A fix is proposed (report the range from the delete request to its confirmation) and is not part of this change.
 - A process killed with SIGKILL, or a machine that loses power, cannot run the cleanup. `--check` and `--close` cover that case, and the daily cost email is the backstop.
 - ShellCheck was not available on the machine. The script is checked with `bash -n` and by the tests.
