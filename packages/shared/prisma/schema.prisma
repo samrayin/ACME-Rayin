@@ -1100,6 +1100,93 @@ model AcmeGuardrailSettingsPod {
   @@map("acme_guardrail_settings_pods")
 }
 
+// ACME: EYEON telemetry ingest. What a project allows an application to send
+// through the gateway key (LLD section 6). One row per project; a project with
+// no row, or enabled = false, is refused. Every insert, update and delete is
+// copied to acme_telemetry_policy_history by a trigger, and version moves up by
+// one on each update (a trigger, so it holds for every login).
+model AcmeTelemetryPolicy {
+  projectId               String   @id @map("project_id")
+  enabled                 Boolean  @default(false)
+  // "metadata" (default), "redacted" or "full". The last two are inert: the
+  // ingest treats them as metadata and counts policy_downgraded.
+  contentMode             String   @default("metadata") @map("content_mode")
+  // "hash" (default), "drop" or "pass".
+  userIdMode              String   @default("hash") @map("user_id_mode")
+  attributeAllowlistExtra String[] @default([]) @map("attribute_allowlist_extra")
+  // Recorded only. Enforcement is deployment-wide until a deletion path exists.
+  retentionDays           Int?     @map("retention_days")
+  // Per-project secret for the end-user id HMAC. Never copied to the history,
+  // never shown, never changed (a trigger keeps it).
+  userHashSalt            String   @default(dbgenerated("replace((gen_random_uuid())::text || (gen_random_uuid())::text, '-'::text, ''::text)")) @map("user_hash_salt")
+  version                 Int      @default(1)
+  updatedByUserId         String?  @map("updated_by_user_id")
+  updatedAt               DateTime @default(now()) @map("updated_at")
+
+  @@map("acme_telemetry_policy")
+}
+
+// ACME: append-only history of acme_telemetry_policy. Written by a trigger,
+// refused for UPDATE, DELETE and TRUNCATE by triggers. The salt is not copied.
+model AcmeTelemetryPolicyHistory {
+  id                      String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  projectId               String   @map("project_id")
+  version                 Int
+  // INSERT, UPDATE or DELETE.
+  operation               String
+  enabled                 Boolean
+  contentMode             String   @map("content_mode")
+  userIdMode              String   @map("user_id_mode")
+  attributeAllowlistExtra String[] @map("attribute_allowlist_extra")
+  retentionDays           Int?     @map("retention_days")
+  updatedByUserId         String?  @map("updated_by_user_id")
+  // The database login that made the change.
+  recordedByDbUser        String   @default(dbgenerated("CURRENT_USER")) @map("recorded_by_db_user")
+  recordedAt              DateTime @default(now()) @map("recorded_at")
+
+  @@index([projectId, recordedAt])
+  @@map("acme_telemetry_policy_history")
+}
+
+// ACME: minute-bucket counters for the telemetry ingest. Counts only: no key,
+// no value, no identifier beyond the project and the key lineage. Written by
+// the rayin_telemetry_writer role. lineage_id is "-" for a request that never
+// reached a project (a refused key).
+model AcmeTelemetryIngestStats {
+  projectId             String   @map("project_id")
+  lineageId             String   @map("lineage_id")
+  bucketStart           DateTime @map("bucket_start")
+  accepted              Int      @default(0)
+  spansIn               Int      @default(0) @map("spans_in")
+  spansOut              Int      @default(0) @map("spans_out")
+  attrsDropped          Int      @default(0) @map("attrs_dropped")
+  droppedNotAllowlisted Int      @default(0) @map("dropped_not_allowlisted")
+  droppedReserved       Int      @default(0) @map("dropped_reserved")
+  droppedCost           Int      @default(0) @map("dropped_cost")
+  droppedContent        Int      @default(0) @map("dropped_content")
+  droppedBadValue       Int      @default(0) @map("dropped_bad_value")
+  droppedUserId         Int      @default(0) @map("dropped_user_id")
+  droppedSpans          Int      @default(0) @map("dropped_spans")
+  droppedEvents         Int      @default(0) @map("dropped_events")
+  droppedLinks          Int      @default(0) @map("dropped_links")
+  namesNormalised       Int      @default(0) @map("names_normalised")
+  rejectedMalformed     Int      @default(0) @map("rejected_malformed")
+  rejectedFilter        Int      @default(0) @map("rejected_filter")
+  rejectedHandoff       Int      @default(0) @map("rejected_handoff")
+  rejectedAuth          Int      @default(0) @map("rejected_auth")
+  rejectedDisabled      Int      @default(0) @map("rejected_disabled")
+  rejectedSize          Int      @default(0) @map("rejected_size")
+  rejectedType          Int      @default(0) @map("rejected_type")
+  rejectedRate          Int      @default(0) @map("rejected_rate")
+  rejectedEngine        Int      @default(0) @map("rejected_engine")
+  policyDowngraded      Int      @default(0) @map("policy_downgraded")
+  lastReceivedAt        DateTime @map("last_received_at")
+
+  @@id([projectId, lineageId, bucketStart])
+  @@index([bucketStart])
+  @@map("acme_telemetry_ingest_stats")
+}
+
 enum AcmePromptApprovalStatus {
   PENDING  @map("pending")
   APPROVED @map("approved")
