@@ -7458,3 +7458,33 @@ Updated: the Enforcement page's figures and router tests (the packs in force), i
   - **The dark theme:** the thumb is plain on the near-black rail, and the active circle and name keep the lime.
 
 **Not verified:** the rail on a real Windows classic scrollbar in the running portal (the "before" figures come from a model with a stand-in 15-pixel bar); the thumb's contrast ratios, which are calculated from the tokens and not measured on screen; Firefox. The rail is wider by the lane on a short window whether or not a bar shows, because CSS cannot know whether the list overflows.
+
+## 2026-10-13 — The build pool exists only for a release window (CHG-2026-154)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-154 · owner: Anees Ur Rahman · Tier 2 |
+| **ADR** | None (release tooling; no behaviour change in the product) |
+| **Approval** | Owner, 2026-10-13: "yes" to the wrapper as a governed change, after the plan that the build pool exists only for a release window. The owner merged the claim as #418. This PR is for the owner's review and merge, with no pre-merge review report, per the owner's dev decision (PL-087). Not a production approval. |
+| **Dates** | Dev: tooling only, not yet used in a live release · Staging: not available · Prod: not yet |
+| **Impact** | `release.sh` is unchanged. A release that needs the dedicated build pool is run inside `with-build-pool.sh`, which creates the pool first and deletes it afterwards, even when the release fails or is interrupted. Releases that use no pool (the default ACR agent) are unaffected. |
+| **Schema change** | None |
+| **Rollback** | Revert the commit. Creating and deleting the pool by hand with `az acr agentpool create` and `az acr agentpool delete` still works, as before |
+
+**What:** the owner, 2026-10-13: yes to a wrapper so that the dedicated build pool exists only while a release runs. A dedicated ACR build pool bills for every second it exists, whether or not a build runs (public price about $0.0001 per vCPU-second, so an S3 pool of 8 vCPU costs about $2.88 an hour). One left provisioned between releases billed for weeks before it was noticed (Readiness Ledger N-82).
+- **New script:** `scripts/release/with-build-pool.sh --env FILE -- COMMAND ...` reads `REGISTRY` and `AGENT_POOL` from the env file `release.sh` already uses, creates the pool (tier S3 and one instance by default; Azure's own default is S1, so the tier is always passed), waits until it is ready, runs the command, and deletes the pool.
+- **It always closes:** the pool is deleted when the command succeeds, when it fails, and on INT, TERM and HUP. The deletion is confirmed by reading the pool back, and retried. If it cannot be confirmed the exit status is 70 and the message names the manual command.
+- **It refuses to start** when the pool already exists, so a second window can neither create nor delete the first one's pool.
+- **`--check`** exits 1 and prints tier, count, state and age when a pool exists. **`--close`** deletes it. **`--dry-run`** prints the commands and calls nothing.
+- **A cost line** is printed at the end: how long the window was open and an estimate at the public per-vCPU-second rate.
+- **Not changed:** `release.sh`, the env files and every image. The change to the `release.sh` build poll (CHG-2026-128) is separate.
+- **Docs:** a "The build pool window" section in `scripts/release/README.md`.
+
+**Verified:**
+- `scripts/release/test-with-build-pool.sh` runs the script against a fake `az`, with no cloud calls: 21 checks pass. They cover success, a failing command (its status passed through), an existing pool refused and left alone, SIGTERM while the command runs (the command is stopped and the pool deleted), a failed create cleaned up, a delete that keeps failing (status 70), `--check`, `--close`, `--dry-run` and usage errors.
+- The `az acr agentpool` options used (`--tier`, `--count`, `--yes`, `--query`) were read from the installed CLI's own help (Azure CLI 2.90).
+
+**Not verified:**
+- Against real Azure: how long pool creation and deletion take, and whether a pool with one instance queues a second build. The first live release window should record both.
+- A process killed with SIGKILL, or a machine that loses power, cannot run the cleanup. `--check` and `--close` cover that case, and the daily cost email is the backstop.
+- ShellCheck was not available on the machine. The script is checked with `bash -n` and by the tests.
