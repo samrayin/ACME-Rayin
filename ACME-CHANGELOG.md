@@ -7488,3 +7488,67 @@ Updated: the Enforcement page's figures and router tests (the packs in force), i
 - Against real Azure: how long pool creation and deletion take, and whether a pool with one instance queues a second build. The first live release window should record both.
 - A process killed with SIGKILL, or a machine that loses power, cannot run the cleanup. `--check` and `--close` cover that case, and the daily cost email is the backstop.
 - ShellCheck was not available on the machine. The script is checked with `bash -n` and by the tests.
+
+## 2026-10-14 — EYEON telemetry ingest: an application's traces through its own gateway key, metadata only (CHG-2026-155)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-155 · owner: Anees Ur Rahman · Tier 1 |
+| **ADR** | ADR-0006 addendum. It is a separate document, still waiting for the owner's review of its wording, and is **not** in this PR |
+| **Approval** | Pending. The owner reviews and merges; no self-approval. An independent reviewer session with no access to the author's context reads the change before the merge. The owner approved the design, the pipeline text, the runtime text and the reader role on 2026-10-13 and 2026-10-14. That is not a review of this diff |
+| **Dates** | Dev: not yet released · Staging: not available; isolated migration and rollback rehearsal performed. (2026-10-13) · Prod: not yet |
+| **Impact** | None while `EYEON_TELEMETRY_INGEST_ENABLED` is off, which is the default: the route answers 404 and does nothing else. The migration adds three tables and two roles and changes no existing table; the new reader role gets a column-level SELECT on the gateway key table. Not client-visible. Calls through the gateway are not on this path |
+| **Schema change** | Migration `20261013180000_acme_telemetry_ingest`: `acme_telemetry_policy`, `acme_telemetry_policy_history`, `acme_telemetry_ingest_stats`, three trigger functions, roles `rayin_telemetry_reader` and `rayin_telemetry_writer`. No backfill |
+| **Rollback** | [plan](acme-governance/rollback/20261013180000_acme_telemetry_ingest/ROLLBACK.md) — tested 2026-10-13, isolated (44 of 44, plus 19 of 19 for the reader) · data lost: the policy rows and their salts, the policy history and the counters; written traces are not touched |
+| **Feature flag** | `EYEON_TELEMETRY_INGEST_ENABLED` (server-only, default off) and `EYEON_TELEMETRY_CONTENT_MODES_ENABLED` (default off; reserved, no content mode is built) |
+
+**What:** a new endpoint, `POST /api/eyeon/telemetry/v1/traces`, that takes standard OpenTelemetry traces from a server-side application, authenticated with the application's own gateway key, and writes **only allowlisted metadata** to the tracing engine through the engine's own OTLP processing, in process.
+- **A. Authenticate.** `Authorization: Bearer` or `x-api-key`, looked up by SHA-256 in the console's own key table. The project, organisation and lineage come from the key row, never from the payload. Every failure is the same 401. A found key is trusted for at most 30 seconds.
+- **B. Policy.** `acme_telemetry_policy` per project, read through a cache of 30 seconds. No row, or `enabled = false`, is 403. A content mode other than `metadata` is handled as `metadata` and counted (`policy_downgraded`).
+- **C. Limits.** Content type and encoding, a per-key rate (600 a minute by default, then 429 with `Retry-After`), the body size before and after gunzip, and at most 5000 spans an export.
+- **D. Decode and allowlist (default-deny).** A pure function. It keeps ids as fixed-length hex, times, kind, the status code, a name that fits `^[A-Za-z0-9_.:/ -]{1,64}$` (else `span`), the allowlisted attributes in their allowed shapes, usage as numbers only, and an `exception` event reduced to its type. It drops every other event, all links, the status message, the trace state, scope attributes, app-supplied cost, and every `langfuse.*`, `eyeon.*` and other `user.*` key. The end-user id is HMAC-SHA256 with a per-project salt, first 16 hex characters, or dropped.
+- **E. Stamp.** The server's labels overwrite anything sent: source, trust (`asserted`), application, key lineage, effective content mode, policy and allowlist versions, a batch id, and the user hash.
+- **F. Hand off.** The filtered batch is re-encoded as OTLP/JSON and passed to the engine's `processOtelIngestion` with a scope built from the key row, `ingestionVersion: "4"`. The engine's job object is never returned; the caller gets an empty success.
+- **Counters.** Minute buckets per project and key lineage, counts only, written by the least-privilege writer role. An engine refusal of the ingest's own output is counted as `rejected_handoff`, never as `rejected_malformed`.
+- **New files:** `web/src/features/acme-enhancements/server/telemetry/` (flags, allowlist, filter, stamp, auth, policy, rate limit, stats, ingest, runtime) and the route above.
+
+**Why this approach:** the ingest is a front door for an application's own telemetry, so the rule is "write only what is on a short list, and say what was dropped". A list of content names to drop could not be complete (the engine reads content from more than twenty attribute names and four event families). Handing the engine a filtered body in process means no stored credential for that hop, no change to the engine's route, and no content in blob storage.
+- **Reads run on their own role.** The key and policy lookups use `rayin_telemetry_reader` (SELECT on nine key columns and on the policy table) through its own connection, and refuse to fall back to the console's general connection, which is the admin login until the least-privilege cutover (P0-5). The counters use `rayin_telemetry_writer`.
+- **Cost on application spans is dropped,** whoever sends it. The gateway's own spend record is the only source of cost.
+
+**Not included, and to do before real data:**
+- **Pre-auth size and per-IP limits live at the ingress / WAF,** not in this process. They are a listed pre-real-data item, with a WAF and an IP allow-list (CHG-2026-062's rule). Until then this route is for synthetic data only.
+- **Content modes** (`redacted`, `full`) are not built. The policy values exist and are inert.
+- **Per-project retention** is recorded, not enforced (P0-11). The counters have an index for a purge by age, and no scheduled purge.
+- **No policy editor.** A policy row is set by SQL, run by the owner.
+- **No second Ingress object, no flag, no policy row, no password and no connection string is applied by this change.** Each is a separate Tier 1 step after the merge.
+- **Only the Python OpenTelemetry exporter was tried** (headers captured for 1.37.0 and 1.45.1). Node, Java and .NET exporters are untested.
+- **`langfuse_otel` is untouched.** This runs beside it.
+
+**Properties of the design as written:**
+- **Listed string keys are shape-bound, not content-checked.** A span name, a session id or a model name that fits its pattern is kept as an application-asserted label (`eyeon.trust` says so on every span). Arabic text and prose with punctuation cannot ride on a listed key; a short ASCII string that fits can. The tests assert this so it cannot change unnoticed.
+- **The body limit defaults to the engine's own** (512 MiB) and the ingest decodes in memory. `EYEON_TELEMETRY_MAX_BODY_BYTES` can only lower it. Set it before the flag goes on.
+- **The rate limit is per pod,** and the counters are written every ten seconds from memory, so a restart can lose a few seconds of counts.
+
+**Upstream sync (CHG-2026-100):** `web/src/env.mjs` is **not** touched; the flags are read from the process environment in a fork-owned file. `packages/shared/prisma/schema.prisma` gets three additive models in the ACME region. Everything else is a new file.
+
+**Release:** console image only, with the migration and the flag off. The steps after the merge, each its own go: release with the flag off; the two role passwords; the two connection strings as Kubernetes Secrets and a console rollout; then the gateway changes, the ingress object and the policy row for the pilot project.
+
+**Tests:** 180 new unit tests in 6 files, all passing, no database and no network.
+- **Filter** (41): every kept key; every always-dropped family; the canary markers, English and Arabic (Arabic-Indic digits, a CPR-shaped number, Arabic names), in each content family, the span name, the status message, the exception message, events, links, URLs, an arbitrary attribute, the resource and the end-user id; ids as hex; numeric-only usage; the end-user id in each mode; per-project extras; malformed input; and the stated residual for a label that fits its shape.
+- **Support** (59): key authentication and its 30-second cache, the policy cache and its 5-minute stale limit, the per-key rate limiter, the stamp, the counters and their upsert, and the flags.
+- **Pipeline** (38): the exact bytes handed to the engine carry no marker, English or Arabic, also for a gzipped body; one identical 401 for unknown, revoked, rotated, expired and malformed keys; 403 for no policy or a disabled one; 413 for an oversize body, a gzip bomb stopped at the decoded limit, and too many spans; 415; 429 with `Retry-After`; a filter defect drops the batch; key A cannot write into project B; the app cannot overwrite a server label; the raw end-user id never appears; an engine refusal is `rejected_handoff` and not `rejected_malformed`.
+- **Source guard** (24): the runtime holds exactly two parameterised reads and one `$executeRawUnsafe`, no `$queryRawUnsafe`, no use of the console's shared database client, and the fallbacks for an unexpected policy value are `metadata` and `drop`; no other ingest module logs, reads the environment or opens a connection.
+- **Route** (12): 404 first and nothing built when the flag is off, the result relayed, the connection closed after an oversize body, and an error logged by name only.
+- **Handoff** (6): the real `processOtelIngestion` and the real `OtelIngestionProcessor`, with only the S3 upload and the queue publish replaced: one upload and one publish, the scope built from the supplied values, no marker in anything uploaded, and the uploaded payload converting into a generation with its model and usage.
+
+**Verified:**
+- The telemetry files were type-checked together with the repo's compiler options (TypeScript 7.0.2, strict): no diagnostics.
+- Prettier and ESLint (`--max-warnings 0`, the repo's configuration) are clean on those files.
+- The migration was applied up, down and up again on a throwaway Postgres 15.19 as a non-superuser admin (44 of 44), and the reader role and both lookups were run as `PREPARE`/`EXECUTE` against the key table's real DDL (19 of 19).
+
+**Not verified:**
+- **A live engine.** The handoff test replaces only the S3 upload and the queue publish. The first live batch and the canary run inside the worker pod (CON-1) are the runtime proof.
+- **Prisma's parameter binding against a live client.** The lookups are tagged templates; the SQL text and grants were run, the client was not.
+- **The full-chain migration rehearsal** (`rehearsal-db.sh`), which creates a pod on the dev cluster.
+- **The whole-project typecheck, lint and the CI suite.** The files were type-checked together with the repo's compiler options, but not as part of the full project.
