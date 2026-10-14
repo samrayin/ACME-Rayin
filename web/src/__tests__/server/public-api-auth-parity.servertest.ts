@@ -146,6 +146,12 @@ const denylistPrefixes = [
   "mcp", // MCP server, own auth path
   "otel", // ingestion handlers read the raw request stream, not drivable via node-mocks-http
   "slack", // Slack OAuth, own auth path
+  // ACME addition (CHG-2026-156): ACME's own public routes, not upstream's.
+  // Sweeping them here would change the main-captured legacy snapshot, which
+  // needs a database run to regenerate; until then they are left out, and:
+  "litellm-request-logs", // own bearer secret; covered by acmeLitellmRequestLogIngest.servertest.ts
+  "guardrails-settings", // createAuthedProjectAPIRoute plus a sync-project gate; covered by guardrailsSettingsApi.servertest.ts
+  "guardrails-events", // createAuthedProjectAPIRoute (the wrapper the project routes above pin); no route test of its own yet
 ];
 
 type ApiKeyKind = "org" | "project" | "agent" | "admin";
