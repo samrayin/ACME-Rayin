@@ -22,7 +22,6 @@ import { PrismaClient } from "@prisma/client";
 import type { NextApiRequest } from "next";
 import { logger } from "@langfuse/shared/src/server";
 import { env } from "@/src/env.mjs";
-import { $root } from "@/src/pages/api/public/otel/otlp-proto/generated/root";
 import {
   gunzipOtelRequestBody,
   OtelRequestBodyTooLargeError,
@@ -30,6 +29,7 @@ import {
 } from "@/src/server/otel/otelRequestBody";
 import { processOtelIngestion } from "@/src/server/otel/processOtelIngestion";
 import { createKeyAuthenticator, type KeyRecord } from "./telemetryAuth";
+import { decodeOtlpTraces } from "./telemetryDecode";
 import {
   contentModesGateEnabled,
   telemetryMaxBodyBytes,
@@ -37,7 +37,6 @@ import {
   telemetryReaderDatabaseUrl,
   telemetryWriterDatabaseUrl,
 } from "./telemetryFlags";
-import { MalformedTelemetryError } from "./telemetryFilter";
 import {
   TelemetryBodyTooLargeError,
   type TelemetryDeps,
@@ -181,36 +180,7 @@ async function writeStats(rows: StatsRow[]): Promise<void> {
   }
 }
 
-// -------------------------------------------------------------- decode, handoff
-
-const OTLP_REQUEST =
-  $root.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
-
-/** Protobuf or JSON body to the `resourceSpans` array, shaped as the filter expects. */
-function decodeOtlpTraces(body: Buffer, contentType: string): unknown {
-  if (contentType.includes("application/x-protobuf")) {
-    try {
-      const parsed = OTLP_REQUEST.decode(body);
-      // int64 as decimal strings, as the OTLP JSON encoding does.
-      return (
-        OTLP_REQUEST.toObject(parsed, { longs: String }).resourceSpans ?? []
-      );
-    } catch {
-      throw new MalformedTelemetryError();
-    }
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(body.toString("utf8"));
-  } catch {
-    throw new MalformedTelemetryError();
-  }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new MalformedTelemetryError();
-  }
-  const spans = (parsed as { resourceSpans?: unknown }).resourceSpans;
-  return spans === undefined || spans === null ? [] : spans;
-}
+// The decoder is telemetryDecode.ts (pure, tested directly).
 
 // ---------------------------------------------------------------------- runtime
 

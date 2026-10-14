@@ -78,7 +78,7 @@ describe("allowlist: every kept key", () => {
     expect(sp.name).toBe("chat");
   });
 
-  it("keeps the four resource attributes and the scope name and version", () => {
+  it("keeps the four resource attributes", () => {
     const result = run([span()], HASH_OPTIONS, [
       s("service.name", "pilot-chat"),
       s("service.version", "1.4.0"),
@@ -94,9 +94,55 @@ describe("allowlist: every kept key", () => {
       "service.name",
       "service.version",
     ]);
-    expect(rs.scopeSpans[0].scope).toEqual({
-      name: "pilot.instrumentation",
-      version: "1.2.3",
+  });
+});
+
+describe("the app's instrumentation scope is never kept (CHG-2026-156, review C1)", () => {
+  it.each([
+    "langfuse-sdk",
+    "langfuse-sdk-python",
+    "livekit-agents",
+    "pilot.instrumentation",
+  ])(
+    "scope %j: no name, no version, no attributes leave the filter",
+    (name) => {
+      const result = run([span()], HASH_OPTIONS, undefined, {
+        name,
+        version: "3.0.0",
+        attributes: [s("scope.note", EN.scopeAttr)],
+      });
+      const ss = result.resourceSpans[0].scopeSpans[0];
+      expect(Object.keys(ss)).toEqual(["spans"]);
+      const json = JSON.stringify(result);
+      expect(json).not.toContain(name);
+      expect(json).not.toContain("3.0.0");
+      expect(json).not.toContain(EN.scopeAttr);
+    },
+  );
+});
+
+describe("observation types an app may not assert (CHG-2026-156, review C1)", () => {
+  const kindOf = (value: string) =>
+    run([span({ attributes: [s("openinference.span.kind", value)] })]);
+
+  it.each(["GUARDRAIL", "EVALUATOR"])(
+    "openinference.span.kind %s is dropped and counted as reserved; the span is kept",
+    (value) => {
+      const result = kindOf(value);
+      const sp = onlySpan(result);
+      expect(sp.attributes.map((a) => a.key)).not.toContain(
+        "openinference.span.kind",
+      );
+      expect(result.counts.drops.reserved).toBe(1);
+      expect(JSON.stringify(sp)).not.toContain(value);
+    },
+  );
+
+  it("LLM is still kept", () => {
+    const sp = onlySpan(kindOf("LLM"));
+    expect(sp.attributes).toContainEqual({
+      key: "openinference.span.kind",
+      value: { stringValue: "LLM" },
     });
   });
 });

@@ -271,3 +271,98 @@ describe("what reaches S3 (CON-1, CON-6): the bytes the engine would store", () 
     expect(json).toContain("asserted");
   });
 });
+
+// Review REVIEW-1015 C1 (CHG-2026-156): the engine stores no span attributes for
+// a scope whose name starts `langfuse-sdk`, and maps `openinference.span.kind`
+// GUARDRAIL to a GUARDRAIL observation. Before the fix an app could do both and
+// write an unlabelled "guardrail decision" into its trace. These run the bytes
+// actually uploaded through the engine's own processor.
+describe("the reviewer's C1 probes, through the real OtelIngestionProcessor", () => {
+  async function engineEvents() {
+    const uploaded = mocks.uploadJson.mock.calls[0][1];
+    const { OtelIngestionProcessor } = await vi.importActual<{
+      OtelIngestionProcessor: new (config: Record<string, unknown>) => {
+        processToEvent: (resourceSpans: unknown) => any[];
+      };
+    }>("@langfuse/shared/src/server/otel/OtelIngestionProcessor");
+    return {
+      uploaded,
+      events: new OtelIngestionProcessor({
+        projectId: SCOPE.projectId,
+        orgId: SCOPE.orgId,
+        publicKey: HANDOFF_PUBLIC_KEY,
+        sdkName: HANDOFF_SDK_NAME,
+        sdkVersion: HANDOFF_SDK_VERSION,
+        ingestionVersion: HANDOFF_INGESTION_VERSION,
+      }).processToEvent(uploaded),
+    };
+  }
+
+  it.each(["langfuse-sdk", "langfuse-sdk-python", "livekit-agents"])(
+    "an app scope named %j does not strip the server's labels",
+    async (scopeName) => {
+      await send({
+        resourceSpans: resourceSpans(
+          [
+            span({
+              attributes: [
+                ...keptSpanAttributes(),
+                s("user.id", "synthetic-user-9"),
+              ],
+            }),
+          ],
+          [s("service.name", "pilot-chat")],
+          { name: scopeName, version: "3.0.0" },
+        ),
+      });
+      const { uploaded, events } = await engineEvents();
+      // What is stored carries EYEON's scope, never the app's.
+      expect(uploaded[0].scopeSpans[0].scope).toEqual({
+        name: "eyeon-telemetry-ingest",
+      });
+      expect(JSON.stringify(uploaded)).not.toContain(scopeName);
+      // And the engine keeps every stamped label, the user hash included.
+      expect(events).toHaveLength(1);
+      const meta = JSON.stringify(events[0].metadata);
+      for (const label of [
+        "eyeon.source",
+        "eyeon.trust",
+        "eyeon.application",
+        "eyeon.key_lineage",
+        "eyeon.content_mode",
+        "eyeon.allowlist_version",
+        "eyeon.ingest_batch",
+        "eyeon.user_hash",
+      ]) {
+        expect(
+          meta,
+          `label missing from the engine record: ${label}`,
+        ).toContain(label);
+      }
+    },
+  );
+
+  it.each(["GUARDRAIL", "EVALUATOR"])(
+    "an app span asserting %s is not stored as that observation type, and keeps its labels",
+    async (kind) => {
+      await send({
+        resourceSpans: resourceSpans(
+          [
+            span({
+              name: "eyeon guardrail decision: allow",
+              attributes: [s("openinference.span.kind", kind)],
+            }),
+          ],
+          [s("service.name", "pilot-chat")],
+          { name: "langfuse-sdk-python", version: "3.0.0" },
+        ),
+      });
+      const { events } = await engineEvents();
+      expect(events).toHaveLength(1);
+      expect(events[0].type).not.toBe(kind);
+      expect(["GUARDRAIL", "EVALUATOR"]).not.toContain(events[0].type);
+      expect(JSON.stringify(events[0].metadata)).toContain("eyeon.source");
+      expect(JSON.stringify(events[0].metadata)).toContain("eyeon.trust");
+    },
+  );
+});

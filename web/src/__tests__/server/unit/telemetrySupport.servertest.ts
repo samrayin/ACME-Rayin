@@ -26,6 +26,7 @@ import {
 } from "@/src/features/acme-enhancements/server/telemetry/telemetryStats";
 import {
   contentModesGateEnabled,
+  DEFAULT_MAX_BODY_BYTES,
   DEFAULT_RATE_PER_KEY_PER_MIN,
   telemetryIngestEnabled,
   telemetryMaxBodyBytes,
@@ -34,6 +35,7 @@ import {
   telemetryWriterDatabaseUrl,
 } from "@/src/features/acme-enhancements/server/telemetry/telemetryFlags";
 import type { FilteredResourceSpans } from "@/src/features/acme-enhancements/server/telemetry/telemetryFilter";
+import { EYEON_SCOPE_NAME } from "@/src/features/acme-enhancements/server/telemetry/telemetryAllowlist";
 
 // ---------------------------------------------------------------------- auth
 
@@ -389,7 +391,6 @@ describe("stampResourceSpans", () => {
       },
       scopeSpans: [
         {
-          scope: { name: "x" },
           spans: [
             {
               traceId: "a".repeat(32),
@@ -487,6 +488,13 @@ describe("stampResourceSpans", () => {
     expect(JSON.stringify(stampResourceSpans(filtered, ctx))).not.toContain(
       '"userHash"',
     );
+  });
+
+  it("every scope is EYEON's own, fixed name (review C1)", () => {
+    const out = stampResourceSpans(filtered, ctx) as any;
+    expect(out[0].scopeSpans[0].scope).toEqual({ name: EYEON_SCOPE_NAME });
+    expect(EYEON_SCOPE_NAME).toBe("eyeon-telemetry-ingest");
+    expect(EYEON_SCOPE_NAME.startsWith("langfuse")).toBe(false);
   });
 });
 
@@ -615,25 +623,37 @@ describe("flags", () => {
     ).toBe(true);
   });
 
-  it("the body limit may only be lowered", () => {
+  it("the body limit is 5 MiB in code, whatever the engine's limit (review C3)", () => {
     const upstream = 512 * 1024 * 1024;
-    expect(telemetryMaxBodyBytes(upstream, {})).toBe(upstream);
+    expect(DEFAULT_MAX_BODY_BYTES).toBe(5 * 1024 * 1024);
+    expect(telemetryMaxBodyBytes(upstream, {})).toBe(DEFAULT_MAX_BODY_BYTES);
+    // A lower engine limit still wins.
+    expect(telemetryMaxBodyBytes(1024 * 1024, {})).toBe(1024 * 1024);
+  });
+
+  it("the body limit may only be lowered by the environment", () => {
+    const upstream = 512 * 1024 * 1024;
     expect(
       telemetryMaxBodyBytes(upstream, {
         EYEON_TELEMETRY_MAX_BODY_BYTES: "4194304",
       }),
     ).toBe(4194304);
-    expect(
-      telemetryMaxBodyBytes(upstream, {
-        EYEON_TELEMETRY_MAX_BODY_BYTES: String(upstream * 4),
-      }),
-    ).toBe(upstream);
+    for (const raise of [
+      String(DEFAULT_MAX_BODY_BYTES + 1),
+      String(upstream),
+    ]) {
+      expect(
+        telemetryMaxBodyBytes(upstream, {
+          EYEON_TELEMETRY_MAX_BODY_BYTES: raise,
+        }),
+      ).toBe(DEFAULT_MAX_BODY_BYTES);
+    }
     for (const bad of ["0", "-1", "abc", "1e9", ""]) {
       expect(
         telemetryMaxBodyBytes(upstream, {
           EYEON_TELEMETRY_MAX_BODY_BYTES: bad,
         }),
-      ).toBe(upstream);
+      ).toBe(DEFAULT_MAX_BODY_BYTES);
     }
   });
 

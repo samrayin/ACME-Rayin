@@ -13,7 +13,9 @@
  * normalised name, allowlisted attributes in their allowed shapes, and an
  * `exception` event reduced to `exception.type`. What is dropped: every other
  * attribute, every other event, all links, trace state, the status message,
- * scope attributes, resource attributes outside the allowlist.
+ * the app's whole instrumentation scope (name, version and attributes; the
+ * stamp writes a fixed one), an `openinference.span.kind` the app may not
+ * assert (GUARDRAIL, EVALUATOR), resource attributes outside the allowlist.
  *
  * Ids are validated as hex of the exact length because the engine takes any
  * string id verbatim (OtelIngestionProcessor.parseId): a free-text id would be
@@ -35,9 +37,10 @@ import {
   MAX_RAW_STRING_LENGTH,
   MAX_USAGE_KEYS_PER_SPAN,
   RESERVED_PREFIXES,
+  RESERVED_SPAN_KINDS,
   RESOURCE_ATTRIBUTE_RULES,
-  SCOPE_VERSION_PATTERN,
   SPAN_ATTRIBUTE_RULES,
+  SPAN_KIND_KEY,
   SPAN_KIND_NAMES,
   SPAN_NAME_PATTERN,
   SPAN_NAME_REPLACEMENT,
@@ -81,12 +84,10 @@ export type FilteredSpan = {
   userHash?: string;
 };
 
+/** No `scope`: the app's scope is never kept, and the stamp writes a fixed one. */
 export type FilteredResourceSpans = {
   resource: { attributes: OtlpAttribute[] };
-  scopeSpans: {
-    scope: { name?: string; version?: string };
-    spans: FilteredSpan[];
-  }[];
+  scopeSpans: { spans: FilteredSpan[] }[];
 };
 
 /** Attribute drops by reason. Counts only: never a key, never a value. */
@@ -364,6 +365,15 @@ function filterAttributes(
 
     if (seen.has(key)) return drop("badValue");
 
+    // An observation type the app may not assert. The enum already refuses it;
+    // this names the reason in the counters.
+    if (
+      key === SPAN_KIND_KEY &&
+      RESERVED_SPAN_KINDS.has(stringOf(entry.value) ?? "")
+    ) {
+      return drop("reserved");
+    }
+
     let rule: ValueRule | undefined = rules.get(key);
     if (rule === undefined && allowUsageAndExtras) {
       if (USAGE_KEY_PATTERN.test(key) && !COST_KEYS.has(key)) {
@@ -585,21 +595,13 @@ export function filterResourceSpans(
       ) {
         throw new MalformedTelemetryError("spans is not a list");
       }
-      const scope: { name?: string; version?: string } = {};
-      if (isRecord(ss.scope)) {
-        const n = ss.scope.name;
-        if (typeof n === "string" && SPAN_NAME_PATTERN.test(n)) scope.name = n;
-        const v = ss.scope.version;
-        if (typeof v === "string" && SCOPE_VERSION_PATTERN.test(v)) {
-          scope.version = v;
-        }
-      }
+      // `ss.scope` is not read at all: the app's scope never leaves here.
       const spans: FilteredSpan[] = [];
       for (const raw of (ss.spans as unknown[] | undefined) ?? []) {
         const span = filterSpan(raw, ctx);
         if (span !== undefined) spans.push(span);
       }
-      if (spans.length > 0) filteredScopes.push({ scope, spans });
+      if (spans.length > 0) filteredScopes.push({ spans });
     }
     if (filteredScopes.length > 0) {
       out.push({
