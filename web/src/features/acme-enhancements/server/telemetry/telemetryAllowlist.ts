@@ -16,7 +16,7 @@
  * Bump ALLOWLIST_VERSION on ANY change in this file. It is stamped on every
  * span (`eyeon.allowlist_version`), and a change needs a change record.
  */
-export const ALLOWLIST_VERSION = "2026-10-14.1";
+export const ALLOWLIST_VERSION = "2026-10-15.1";
 
 export type ValueRule =
   | { kind: "string"; pattern: RegExp }
@@ -177,6 +177,37 @@ export const CONTENT_KEY_HINT =
 export const EXTRA_KEY_PATTERN = /^[a-z][a-z0-9_.]{0,63}$/;
 export const EXTRA_VALUE_RULE: ValueRule = label;
 export const MAX_EXTRA_KEYS = 32;
+
+/**
+ * Key prefixes the engine interprets (OtelIngestionProcessor,
+ * ObservationTypeMapper, attributes.ts). A per-project extra may never use one
+ * (CHG-2026-157, Reviewer-2 N-A). For example, the engine lifts
+ * `ai.telemetry.metadata.<k>` into the event's top-level metadata after the
+ * stamped attributes, so an extra `ai.telemetry.metadata.attributes` replaced
+ * every eyeon.* label in the events record.
+ */
+export const EXTRA_REFUSED_PREFIXES: readonly string[] = [
+  "ai.",
+  "gen_ai.",
+  "llm.",
+  "openinference.",
+  "operation.",
+  "genkit",
+  "lk.",
+  "logfire.",
+  "flue.",
+  "gcp.",
+  "input.",
+  "output.",
+  "traceloop.",
+  "mlflow.",
+  "openrouter",
+  "session.",
+  "tag.",
+  "tags",
+  "model_config",
+  "tool_",
+];
 
 /** Exception events are reduced to this one attribute. */
 export const EXCEPTION_EVENT_NAME = "exception";

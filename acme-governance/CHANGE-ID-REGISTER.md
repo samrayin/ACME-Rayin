@@ -172,6 +172,7 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | CHG-2026-154 | 2 | Build-pool window wrapper: `scripts/release/with-build-pool.sh` creates the dedicated ACR build pool named in a release env file, runs the release command, and always deletes the pool when the command ends (success, failure or interrupt), so a release cannot leave a billed pool running; `--check` and `--close` report and remove a pool that was left behind. Cause: a dedicated build pool left running between releases billed for weeks (Readiness Ledger N-82); the owner agreed on 2026-10-13 that the pool exists only for a release window | Anees Ur Rahman | `ops/chg-2026-154-build-pool-window` | Claimed |
 | CHG-2026-155 | 1 | EYEON telemetry ingest: a server-side app sends standard OpenTelemetry traces to a new console route using its existing gateway key; metadata only, default-deny allowlist, behind a default-off flag (amends ADR-0006) | Anees Ur Rahman | `feat/eyeon-telemetry-ingest` | Claimed |
 | CHG-2026-156 | 2 | EYEON telemetry ingest hotfix after the independent review | Anees Ur Rahman | `fix/chg-2026-156-telemetry-hotfix` | Claimed |
+| CHG-2026-157 | 1 | EYEON telemetry ingest: bound a request's work before decode (1 MiB decoded ceiling, gzip expansion limit, protobuf span count on the wire), refuse extras the engine interprets, test the runtime wiring, one residual list (Reviewer-2 B1, N-A, N-C, N-D) | Anees Ur Rahman | `fix/chg-2026-157-telemetry-decode-bounds` | Claimed |
 
 ## ADR numbers
 

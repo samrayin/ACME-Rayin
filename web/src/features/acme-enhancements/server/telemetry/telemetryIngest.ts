@@ -18,6 +18,8 @@
 import { randomUUID } from "crypto";
 import { ALLOWLIST_VERSION, MAX_SPANS_PER_BATCH } from "./telemetryAllowlist";
 import { UNAUTHORIZED_BODY, type AuthenticatedKey } from "./telemetryAuth";
+import { countProtobufSpans } from "./telemetryDecode";
+import { gunzipOutputLimit } from "./telemetryFlags";
 import {
   countSpans,
   filterResourceSpans,
@@ -83,7 +85,10 @@ export type TelemetryDeps = {
   authenticate: (headers: HeaderBag) => Promise<AuthenticatedKey | null>;
   loadPolicy: (projectId: string) => Promise<PolicyRow | null>;
   contentModesGateOpen: boolean;
+  /** The encoded (wire) body limit. */
   maxBodyBytes: number;
+  /** What may reach the decoder: the gunzipped body, or the plain body (B1). */
+  maxDecodedBytes: number;
   rateLimit: (keyId: string, nowMs: number) => RateDecision;
   /** Protobuf or JSON to the `resourceSpans` array. Throws MalformedTelemetryError. */
   decode: (body: Buffer, contentType: string) => unknown;
@@ -192,10 +197,20 @@ export async function handleTelemetryRequest(
     });
   }
 
+  // Size bounds the work, not only the bytes (CHG-2026-157, Reviewer-2 B1):
+  // what reaches the decoder is capped at maxDecodedBytes, and a gzip body may
+  // not expand more than MAX_GZIP_EXPANSION_RATIO times. Both are 413 before
+  // anything is decoded.
+  const maxDecoded = Math.min(deps.maxDecodedBytes, deps.maxBodyBytes);
   let body: Buffer;
   try {
-    body = await req.readBody(deps.maxBodyBytes);
-    if (gzipped) body = await req.gunzip(body, deps.maxBodyBytes);
+    body = await req.readBody(gzipped ? deps.maxBodyBytes : maxDecoded);
+    if (gzipped) {
+      body = await req.gunzip(
+        body,
+        gunzipOutputLimit(body.byteLength, maxDecoded),
+      );
+    }
   } catch (error) {
     if (error instanceof TelemetryBodyTooLargeError) {
       deps.record(projectId, lineageId, { rejected_size: 1 });
@@ -210,6 +225,16 @@ export async function handleTelemetryRequest(
   // D. Decode, then allowlist. A filter error drops the batch.
   let filtered: FilterResult;
   try {
+    // Protobuf: count the spans on the wire first, so an export over the cap
+    // is refused without being materialised (B1). JSON is bounded by the
+    // decoded-size ceiling above, then counted after the parse as before.
+    if (
+      isProtobuf &&
+      countProtobufSpans(body, MAX_SPANS_PER_BATCH + 1) > MAX_SPANS_PER_BATCH
+    ) {
+      deps.record(projectId, lineageId, { rejected_size: 1 });
+      return reject(413, "Too many spans in one export");
+    }
     const decoded = deps.decode(body, contentType);
     if (countSpans(decoded) > MAX_SPANS_PER_BATCH) {
       deps.record(projectId, lineageId, { rejected_size: 1 });

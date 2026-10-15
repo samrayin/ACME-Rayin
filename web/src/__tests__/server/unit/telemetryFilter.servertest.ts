@@ -576,6 +576,35 @@ describe("per-project extras", () => {
     const sp = onlySpan(run([span({ attributes: attrs })], opts(refused)));
     expect(sp.attributes).toEqual([]);
   });
+
+  it("refuses an extra under any prefix the engine interprets (Reviewer-2 N-A)", () => {
+    const refused = [
+      "ai.telemetry.metadata.attributes",
+      "ai.telemetry.metadata.scope",
+      "gen_ai.custom",
+      "llm.custom",
+      "openinference.custom",
+      "operation.name",
+      "genkit.custom",
+      "lk.custom",
+      "logfire.custom",
+      "flue.custom",
+      "gcp.vertex.agent",
+      "input.custom",
+      "output.custom",
+      "traceloop.custom",
+      "mlflow.custom",
+      "openrouter.source",
+      "session.custom",
+      "tag.custom",
+      "tags",
+      "model_config",
+      "tool_response",
+    ];
+    const attrs = refused.map((k) => s(k, "x"));
+    const sp = onlySpan(run([span({ attributes: attrs })], opts(refused)));
+    expect(sp.attributes).toEqual([]);
+  });
 });
 
 describe("malformed input", () => {

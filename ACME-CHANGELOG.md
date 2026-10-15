@@ -7588,7 +7588,7 @@ Updated: the Enforcement page's figures and router tests (the packs in force), i
 
 | | |
 |---|---|
-| **Change ID** | CHG-2026-156 · owner: Anees Ur Rahman · Tier 2 |
+| **Change ID** | CHG-2026-156 · owner: Anees Ur Rahman · Tier 1 (reclassified by the owner on 2026-10-15, Reviewer-2 finding B3; first registered as Tier 2) |
 | **ADR** | None new. It answers the independent review of CHG-2026-155, conditions C1 and C3, and the Semgrep finding under C4. The ADR-0006 addendum draft is amended separately, outside this PR, for the review's C2. |
 | **Approval** | Pending. The owner reviews and merges, with no self-approval, and every gate green first. A fresh reviewer who did not build this change reads it before the merge. |
 | **Dates** | Dev: not yet released · Staging: not available · Prod: not yet |
@@ -7615,3 +7615,55 @@ Updated: the Enforcement page's figures and router tests (the packs in force), i
 **Second commit, CI only:** the upstream test `public-api-auth-parity > covers every public route` fails on `main` because it walks `pages/api/public/` and finds ACME's three routes (`guardrails-events`, `guardrails-settings`, `litellm-request-logs`), which its tables do not list. Its matrix runs with fail-fast, so the other `tests-web` legs are then cancelled. The three routes are added to the test's exclusion list, each with a comment saying how it is covered. Sweeping the two guardrails routes would change the test's main-captured snapshot, which needs a database run to regenerate; that is a follow-up.
 
 **Not included:** the review's C2 (names and labels that fit their shape carry free ASCII). It is accepted in writing for the synthetic-only dev pilot, and it blocks real data. The ten non-blocking findings are logged outside this PR.
+
+## 2026-10-15 — EYEON telemetry ingest: a request's work is bounded before decode, extras the engine reads are refused, the runtime wiring is tested (CHG-2026-157)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-157 · owner: Anees Ur Rahman · Tier 1 |
+| **ADR** | None new. It answers Reviewer-2's review of CHG-2026-156: B1, N-A, N-C, N-D, and the comment part of N-B. The ADR-0006 addendum is still a draft outside the repository (the gap C4 and B3 recorded). Landing it is the owner's decision. |
+| **Approval** | Pending. The owner reviews and merges, with no self-approval. It is stacked on #425 (CHG-2026-156), which merges first. |
+| **Dates** | Dev: not yet released · Staging: not available · Prod: not yet |
+| **Impact** | None while `EYEON_TELEMETRY_INGEST_ENABLED` is off, which is the default; the switch stays off until #425 and this change are both merged and released. With the flag on: a body that decodes to more than 1 MiB, a gzip body that expands more than 200 times, and a protobuf export with more than 5,000 spans all get 413 **before anything is decoded**. A per-project extra under a prefix the engine interprets is ignored. |
+| **Schema change** | None |
+| **Rollback** | Revert this PR. Code and tests only, no data or schema. |
+| **Feature flag** | `EYEON_TELEMETRY_INGEST_ENABLED` (server-only, default off), unchanged |
+
+**What:**
+- **B1. The work, not only the bytes, is bounded before decode.** Before, the 5 MiB byte cap was the only limit applied before decoding: Reviewer-2's 5 KB gzip body held 2.6 million empty protobuf spans and was fully decoded on the console's event loop (about 0.5 to 1 s and about 560 MB of heap) before the span cap answered 413.
+  - What reaches the decoder (the gunzipped body, or a plain body) is capped at **1 MiB** (`DEFAULT_MAX_DECODED_BYTES`). The environment can only lower it.
+  - A gzip body may expand at most **200 times** (`MAX_GZIP_EXPANSION_RATIO`, with a 64 KiB floor).
+  - A **protobuf** export's spans are **counted on the wire** (`countProtobufSpans`, which walks `resource_spans`, `scope_spans` and `spans` without building objects) and refused over 5,000 before decoding.
+  - JSON is bounded by the 1 MiB ceiling and counted after the parse, as before.
+- **N-A. Extras.** A per-project extra under a key prefix the engine interprets (`ai.`, `gen_ai.`, `llm.`, `openinference.`, `operation.`, `genkit`, `lk.`, `logfire.`, `flue.`, `gcp.`, `input.`, `output.`, `traceloop.`, `mlflow.`, `openrouter`, `session.`, `tag.`, `tags`, `model_config`, `tool_`) is refused. Before, an extra `ai.telemetry.metadata.attributes` replaced every `eyeon.*` label in the engine's events record.
+- **N-D. Runtime wiring test.** It asserts that `getTelemetryRuntime()` uses the 5 MiB body limit, the 1 MiB decoded ceiling and `decodeOtlpTraces`. Before, the runtime could pass the engine's 512 MiB or a JSON-only decoder and every test stayed green.
+- **N-C. One residual list.** `telemetryResidual.servertest.ts` derives the fields that keep shape-fitting text (21) by probing every allowlisted key, and pins them. A new text-carrying field fails until it is added on purpose. It also checks that an Arabic marker with Arabic-Indic digits is dropped from all 21.
+- **N-B. Comment.** The route-exclusion comment for `guardrails-events` in `public-api-auth-parity.servertest.ts` no longer implies coverage: any project key can write there today. That is a blocker before real data, fixed in its own change.
+- `ALLOWLIST_VERSION` becomes `2026-10-15.1`. In the CHG-2026-156 entry above, the tier is corrected to Tier 1, as the owner reclassified it.
+
+**Measured** on a Windows dev machine, Node 24, through `handleTelemetryRequest` with the real gunzip and the real decoder; median of 7 runs, heap growth measured with GC exposed:
+
+| Body | Before (CHG-2026-156) | After |
+|---|---|---|
+| Reviewer-2's protobuf, 5,142 B gzip, 2,621,432 empty spans | 413 after 493 ms (max 968), +558 MB heap, fully decoded | **413 after 3.0 ms, +0.1 MB, not decoded** |
+| The JSON equivalent, 5,168 B gzip | 413 after 161 ms, +107 MB | **413 after 3.6 ms, +0.1 MB, not decoded** |
+| Plain protobuf, 1 MiB, 524,280 empty spans | 413 after 31 ms (max 87), +127 MB | **413 after 0.6 ms, +0.0 MB, not decoded** |
+| Plain JSON, 1 MiB, 349,000 empty spans | 413 after 12.8 ms, +21 MB | 413 after 15.5 ms, +21 MB (parsed: the 1 MiB ceiling is its bound) |
+| A realistic 512-span metadata batch (protobuf gzip, JSON gzip, JSON plain) | 200 in 5.6 to 7.7 ms, about 4 MB | 200 in 5.9 to 7.9 ms, about 4 MB |
+
+**Tests** (the telemetry suite is now 231, was 202):
+- **Regression:** Reviewer-2's 5 KB body and the JSON equivalent each get 413 in under 150 ms with under 64 MiB of heap growth, and are never decoded. A plain 1 MiB protobuf flood is refused by the wire count. A plain body over the ceiling is read only up to it. A gzip body over the expansion limit gets 413.
+- **No false positives:** realistic 512-span batches pass in all four encodings, and exactly 5,000 spans pass.
+- **Wire walker:** it matches the decoder across several resources and scopes, skips unknown fields of every wire type, and refuses truncated or malformed wire data.
+- **Each fix is caught when undone:**
+  - removing the wire count fails 1 test;
+  - removing the expansion limit fails 2;
+  - not applying the decoded ceiling fails 1;
+  - allowing interpreted extras again fails 2, one of them through the real engine processor;
+  - the runtime passing 512 MiB fails 1;
+  - the runtime using a JSON-only decoder fails 1.
+
+**Not included:**
+- **N-B itself** (dedicated key kind for guardrail evidence): a blocker before real data, in its own change.
+- **Plain JSON up to 1 MiB is still parsed** before its spans are counted (about 13 to 16 ms and 21 MB). Lower the ceiling, or decode in a worker thread, if that matters before real data.
+- **Landing the ADR-0006 addendum in the repository**, which Tier 1 expects: the owner's decision.

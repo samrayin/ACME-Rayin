@@ -20,6 +20,25 @@ export const DEFAULT_RATE_PER_KEY_PER_MIN = 600;
  */
 export const DEFAULT_MAX_BODY_BYTES = 5 * 1024 * 1024;
 
+/**
+ * The ceiling on what is handed to the decoder: the gunzipped body, or the
+ * body itself when it is not compressed (CHG-2026-157, Reviewer-2 B1). Byte
+ * size alone did not bound the work: 5 MiB of protobuf holds 2.6 million empty
+ * spans and decoded into ~600 MB. A 512-span metadata batch is ~190 KB as
+ * protobuf and ~380 KB as JSON, so 1 MiB leaves room for real exports.
+ */
+export const DEFAULT_MAX_DECODED_BYTES = 1024 * 1024;
+
+/**
+ * A gzip body may decompress to at most this many times its own size (floor
+ * below), else 413 before anything is decoded. A backstop for bombs: the
+ * decoded ceiling and the protobuf span count (telemetryDecode.ts) bound the
+ * work on their own. Measured for highly repetitive synthetic 512-span batches:
+ * 65x (protobuf) and 78x (JSON), so 200x leaves room for real exports.
+ */
+export const MAX_GZIP_EXPANSION_RATIO = 200;
+export const GZIP_EXPANSION_FLOOR_BYTES = 64 * 1024;
+
 type Env = Record<string, string | undefined>;
 
 /** EYEON_TELEMETRY_INGEST_ENABLED: only the exact string "true" turns it on. */
@@ -52,6 +71,28 @@ export function telemetryMaxBodyBytes(
   const configured = Number(raw);
   if (!Number.isSafeInteger(configured) || configured <= 0) return ceiling;
   return Math.min(configured, ceiling);
+}
+
+/**
+ * The decoded-size ceiling: DEFAULT_MAX_DECODED_BYTES, or the body limit if the
+ * environment has lowered that further. Never higher than either.
+ */
+export function telemetryMaxDecodedBytes(maxBodyBytes: number): number {
+  return Math.min(DEFAULT_MAX_DECODED_BYTES, maxBodyBytes);
+}
+
+/** How far a gzip body of `compressedBytes` may decompress before it is refused. */
+export function gunzipOutputLimit(
+  compressedBytes: number,
+  maxDecodedBytes: number,
+): number {
+  return Math.min(
+    maxDecodedBytes,
+    Math.max(
+      GZIP_EXPANSION_FLOOR_BYTES,
+      compressedBytes * MAX_GZIP_EXPANSION_RATIO,
+    ),
+  );
 }
 
 /** EYEON_TELEMETRY_RATE_PER_KEY_PER_MIN: a positive whole number, else 600. */
