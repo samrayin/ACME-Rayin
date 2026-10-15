@@ -19,32 +19,51 @@ const OTLP_REQUEST =
  * field 2 (spans). Every other field is skipped, and the walk stops as soon as
  * the count reaches `stopAt`. No object is built, so a body of millions of
  * empty spans costs microseconds instead of a full decode. A body that is not
- * well-formed protobuf throws MalformedTelemetryError.
+ * well-formed protobuf throws MalformedTelemetryError, and so does any tag,
+ * length or wire type the decoder could read differently (Reviewer-3 R3-F1).
  */
 export function countProtobufSpans(buf: Uint8Array, stopAt: number): number {
   let count = 0;
   let pos = 0;
 
-  const varint = (end: number): number => {
+  /**
+   * Reads a tag or a length as protobufjs's Reader.uint32() does, but only in
+   * canonical form (CHG-2026-157, Reviewer-3 R3-F1): at most 5 bytes, a value
+   * below 2^32, and no overlong encoding (a trailing zero byte). Anything else
+   * throws, so the walker and the decoder never read the same bytes as
+   * different numbers.
+   */
+  const uint32 = (end: number): number => {
     let result = 0;
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 5; i++) {
       if (pos >= end) throw new MalformedTelemetryError();
       const b = buf[pos++];
-      // Tags and lengths in a body this route accepts are far below 2^35;
-      // bits above that only occur in skipped varint values.
-      if (i < 5) result += (b % 128) * 2 ** (7 * i);
-      if (b < 128) return result; // no continuation bit
+      if (i === 4 && b > 15) throw new MalformedTelemetryError(); // over 32 bits
+      result += (b % 128) * 2 ** (7 * i);
+      if (b < 128) {
+        if (i > 0 && b === 0) throw new MalformedTelemetryError(); // overlong
+        return result;
+      }
+    }
+    throw new MalformedTelemetryError();
+  };
+
+  /** Skips a varint value (wire type 0). Its value is never used. */
+  const skipVarint = (end: number): void => {
+    for (let i = 0; i < 10; i++) {
+      if (pos >= end) throw new MalformedTelemetryError();
+      if (buf[pos++] < 128) return; // no continuation bit
     }
     throw new MalformedTelemetryError();
   };
 
   /** Skips one field value of the given wire type, inside [pos, end). */
   const skip = (wireType: number, end: number): void => {
-    if (wireType === 0) varint(end);
+    if (wireType === 0) skipVarint(end);
     else if (wireType === 1) pos += 8;
     else if (wireType === 5) pos += 4;
     else if (wireType === 2) {
-      const len = varint(end); // read first: it advances pos
+      const len = uint32(end); // read first: it advances pos
       pos += len;
     } else throw new MalformedTelemetryError(); // groups (3, 4) and invalid types
     if (pos > end) throw new MalformedTelemetryError();
@@ -53,18 +72,22 @@ export function countProtobufSpans(buf: Uint8Array, stopAt: number): number {
   /** Walks [pos, end): level 0 is the request, 1 ResourceSpans, 2 ScopeSpans. */
   const walk = (end: number, level: number): void => {
     const wanted = level === 0 ? 1 : 2;
+    // Fields the generated decoder knows at this level, 1 to `known`. All are
+    // length-delimited, and it reads them as such WHATEVER their wire type,
+    // so any other wire type on them cannot be counted with certainty.
+    const known = level === 0 ? 1 : 3;
     while (pos < end) {
       if (count >= stopAt) return;
-      const tag = varint(end);
+      const tag = uint32(end);
       const field = Math.floor(tag / 8);
       const wireType = tag % 8;
       if (field === 0) throw new MalformedTelemetryError();
+      if (field <= known && wireType !== 2) throw new MalformedTelemetryError();
       if (field !== wanted) {
         skip(wireType, end);
         continue;
       }
-      if (wireType !== 2) throw new MalformedTelemetryError();
-      const len = varint(end); // read first: it advances pos
+      const len = uint32(end); // read first: it advances pos
       const childEnd = pos + len;
       if (childEnd > end) throw new MalformedTelemetryError();
       if (level === 2) count++;

@@ -26,7 +26,8 @@ import {
 import { createKeyedRateLimiter } from "@/src/features/acme-enhancements/server/telemetry/telemetryRateLimit";
 
 // EYEON telemetry ingest, CHG-2026-157 (Reviewer-2 B1): the WORK a request can
-// cause is bounded before anything is decoded, not only its bytes. Before this
+// cause is bounded, not only its bytes. Gzip output is capped, and a protobuf
+// export's spans are counted on the wire before it is decoded. Before this
 // change, Reviewer-2's 5 KB gzip body below decoded 2.6 million spans on the
 // console's event loop (about 0.6 to 1 s, about 600 MB of heap) before the
 // span cap answered 413. The real gunzip and the real decoder are used here.
@@ -54,6 +55,31 @@ function protobufEmptySpans(n: number): Buffer {
     scopeSpans,
   ]);
   return Buffer.concat([Buffer.from([0x0a, ...varint(rs.length)]), rs]);
+}
+
+// The tags 0x0a (field 1) and 0x12 (field 2), length-delimited, written in 5
+// bytes with a bit above 32. protobufjs's Reader.uint32() drops that bit and
+// reads the usual tag; before R3-F1 the wire count read another field number
+// and skipped the field (Reviewer-3).
+const OVERLONG_FIELD_1 = [0x8a, 0x80, 0x80, 0x80, 0x10];
+const OVERLONG_FIELD_2 = [0x92, 0x80, 0x80, 0x80, 0x10];
+
+/** Like protobufEmptySpans, with the given bytes for each tag. */
+function protobufEmptySpansTagged(
+  n: number,
+  tags: { resourceSpans?: number[]; scopeSpans?: number[]; span?: number[] },
+): Buffer {
+  const one = [...(tags.span ?? [0x12]), 0x00];
+  const spans = Buffer.alloc(one.length * n);
+  for (let i = 0; i < n; i++) spans.set(one, i * one.length);
+  const rs = Buffer.concat([
+    Buffer.from([...(tags.scopeSpans ?? [0x12]), ...varint(spans.length)]),
+    spans,
+  ]);
+  return Buffer.concat([
+    Buffer.from([...(tags.resourceSpans ?? [0x0a]), ...varint(rs.length)]),
+    rs,
+  ]);
 }
 
 function jsonEmptySpans(n: number): Buffer {
@@ -331,6 +357,46 @@ describe("B1 (Reviewer-2): bounded before decode, through the real gunzip and de
   });
 });
 
+describe("R3-F1 (Reviewer-3): a tag the decoder reads differently cannot hide spans from the wire count", () => {
+  // Before the fix, Reviewer-3's body was decoded in full (499,000 spans,
+  // ~50 to 150 ms, ~120 MB of heap) before the span cap answered 413.
+  it.each([
+    [
+      "Reviewer-3's body: an overlong resource_spans tag, 499,000 spans",
+      () =>
+        protobufEmptySpansTagged(499_000, { resourceSpans: OVERLONG_FIELD_1 }),
+      998_012,
+    ],
+    [
+      "an overlong scope_spans tag, 499,000 spans",
+      () => protobufEmptySpansTagged(499_000, { scopeSpans: OVERLONG_FIELD_2 }),
+      998_012,
+    ],
+    [
+      "an overlong tag on every span, 166,000 spans",
+      () => protobufEmptySpansTagged(166_000, { span: OVERLONG_FIELD_2 }),
+      996_008,
+    ],
+  ])(
+    "%s gets a fast 413 or 400, bounded memory, no decode",
+    async (_label, build, size) => {
+      const body = build();
+      expect(body.byteLength).toBe(size);
+      expect(body.byteLength).toBeLessThan(DEFAULT_MAX_DECODED_BYTES);
+      const calls = { n: 0 };
+      const { res, ms, heapMiB } = await timed(
+        request(body, "application/x-protobuf", false),
+        runtimeLikeDeps(calls),
+        calls,
+      );
+      expect([400, 413]).toContain(res.status);
+      expect(calls.n).toBe(0);
+      expect(ms).toBeLessThan(FAST_MS);
+      expect(heapMiB).toBeLessThan(BOUNDED_HEAP_MIB);
+    },
+  );
+});
+
 describe("countProtobufSpans: the wire count matches the decoder, and refuses bad wire data", () => {
   const encode = (object: unknown) =>
     Buffer.from(REQ.encode(REQ.fromObject(object as never)).finish());
@@ -402,6 +468,55 @@ describe("countProtobufSpans: the wire count matches the decoder, and refuses ba
     ]);
     const body = Buffer.concat([unknown, protobufEmptySpans(3)]);
     expect(countProtobufSpans(body, 100)).toBe(3);
+  });
+
+  it("reads canonical multi-byte tags, up to the highest field number, as the decoder does", () => {
+    const body = Buffer.concat([
+      Buffer.from([0xc2, 0x3e, 0x00]), // field 1000, length-delimited, empty
+      Buffer.from([0xfa, 0xff, 0xff, 0xff, 0x0f, 0x00]), // field 2^29 - 1, same
+      protobufEmptySpans(3),
+    ]);
+    expect(countSpans(decodeOtlpTraces(body, "application/x-protobuf"))).toBe(
+      3,
+    );
+    expect(countProtobufSpans(body, 100)).toBe(3);
+  });
+
+  it.each([
+    [
+      "Reviewer-3's proof: an overlong resource_spans tag over 3 spans",
+      Buffer.from([
+        ...OVERLONG_FIELD_1,
+        0x08,
+        0x12,
+        0x06,
+        0x12,
+        0x00,
+        0x12,
+        0x00,
+        0x12,
+        0x00,
+      ]),
+    ],
+    ["an overlong 2-byte tag", Buffer.from([0x8a, 0x00, 0x00])],
+    [
+      "a tag with a 6th byte",
+      Buffer.from([0x8a, 0x80, 0x80, 0x80, 0x80, 0x01]),
+    ],
+    ["an overlong length", Buffer.from([0x0a, 0x80, 0x00])],
+    [
+      "a length with a bit above 32",
+      Buffer.from([0x0a, 0x81, 0x80, 0x80, 0x80, 0x10, 0x00]),
+    ],
+    ["resource as a varint", Buffer.from([0x0a, 0x02, 0x08, 0x01])],
+    [
+      "a scope's schema_url as fixed32",
+      Buffer.from([0x0a, 0x07, 0x12, 0x05, 0x1d, 1, 2, 3, 4]),
+    ],
+  ])("%s throws MalformedTelemetryError", (_label, body) => {
+    expect(() => countProtobufSpans(body, 100)).toThrow(
+      MalformedTelemetryError,
+    );
   });
 
   it.each([

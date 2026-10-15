@@ -31,10 +31,11 @@ export const DEFAULT_MAX_DECODED_BYTES = 1024 * 1024;
 
 /**
  * A gzip body may decompress to at most this many times its own size (floor
- * below), else 413 before anything is decoded. A backstop for bombs: the
- * decoded ceiling and the protobuf span count (telemetryDecode.ts) bound the
- * work on their own. Measured for highly repetitive synthetic 512-span batches:
- * 65x (protobuf) and 78x (JSON), so 200x leaves room for real exports.
+ * below): gunzip stops there with 413, before the OTLP decoder runs. A
+ * backstop for bombs: the decoded ceiling and the protobuf span count
+ * (telemetryDecode.ts) bound the work on their own. Measured for highly
+ * repetitive synthetic 512-span batches: 65x (protobuf) and 78x (JSON), so
+ * 200x leaves room for real exports.
  */
 export const MAX_GZIP_EXPANSION_RATIO = 200;
 export const GZIP_EXPANSION_FLOOR_BYTES = 64 * 1024;
