@@ -16,7 +16,7 @@
  * Bump ALLOWLIST_VERSION on ANY change in this file. It is stamped on every
  * span (`eyeon.allowlist_version`), and a change needs a change record.
  */
-export const ALLOWLIST_VERSION = "2026-10-13.1";
+export const ALLOWLIST_VERSION = "2026-10-14.1";
 
 export type ValueRule =
   | { kind: "string"; pattern: RegExp }
@@ -24,10 +24,26 @@ export type ValueRule =
   | { kind: "enum"; values: readonly string[] }
   | { kind: "stringList"; pattern: RegExp; maxItems: number };
 
-const ident = (max: number): ValueRule => ({
+// Every pattern in this file is a literal: nothing is built at run time.
+const ident64: ValueRule = {
   kind: "string",
-  pattern: new RegExp(`^[A-Za-z0-9_.-]{1,${max}}$`),
-});
+  pattern: /^[A-Za-z0-9_.-]{1,64}$/,
+};
+
+/** The OpenInference attribute that the engine maps to an observation type. */
+export const SPAN_KIND_KEY = "openinference.span.kind";
+
+/**
+ * Observation types an application may never assert (CHG-2026-156). The engine
+ * turns `openinference.span.kind` GUARDRAIL and EVALUATOR into observations of
+ * those types, which would sit in a trace beside EYEON's own guardrail and
+ * evaluation records. The value is dropped and counted as reserved; the span is
+ * kept and typed by its other attributes.
+ */
+export const RESERVED_SPAN_KINDS: ReadonlySet<string> = new Set([
+  "GUARDRAIL",
+  "EVALUATOR",
+]);
 
 const modelName: ValueRule = {
   kind: "string",
@@ -45,17 +61,18 @@ export const SPAN_ATTRIBUTE_RULES: ReadonlyMap<string, ValueRule> = new Map<
   ValueRule
 >([
   // Operation and model.
-  ["gen_ai.operation.name", ident(64)],
-  ["gen_ai.system", ident(64)],
-  ["gen_ai.provider.name", ident(64)],
+  ["gen_ai.operation.name", ident64],
+  ["gen_ai.system", ident64],
+  ["gen_ai.provider.name", ident64],
   ["gen_ai.request.model", modelName],
   ["gen_ai.response.model", modelName],
   ["llm.model_name", modelName],
   ["llm.response.model", modelName],
   [
-    "openinference.span.kind",
+    SPAN_KIND_KEY,
     {
       kind: "enum",
+      // GUARDRAIL and EVALUATOR are left out on purpose: RESERVED_SPAN_KINDS.
       values: [
         "LLM",
         "CHAIN",
@@ -64,8 +81,6 @@ export const SPAN_ATTRIBUTE_RULES: ReadonlyMap<string, ValueRule> = new Map<
         "EMBEDDING",
         "RETRIEVER",
         "RERANKER",
-        "GUARDRAIL",
-        "EVALUATOR",
         "PROMPT",
         "UNKNOWN",
       ],
@@ -173,8 +188,15 @@ export const MAX_EXCEPTION_EVENTS_PER_SPAN = 3;
 export const SPAN_NAME_PATTERN = /^[A-Za-z0-9_.:/ -]{1,64}$/;
 export const SPAN_NAME_REPLACEMENT = "span";
 
-/** Instrumentation scope: name and version only, same style of bound. */
-export const SCOPE_VERSION_PATTERN = /^[A-Za-z0-9_.+-]{1,32}$/;
+/**
+ * The instrumentation scope written on every span (CHG-2026-156). The app's own
+ * scope (name, version and attributes) is never forwarded. The engine changes
+ * how it stores a span according to the scope name: a name starting
+ * `langfuse-sdk` makes it keep none of the span's attributes, so the server's
+ * `eyeon.*` labels would be lost, and other names switch on framework-specific
+ * parsing. The name is also free text, which LLD 5.1 does not list.
+ */
+export const EYEON_SCOPE_NAME = "eyeon-telemetry-ingest";
 
 /** Bounds applied while scanning, so a hostile body cannot burn CPU. */
 export const MAX_ATTRIBUTES_SCANNED_PER_SPAN = 256;

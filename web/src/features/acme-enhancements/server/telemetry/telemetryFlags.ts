@@ -13,6 +13,13 @@
 /** Per-key requests per minute above which the route answers 429. */
 export const DEFAULT_RATE_PER_KEY_PER_MIN = 600;
 
+/**
+ * The body limit in code, before and after gunzip: 5 MiB (CHG-2026-156). The
+ * body is read into memory and decoded on the console's event loop, so the
+ * engine's own OTLP limit (512 MiB by default) is never the ingest's limit.
+ */
+export const DEFAULT_MAX_BODY_BYTES = 5 * 1024 * 1024;
+
 type Env = Record<string, string | undefined>;
 
 /** EYEON_TELEMETRY_INGEST_ENABLED: only the exact string "true" turns it on. */
@@ -31,19 +38,20 @@ export function contentModesGateEnabled(env: Env = process.env): boolean {
 }
 
 /**
- * EYEON_TELEMETRY_MAX_BODY_BYTES: may only LOWER the upstream OTLP limit, never
- * raise it. Unset, zero, negative or not a whole number: the upstream limit.
+ * EYEON_TELEMETRY_MAX_BODY_BYTES: may only LOWER the limit, never raise it. The
+ * limit is DEFAULT_MAX_BODY_BYTES, or the upstream OTLP limit if that is lower.
+ * Unset, zero, negative or not a whole number: that limit.
  */
 export function telemetryMaxBodyBytes(
   upstreamLimit: number,
   env: Env = process.env,
 ): number {
+  const ceiling = Math.min(DEFAULT_MAX_BODY_BYTES, upstreamLimit);
   const raw = env.EYEON_TELEMETRY_MAX_BODY_BYTES;
-  if (raw === undefined || !/^[0-9]{1,12}$/.test(raw)) return upstreamLimit;
+  if (raw === undefined || !/^[0-9]{1,12}$/.test(raw)) return ceiling;
   const configured = Number(raw);
-  if (!Number.isSafeInteger(configured) || configured <= 0)
-    return upstreamLimit;
-  return Math.min(configured, upstreamLimit);
+  if (!Number.isSafeInteger(configured) || configured <= 0) return ceiling;
+  return Math.min(configured, ceiling);
 }
 
 /** EYEON_TELEMETRY_RATE_PER_KEY_PER_MIN: a positive whole number, else 600. */

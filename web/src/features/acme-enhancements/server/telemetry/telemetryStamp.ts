@@ -9,7 +9,12 @@
  * `eyeon.trust = asserted` is deliberate and permanent for this path: the app
  * said it. A trace is diagnostic. The guardrail event and the request-log row
  * are not app-writable and remain the evidence (ADR-0020 section 3.3).
+ *
+ * The instrumentation scope is the server's too: every span is written under
+ * EYEON_SCOPE_NAME, whatever the app sent (CHG-2026-156). An app-chosen scope
+ * name could make the engine drop every label written here.
  */
+import { EYEON_SCOPE_NAME } from "./telemetryAllowlist";
 import type {
   FilteredResourceSpans,
   FilteredSpan,
@@ -93,7 +98,7 @@ function stampSpan(
 
 /**
  * Returns the OTLP/JSON `resourceSpans` array, stamped, with the internal
- * `userHash` field consumed and gone.
+ * `userHash` field consumed and gone, and every scope set to EYEON's own.
  */
 export function stampResourceSpans(
   filtered: readonly FilteredResourceSpans[],
@@ -102,7 +107,7 @@ export function stampResourceSpans(
   return filtered.map((rs) => ({
     resource: { attributes: rs.resource.attributes },
     scopeSpans: rs.scopeSpans.map((ss) => ({
-      scope: ss.scope,
+      scope: { name: EYEON_SCOPE_NAME },
       spans: ss.spans.map((s) => stampSpan(s, ctx)),
     })),
   }));

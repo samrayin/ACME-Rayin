@@ -133,6 +133,7 @@ describe("the rest of the ingest never logs, never reads the environment, never 
       expect.arrayContaining([
         "telemetryAllowlist.ts",
         "telemetryAuth.ts",
+        "telemetryDecode.ts",
         "telemetryFilter.ts",
         "telemetryFlags.ts",
         "telemetryIngest.ts",
@@ -165,6 +166,19 @@ describe("the rest of the ingest never logs, never reads the environment, never 
     const src = source("telemetryIngest.ts");
     expect(src).not.toMatch(
       /processOtelIngestion|@langfuse\/shared|@prisma|node:http|fetch\(/,
+    );
+  });
+
+  it("no module builds a RegExp at run time (every pattern is a literal)", () => {
+    for (const file of [...files, "telemetryRuntime.ts"]) {
+      expect(source(file), file).not.toMatch(/new RegExp\(|RegExp\(/);
+    }
+  });
+
+  it("the filter never reads the app's scope; the stamp writes EYEON's (review C1)", () => {
+    expect(source("telemetryFilter.ts")).not.toMatch(/\bss\.scope\b|\.scope\./);
+    expect(source("telemetryStamp.ts")).toMatch(
+      /scope: \{ name: EYEON_SCOPE_NAME \}/,
     );
   });
 });

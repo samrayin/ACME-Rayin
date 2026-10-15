@@ -7583,3 +7583,35 @@ Updated: the Enforcement page's figures and router tests (the packs in force), i
 **Verified:** on the pinned image, locally, with a dummy header value: `generic_api` is a known callback name; built inside a running event loop with the two variables it yields `GenericAPILogger` with the endpoint set, an `Authorization` header parsed from the `Key=value` form, no retries, batches of 512 or 5 seconds, and both success and failure hooks; with the variables absent it registers nothing and does not raise.
 
 **Not verified:** the live restart, which is recorded in the deployment record; that the receiver accepts the gateway's batch in this deployment (the first `PUSH` row is that evidence); the retrying option.
+
+## 2026-10-14 — EYEON telemetry ingest hotfix: the server owns the scope, apps cannot assert guardrail types, 5 MiB in code (CHG-2026-156)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-156 · owner: Anees Ur Rahman · Tier 2 |
+| **ADR** | None new. It answers the independent review of CHG-2026-155, conditions C1 and C3, and the Semgrep finding under C4. The ADR-0006 addendum draft is amended separately, outside this PR, for the review's C2. |
+| **Approval** | Pending. The owner reviews and merges, with no self-approval, and every gate green first. A fresh reviewer who did not build this change reads it before the merge. |
+| **Dates** | Dev: not yet released · Staging: not available · Prod: not yet |
+| **Impact** | None while `EYEON_TELEMETRY_INGEST_ENABLED` is off, which is the default and stays so until the owner's go. With the flag on, an app can no longer choose the instrumentation scope or assert GUARDRAIL or EVALUATOR, and a body over 5 MiB gets 413 whatever the engine's own limit is. |
+| **Schema change** | None |
+| **Rollback** | Revert this PR. Code and tests only, no data or schema. With the flag off nothing runs. |
+| **Feature flag** | `EYEON_TELEMETRY_INGEST_ENABLED` (server-only, default off), unchanged |
+
+**What:**
+- **The scope is the server's.** The filter no longer reads the app's instrumentation scope (name, version or attributes), and the stamp writes `{ name: "eyeon-telemetry-ingest" }` on every span. The engine stores none of a span's attributes when the scope name starts with `langfuse-sdk`, so an app-chosen scope removed every server label (`eyeon.trust`, `eyeon.user_hash` and the rest), which the stamp is meant to guarantee. Review finding C1.
+- **Apps cannot assert guardrail or evaluator types.** `GUARDRAIL` and `EVALUATOR` are out of the `openinference.span.kind` values. The value is dropped and counted as `reserved`; the span itself is kept. The engine would otherwise store such a span as a GUARDRAIL or EVALUATOR observation with no provenance label, next to EYEON's own guardrail evidence. The engine's other routes to those types (`langfuse.observation.type`, Genkit's subtype) read keys the allowlist never keeps. Review finding C1.
+- **5 MiB in code.** `DEFAULT_MAX_BODY_BYTES` caps the body before and after gunzip, whatever the engine's OTLP limit (512 MiB by default). `EYEON_TELEMETRY_MAX_BODY_BYTES` can only lower it. Review finding C3.
+- **No pattern is built at run time.** The `ident(max)` helper, which called `new RegExp`, is replaced by a literal pattern. This was Semgrep's blocking finding on #422 (`javascript.lang.security.audit.detect-non-literal-regexp`). A source-guard test keeps every telemetry module free of `RegExp(`.
+- **The decoder is its own pure module,** `telemetryDecode.ts`, moved unchanged from the runtime, so the protobuf path is tested as it runs.
+- `ALLOWLIST_VERSION` becomes `2026-10-14.1`.
+
+**Tests (the telemetry suite, 202, was 180):**
+- **C1 through the real engine:** the reviewer's probes are run through `processOtelIngestion` and `OtelIngestionProcessor.processToEvent`. With scopes `langfuse-sdk`, `langfuse-sdk-python` and `livekit-agents`, every `eyeon.*` label is in the stored metadata, and a span asserting GUARDRAIL or EVALUATOR is not stored as that type.
+- **The filter:** no part of the app's scope leaves it, and the reserved kinds are counted.
+- **Protobuf** through the real decoder: English and Arabic canaries are absent from the handoff, the shapes are kept, and malformed input gets 400.
+- **The body limit:** 5 MiB in code, and the environment can only lower it.
+- **Each fix is caught when undone.** Writing a `langfuse-sdk` scope fails 9 tests, allowing GUARDRAIL fails 4, and removing the 5 MiB ceiling fails 2.
+
+**Second commit, CI only:** the upstream test `public-api-auth-parity > covers every public route` fails on `main` because it walks `pages/api/public/` and finds ACME's three routes (`guardrails-events`, `guardrails-settings`, `litellm-request-logs`), which its tables do not list. Its matrix runs with fail-fast, so the other `tests-web` legs are then cancelled. The three routes are added to the test's exclusion list, each with a comment saying how it is covered. Sweeping the two guardrails routes would change the test's main-captured snapshot, which needs a database run to regenerate; that is a follow-up.
+
+**Not included:** the review's C2 (names and labels that fit their shape carry free ASCII). It is accepted in writing for the synthetic-only dev pilot, and it blocks real data. The ten non-blocking findings are logged outside this PR.
