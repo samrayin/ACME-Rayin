@@ -1,9 +1,11 @@
 import { gunzip, gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { $root } from "@/src/pages/api/public/otel/otlp-proto/generated/root";
+import { MAX_SPANS_PER_BATCH } from "@/src/features/acme-enhancements/server/telemetry/telemetryAllowlist";
 import {
   countProtobufSpans,
   decodeOtlpTraces,
+  TelemetryTooManySpansError,
 } from "@/src/features/acme-enhancements/server/telemetry/telemetryDecode";
 import {
   countSpans,
@@ -397,7 +399,147 @@ describe("R3-F1 (Reviewer-3): a tag the decoder reads differently cannot hide sp
   );
 });
 
-describe("countProtobufSpans: the wire count matches the decoder, and refuses bad wire data", () => {
+// The v8 review's B1: protobufjs does not hold a nested message to its
+// parent's length. A resource or a span that overruns its own end makes the
+// decoder carry on inside bytes the wire count skipped as an unknown field, so
+// it decodes spans the wire count never saw. The cap is therefore counted
+// inside the decoder, on every Span it decodes; the wire count is only a fast
+// first refusal.
+const SPAN = $root.opentelemetry.proto.trace.v1.Span;
+const PB = "application/x-protobuf";
+
+/** Runs `fn` and counts the Spans the decoder decodes meanwhile. */
+async function withSpanDecodeCount<T>(
+  fn: () => T | Promise<T>,
+): Promise<{ result: T | undefined; spansDecoded: number }> {
+  const original = SPAN.decode;
+  let spansDecoded = 0;
+  SPAN.decode = function (this: unknown, ...args: unknown[]) {
+    spansDecoded++;
+    return original.apply(this, args);
+  };
+  try {
+    let result: T | undefined;
+    try {
+      result = await fn();
+    } catch {
+      // a throw is fine here: the count is what is under test
+    }
+    return { result, spansDecoded };
+  } finally {
+    SPAN.decode = original;
+  }
+}
+
+/** The Critic's span overrun: the span's attribute key swallows the header of an unknown field 4 that holds `n` empty spans. */
+function spanOverrun(n: number): Buffer {
+  const payload = Buffer.alloc(2 * n);
+  for (let i = 0; i < n; i++) payload[2 * i] = 0x12;
+  const header = Buffer.from([0x22, ...varint(payload.length)]);
+  const span = Buffer.from([
+    0x12,
+    0x04,
+    0x4a,
+    2 + header.length,
+    0x0a,
+    header.length,
+  ]);
+  const scopeSpans = Buffer.concat([span, header, payload]);
+  const rs = Buffer.concat([
+    Buffer.from([0x12, ...varint(scopeSpans.length)]),
+    scopeSpans,
+  ]);
+  return Buffer.concat([Buffer.from([0x0a, ...varint(rs.length)]), rs]);
+}
+
+/** The Critic's resource overrun: the resource's attribute key swallows the header of an unknown field 4 that holds a scope_spans with `n` empty spans. */
+function resourceOverrun(n: number): Buffer {
+  const spans = Buffer.alloc(2 * n);
+  for (let i = 0; i < n; i++) spans[2 * i] = 0x12;
+  const payload = Buffer.concat([
+    Buffer.from([0x12, ...varint(spans.length)]),
+    spans,
+  ]);
+  const header = Buffer.from([0x22, ...varint(payload.length)]);
+  const resource = Buffer.from([
+    0x0a,
+    0x04,
+    0x0a,
+    2 + header.length,
+    0x0a,
+    header.length,
+  ]);
+  const rs = Buffer.concat([resource, header, payload]);
+  return Buffer.concat([Buffer.from([0x0a, ...varint(rs.length)]), rs]);
+}
+
+describe("B1 (v8 review): the span cap is counted inside the decoder, so the wire count cannot let a body through", () => {
+  it.each([
+    ["span overrun", 1, 4, "0a10120e12044a040a022206120012001200", spanOverrun],
+    [
+      "resource overrun",
+      0,
+      3,
+      "0a100a040a040a0222081206120012001200",
+      resourceOverrun,
+    ],
+  ] as const)(
+    "the Critic's 18-byte %s: the wire count sees %i span(s), the decoder decodes %i, and the cap counts what is decoded",
+    async (_label, wireCount, decoded, hex, build) => {
+      const body = Buffer.from(hex, "hex");
+      expect(body.byteLength).toBe(18);
+      expect(build(3).equals(body)).toBe(true);
+      expect(countProtobufSpans(body, 100)).toBe(wireCount);
+      const { spansDecoded } = await withSpanDecodeCount(() =>
+        decodeOtlpTraces(body, PB),
+      );
+      expect(spansDecoded).toBe(decoded);
+      expect(() => decodeOtlpTraces(body, PB, decoded)).not.toThrow();
+      expect(() => decodeOtlpTraces(body, PB, decoded - 1)).toThrow(
+        TelemetryTooManySpansError,
+      );
+    },
+  );
+
+  it.each([
+    ["span overrun", () => spanOverrun(499_000)],
+    ["resource overrun", () => resourceOverrun(499_000)],
+  ] as const)(
+    "the %s at 998,018 bytes (499,000 hidden spans) gets 413 after at most MAX_SPANS_PER_BATCH decoded spans, bounded memory",
+    async (_label, build) => {
+      const body = build();
+      expect(body.byteLength).toBe(998_018);
+      expect(body.byteLength).toBeLessThan(DEFAULT_MAX_DECODED_BYTES);
+      // The wire count lets it through: it is not the bound.
+      expect(
+        countProtobufSpans(body, MAX_SPANS_PER_BATCH + 1),
+      ).toBeLessThanOrEqual(1);
+      const calls = { n: 0 };
+      const { result, spansDecoded } = await withSpanDecodeCount(() =>
+        timed(request(body, PB, false), runtimeLikeDeps(calls), calls),
+      );
+      expect(result?.res.status).toBe(413);
+      expect(result?.res.body).toEqual({
+        message: "Too many spans in one export",
+      });
+      expect(spansDecoded).toBeLessThanOrEqual(MAX_SPANS_PER_BATCH);
+      expect(result?.ms).toBeLessThan(FAST_MS);
+      expect(result?.heapMiB).toBeLessThan(BOUNDED_HEAP_MIB);
+    },
+  );
+
+  it("exactly MAX_SPANS_PER_BATCH spans behind an overrun are still decoded (the cap is not off by one)", async () => {
+    const calls = { n: 0 };
+    const res = await handleTelemetryRequest(
+      request(spanOverrun(MAX_SPANS_PER_BATCH - 1), PB, false),
+      runtimeLikeDeps(calls),
+    );
+    expect(res.status).not.toBe(413);
+    expect(calls.n).toBe(1);
+  });
+});
+
+describe("countProtobufSpans: the fast wire count agrees with the decoder on these bodies, and refuses bad wire data (it is not the bound: see the v8 review's B1 above)", () => {
   const encode = (object: unknown) =>
     Buffer.from(REQ.encode(REQ.fromObject(object as never)).finish());
   const spanObj = (i: number) => ({

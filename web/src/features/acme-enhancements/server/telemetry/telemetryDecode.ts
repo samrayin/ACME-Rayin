@@ -7,20 +7,37 @@
  * array out, shaped as the filter expects. No I/O, no logger.
  */
 import { $root } from "@/src/pages/api/public/otel/otlp-proto/generated/root";
+import { MAX_SPANS_PER_BATCH } from "./telemetryAllowlist";
 import { MalformedTelemetryError } from "./telemetryFilter";
 
 const OTLP_REQUEST =
   $root.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
+const OTLP_SPAN = $root.opentelemetry.proto.trace.v1.Span;
+
+/** The decoder reached the span cap: the export is refused with 413. */
+export class TelemetryTooManySpansError extends Error {
+  constructor() {
+    super("Too many spans in one export");
+    this.name = "TelemetryTooManySpansError";
+  }
+}
 
 /**
- * Counts the spans in a protobuf OTLP export WITHOUT decoding it (CHG-2026-157,
- * Reviewer-2 B1). It walks the wire format: ExportTraceServiceRequest field 1
- * (resource_spans), then ResourceSpans field 2 (scope_spans), then ScopeSpans
- * field 2 (spans). Every other field is skipped, and the walk stops as soon as
- * the count reaches `stopAt`. No object is built, so a body of millions of
- * empty spans costs microseconds instead of a full decode. A body that is not
- * well-formed protobuf throws MalformedTelemetryError, and so does any tag,
- * length or wire type the decoder could read differently (Reviewer-3 R3-F1).
+ * A FAST FIRST REFUSAL, not the bound (CHG-2026-157, Reviewer-2 B1; v8 review
+ * B1). Counts the spans in a protobuf OTLP export without decoding it, by
+ * walking the wire format: ExportTraceServiceRequest field 1 (resource_spans),
+ * then ResourceSpans field 2 (scope_spans), then ScopeSpans field 2 (spans).
+ * Every other field is skipped, and the walk stops as soon as the count
+ * reaches `stopAt`. No object is built, so a body of millions of empty spans
+ * is refused in microseconds. A body that is not well-formed protobuf throws
+ * MalformedTelemetryError, and so does any tag, length or wire type the
+ * decoder could read differently (Reviewer-3 R3-F1).
+ *
+ * It can still count FEWER spans than the decoder decodes: protobufjs does not
+ * hold a nested message to its parent's length, so a resource or a span that
+ * overruns its own end makes the decoder carry on inside bytes this walk
+ * skipped as an unknown field (v8 review B1). The bound is therefore the cap
+ * that decodeOtlpTraces counts inside the decoder, on every Span it decodes.
  */
 export function countProtobufSpans(buf: Uint8Array, stopAt: number): number {
   let count = 0;
@@ -100,16 +117,51 @@ export function countProtobufSpans(buf: Uint8Array, stopAt: number): number {
   return count;
 }
 
-/** Protobuf or JSON body to the `resourceSpans` array. Throws MalformedTelemetryError. */
-export function decodeOtlpTraces(body: Buffer, contentType: string): unknown {
+/**
+ * Decodes a protobuf export with the span cap counted INSIDE the decoder (v8
+ * review B1): every Span the decoder decodes is counted, wherever in the body
+ * it finds one, and the (maxSpans + 1)th throws TelemetryTooManySpansError
+ * before it is built. So the decoder never builds more than `maxSpans` spans,
+ * and no count can disagree with it.
+ *
+ * The generated ScopeSpans decoder looks Span.decode up at call time, so the
+ * counting wrapper is installed for this one call and removed in `finally`.
+ * The decode is synchronous: no other code runs while the wrapper is in place.
+ */
+function decodeWithSpanCap(body: Buffer, maxSpans: number) {
+  const decodeSpan = OTLP_SPAN.decode;
+  let spans = 0;
+  OTLP_SPAN.decode = function (this: unknown, ...args: unknown[]) {
+    if (++spans > maxSpans) throw new TelemetryTooManySpansError();
+    return decodeSpan.apply(this, args);
+  };
+  try {
+    return OTLP_REQUEST.decode(body);
+  } finally {
+    OTLP_SPAN.decode = decodeSpan;
+  }
+}
+
+/**
+ * Protobuf or JSON body to the `resourceSpans` array. Throws
+ * MalformedTelemetryError, or TelemetryTooManySpansError once a protobuf
+ * export's decoder reaches more than `maxSpans` spans. A JSON body is bounded
+ * by the decoded-size ceiling and counted by the caller after the parse.
+ */
+export function decodeOtlpTraces(
+  body: Buffer,
+  contentType: string,
+  maxSpans: number = MAX_SPANS_PER_BATCH,
+): unknown {
   if (contentType.includes("application/x-protobuf")) {
     try {
-      const parsed = OTLP_REQUEST.decode(body);
+      const parsed = decodeWithSpanCap(body, maxSpans);
       // int64 as decimal strings, as the OTLP JSON encoding does.
       return (
         OTLP_REQUEST.toObject(parsed, { longs: String }).resourceSpans ?? []
       );
-    } catch {
+    } catch (error) {
+      if (error instanceof TelemetryTooManySpansError) throw error;
       throw new MalformedTelemetryError();
     }
   }

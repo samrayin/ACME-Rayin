@@ -18,7 +18,10 @@
 import { randomUUID } from "crypto";
 import { ALLOWLIST_VERSION, MAX_SPANS_PER_BATCH } from "./telemetryAllowlist";
 import { UNAUTHORIZED_BODY, type AuthenticatedKey } from "./telemetryAuth";
-import { countProtobufSpans } from "./telemetryDecode";
+import {
+  countProtobufSpans,
+  TelemetryTooManySpansError,
+} from "./telemetryDecode";
 import { gunzipOutputLimit } from "./telemetryFlags";
 import {
   countSpans,
@@ -225,8 +228,10 @@ export async function handleTelemetryRequest(
   // D. Decode, then allowlist. A filter error drops the batch.
   let filtered: FilterResult;
   try {
-    // Protobuf: count the spans on the wire first, so an export over the cap
-    // is refused without being materialised (B1). JSON is bounded by the
+    // Protobuf: the wire count is a fast first refusal, so an honest export
+    // over the cap is refused without being decoded (B1). The bound itself is
+    // counted inside the decoder, which throws TelemetryTooManySpansError at
+    // the (cap + 1)th span it decodes (v8 review B1). JSON is bounded by the
     // decoded-size ceiling above, then counted after the parse as before.
     if (
       isProtobuf &&
@@ -246,6 +251,10 @@ export async function handleTelemetryRequest(
       extraAllowlist: policy.extras,
     });
   } catch (error) {
+    if (error instanceof TelemetryTooManySpansError) {
+      deps.record(projectId, lineageId, { rejected_size: 1 });
+      return reject(413, "Too many spans in one export");
+    }
     if (error instanceof MalformedTelemetryError) {
       deps.record(projectId, lineageId, { rejected_malformed: 1 });
       return reject(400, "Invalid OTLP trace export");
