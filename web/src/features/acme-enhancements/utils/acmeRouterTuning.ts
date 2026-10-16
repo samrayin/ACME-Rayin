@@ -28,7 +28,7 @@ export type TierBoundaries = {
 export type KeywordTierRule = { keywords: string[]; tier: RouterTier };
 
 export const MAX_KEYWORDS_PER_RULE = 50;
-export const MIN_KEYWORD_LENGTH = 2;
+const MIN_KEYWORD_LENGTH = 2;
 export const MAX_KEYWORD_LENGTH = 80;
 
 /**

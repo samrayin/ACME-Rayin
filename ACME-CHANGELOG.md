@@ -7773,3 +7773,5 @@ A tuned heuristic config (config B) scored 9 of 10. Its one miss sends a coding 
 - **Known limits of the heuristic:**
   - With config B, a coding task still goes to REASONING (one tier too high: costlier, not weaker).
   - A single-word Arabic keyword matches only as a whole word, so a form with a prefix (for example the conjunction و) does not match it. Phrases match anywhere.
+
+**Follow-up (2026-10-17):** `MIN_KEYWORD_LENGTH` in `utils/acmeRouterTuning.ts` is no longer exported, because nothing outside the file uses it (knip). The fix reached this change's branch after #433 merged, so it lands in its own small PR. No behaviour change.
