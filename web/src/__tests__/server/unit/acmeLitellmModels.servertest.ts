@@ -17,16 +17,24 @@ import {
   DEFAULT_ENDPOINT_ALLOWLIST,
 } from "@/src/features/acme-enhancements/server/litellm/acmeLitellmEndpointGuard";
 import {
+  allowListedRouterConfig,
   buildRouterConfig,
   createModel,
   createRouter,
   deleteModel,
+  ROUTER_CONFIG_KEYS,
   testRouting,
   toModelViews,
   updateModel,
+  updateRouter,
   type ModelInput,
   type ModelsDeps,
+  type RouterInput,
 } from "@/src/features/acme-enhancements/server/litellm/acmeLitellmModels";
+import {
+  RECOMMENDED_KEYWORD_RULES,
+  RECOMMENDED_TIER_BOUNDARIES,
+} from "@/src/features/acme-enhancements/utils/acmeRouterTuning";
 import {
   LitellmInvalidStateError,
   type LitellmDb,
@@ -57,6 +65,7 @@ const CONFIG_MODELS = [
   dep("claude-sonnet", "cfg-1", false, { model: "anthropic/claude-sonnet-5" }),
   dep("nvidia-nemotron", "cfg-2", false),
   dep("groq-judge", "cfg-3", false),
+  dep("groq-fast", "cfg-4", false),
 ];
 
 function harness(extra: LitellmDeployment[] = []) {
@@ -362,9 +371,23 @@ describe("updateModel and deleteModel", () => {
   });
 });
 
+// What the gateway receives for the recommended tuning (config B of the
+// 2026-10-16 check), in its own key names.
+const RECOMMENDED_CONFIG_TUNING = {
+  tier_boundaries: {
+    simple_medium: 0.05,
+    medium_complex: 0.15,
+    complex_reasoning: 0.3,
+  },
+  keyword_tier_rules: RECOMMENDED_KEYWORD_RULES.map((r) => ({
+    keywords: r.keywords,
+    tier: r.tier,
+  })),
+};
+
 describe("smart router (ADR-0010 §5)", () => {
   const tiers = {
-    SIMPLE: "groq-judge",
+    SIMPLE: "groq-fast",
     MEDIUM: "claude-sonnet",
     COMPLEX: "claude-sonnet",
     REASONING: "claude-sonnet",
@@ -384,15 +407,18 @@ describe("smart router (ADR-0010 §5)", () => {
       tiers,
       defaultModel: "claude-sonnet",
     });
-    expect(client.validateComplexityRouterConfig).toHaveBeenCalledWith({
+    // CHG-2026-164: a new router starts from the recommended tuning.
+    const config = {
       classifier_type: "heuristic",
       tiers,
-    });
+      ...RECOMMENDED_CONFIG_TUNING,
+    };
+    expect(client.validateComplexityRouterConfig).toHaveBeenCalledWith(config);
     expect(vi.mocked(client.newModel).mock.calls[0]![0]).toEqual({
       model_name: "smart",
       litellm_params: {
         model: "auto_router/complexity_router",
-        complexity_router_config: { classifier_type: "heuristic", tiers },
+        complexity_router_config: config,
         complexity_router_default_model: "claude-sonnet",
       },
     });
@@ -437,6 +463,327 @@ describe("smart router (ADR-0010 §5)", () => {
     ).resolves.toEqual({ routedModel: "claude-sonnet", tier: "COMPLEX" });
     expect(client.newModel).not.toHaveBeenCalled();
     expect(events).toEqual([]);
+  });
+});
+
+describe("smart router tuning and targets (CHG-2026-164)", () => {
+  const tiers = {
+    SIMPLE: "groq-fast",
+    MEDIUM: "groq-fast",
+    COMPLEX: "claude-sonnet",
+    REASONING: "claude-sonnet",
+  };
+  const base: RouterInput = {
+    modelName: "smart",
+    tiers,
+    defaultModel: "groq-fast",
+  };
+  const sentConfig = (client: LitellmClient) =>
+    vi.mocked(client.validateComplexityRouterConfig).mock.calls[0]![0];
+
+  it("recommends the tuning the 2026-10-16 check tested (config B)", () => {
+    expect(RECOMMENDED_TIER_BOUNDARIES).toEqual({
+      simpleMedium: 0.05,
+      mediumComplex: 0.15,
+      complexReasoning: 0.3,
+    });
+    const byTier = Object.fromEntries(
+      RECOMMENDED_KEYWORD_RULES.map((r) => [r.tier, r.keywords]),
+    );
+    expect(byTier.REASONING).toHaveLength(8);
+    expect(byTier.REASONING).toEqual(
+      expect.arrayContaining(["خطوة بخطوة", "step by step", "prove"]),
+    );
+    expect(byTier.COMPLEX).toHaveLength(20);
+    expect(byTier.COMPLEX).toEqual(
+      expect.arrayContaining(["مجلس الإدارة", "امتثال", "board", "compliance"]),
+    );
+  });
+
+  it("sends the admin's boundaries and literal keyword rules", async () => {
+    const { deps, client, events } = harness();
+    await createRouter(deps, SCOPE, ACTOR, {
+      ...base,
+      tierBoundaries: {
+        simpleMedium: 0.1,
+        mediumComplex: 0.2,
+        complexReasoning: 0.4,
+      },
+      keywordRules: [
+        { tier: "REASONING", keywords: [" prove ", "", "Prove", "حلل"] },
+        { tier: "SIMPLE", keywords: ["hello there"] },
+      ],
+    });
+    const config = {
+      classifier_type: "heuristic",
+      tiers,
+      tier_boundaries: {
+        simple_medium: 0.1,
+        medium_complex: 0.2,
+        complex_reasoning: 0.4,
+      },
+      // Trimmed, blanks and case-insensitive repeats dropped.
+      keyword_tier_rules: [
+        { keywords: ["prove", "حلل"], tier: "REASONING" },
+        { keywords: ["hello there"], tier: "SIMPLE" },
+      ],
+    };
+    expect(sentConfig(client)).toEqual(config);
+    expect(
+      vi.mocked(client.newModel).mock.calls[0]![0].litellm_params!
+        .complexity_router_config,
+    ).toEqual(config);
+    expect(events.at(-1)!.after).toMatchObject({
+      classifier: "heuristic",
+      tierBoundaries: {
+        simpleMedium: 0.1,
+        mediumComplex: 0.2,
+        complexReasoning: 0.4,
+      },
+    });
+  });
+
+  it("sends only tiers when the admin picks the gateway's defaults", async () => {
+    const { deps, client } = harness();
+    await createRouter(deps, SCOPE, ACTOR, {
+      ...base,
+      tierBoundaries: null,
+      keywordRules: [],
+    });
+    expect(sentConfig(client)).toEqual({ classifier_type: "heuristic", tiers });
+  });
+
+  it.each([
+    [{ simpleMedium: 0.2, mediumComplex: 0.1, complexReasoning: 0.4 }],
+    [{ simpleMedium: 0.1, mediumComplex: 0.1, complexReasoning: 0.4 }],
+    [{ simpleMedium: -0.1, mediumComplex: 0.1, complexReasoning: 0.4 }],
+    [{ simpleMedium: 0.1, mediumComplex: 0.2, complexReasoning: 1.5 }],
+    [{ simpleMedium: Number.NaN, mediumComplex: 0.2, complexReasoning: 0.4 }],
+  ])("refuses tier boundaries %j", async (tierBoundaries) => {
+    const { deps, client, events } = harness();
+    await expect(
+      createRouter(deps, SCOPE, ACTOR, { ...base, tierBoundaries }),
+    ).rejects.toThrow(EndpointRejectedError);
+    expect(client.validateComplexityRouterConfig).not.toHaveBeenCalled();
+    expect(client.newModel).not.toHaveBeenCalled();
+    expect(events).toEqual([]);
+  });
+
+  it.each([
+    ["a one-character keyword", [{ tier: "COMPLEX", keywords: ["x"] }]],
+    [
+      "a keyword with a line break",
+      [{ tier: "COMPLEX", keywords: ["risk\nboard"] }],
+    ],
+    [
+      "two rules for one tier",
+      [
+        { tier: "COMPLEX", keywords: ["risk"] },
+        { tier: "COMPLEX", keywords: ["board"] },
+      ],
+    ],
+    ["an unknown tier", [{ tier: "EXPERT", keywords: ["risk"] }]],
+  ])("refuses %s", async (_label, keywordRules) => {
+    const { deps, client } = harness();
+    await expect(
+      createRouter(deps, SCOPE, ACTOR, {
+        ...base,
+        keywordRules: keywordRules as RouterInput["keywordRules"],
+      }),
+    ).rejects.toThrow(EndpointRejectedError);
+    expect(client.newModel).not.toHaveBeenCalled();
+  });
+
+  it("never sends a config key outside the allow-list", async () => {
+    const { deps, client } = harness();
+    // What a caller could try if anything passed the request through.
+    const hostile = {
+      ...base,
+      classifier_type: "llm",
+      classifier_llm_config: { model: "claude-sonnet" },
+      semantic_keyword_matching: true,
+      embedding_model: "text-embedding",
+      plugins: [{ name: "x" }],
+      tierBoundaries: {
+        simpleMedium: 0.1,
+        mediumComplex: 0.2,
+        complexReasoning: 0.4,
+        semantic: true,
+      },
+      keywordRules: [
+        { tier: "COMPLEX", keywords: ["risk"], semantic: true, match: 0.1 },
+      ],
+    } as unknown as RouterInput;
+    await createRouter(deps, SCOPE, ACTOR, hostile);
+    await testRouting(deps, { ...hostile, prompt: "hi" });
+    const sent = [
+      sentConfig(client),
+      vi.mocked(client.newModel).mock.calls[0]![0].litellm_params!
+        .complexity_router_config!,
+      vi.mocked(client.testRouting).mock.calls[0]![0],
+    ];
+    for (const config of sent) {
+      expect(
+        Object.keys(config).every((k) =>
+          (ROUTER_CONFIG_KEYS as readonly string[]).includes(k),
+        ),
+      ).toBe(true);
+      expect(config.classifier_type).toBe("heuristic");
+      for (const k of [
+        "classifier_llm_config",
+        "semantic_keyword_matching",
+        "embedding_model",
+        "plugins",
+      ]) {
+        expect(config).not.toHaveProperty(k);
+      }
+      expect(Object.keys(config.tier_boundaries as object).sort()).toEqual([
+        "complex_reasoning",
+        "medium_complex",
+        "simple_medium",
+      ]);
+      expect(config.keyword_tier_rules).toEqual([
+        { keywords: ["risk"], tier: "COMPLEX" },
+      ]);
+    }
+  });
+
+  it("the allow-list drops other keys and refuses another classifier", () => {
+    expect(
+      allowListedRouterConfig({
+        classifier_type: "heuristic",
+        tiers,
+        semantic_keyword_matching: true,
+        plugins: [],
+      }),
+    ).toEqual({ classifier_type: "heuristic", tiers });
+    expect(() =>
+      allowListedRouterConfig({ classifier_type: "llm", tiers }),
+    ).toThrow(EndpointRejectedError);
+    // An unknown tier key never reaches the gateway, which accepts one.
+    expect(
+      buildRouterConfig({ ...tiers, EXPERT: "x" } as typeof tiers).tiers,
+    ).toEqual(tiers);
+  });
+
+  it.each(["groq-judge", "groq-safeguard", "nvidia-nemotron", "gemini-judge"])(
+    "refuses the guardrails model %s as a tier or default target",
+    async (name) => {
+      const { deps, client, events } = harness();
+      await expect(
+        createRouter(deps, SCOPE, ACTOR, {
+          ...base,
+          tiers: { ...tiers, SIMPLE: name },
+        }),
+      ).rejects.toThrow(/used by the guardrails service/);
+      await expect(
+        createRouter(deps, SCOPE, ACTOR, { ...base, defaultModel: name }),
+      ).rejects.toThrow(/used by the guardrails service/);
+      await expect(
+        testRouting(deps, { ...base, defaultModel: name, prompt: "hi" }),
+      ).rejects.toThrow(EndpointRejectedError);
+      expect(client.validateComplexityRouterConfig).not.toHaveBeenCalled();
+      expect(client.testRouting).not.toHaveBeenCalled();
+      expect(client.newModel).not.toHaveBeenCalled();
+      expect(events).toEqual([]);
+    },
+  );
+
+  describe("an existing router", () => {
+    const stored = dep("smart", "db-r", true, {
+      model: "auto_router/complexity_router",
+      complexity_router_config: {
+        classifier_type: "heuristic",
+        tiers,
+        tier_boundaries: {
+          simple_medium: 0.1,
+          medium_complex: 0.2,
+          complex_reasoning: 0.4,
+        },
+        keyword_tier_rules: [{ keywords: ["board"], tier: "COMPLEX" }],
+      },
+      complexity_router_default_model: "groq-fast",
+    });
+
+    it("shows its tuning in the list", () => {
+      const view = toModelViews([stored])[0]!;
+      expect(view.tierBoundaries).toEqual({
+        simpleMedium: 0.1,
+        mediumComplex: 0.2,
+        complexReasoning: 0.4,
+      });
+      expect(view.keywordRules).toEqual([
+        { tier: "COMPLEX", keywords: ["board"] },
+      ]);
+      // Models carry no tuning; shapes the console doesn't know read as none.
+      expect(toModelViews([dep("m", "m1", true)])[0]!.keywordRules).toBeNull();
+      const odd = dep("odd", "db-o", true, {
+        model: "auto_router/complexity_router",
+        complexity_router_config: {
+          tiers,
+          tier_boundaries: { simple_medium: 0.5, medium_complex: 0.2 },
+          keyword_tier_rules: [{ keywords: "board", tier: "COMPLEX" }],
+        },
+      });
+      expect(toModelViews([odd])[0]).toMatchObject({
+        tierBoundaries: null,
+        keywordRules: [],
+      });
+    });
+
+    it("keeps its tuning on an edit that leaves it out", async () => {
+      const { deps, client } = harness([stored]);
+      await updateRouter(deps, SCOPE, ACTOR, "db-r", base);
+      expect(sentConfig(client)).toEqual(
+        stored.litellm_params!.complexity_router_config,
+      );
+    });
+
+    it("replaces its tuning on an edit that sends it", async () => {
+      const { deps, client, events } = harness([stored]);
+      await updateRouter(deps, SCOPE, ACTOR, "db-r", {
+        ...base,
+        tierBoundaries: null,
+        keywordRules: [],
+      });
+      expect(sentConfig(client)).toEqual({
+        classifier_type: "heuristic",
+        tiers,
+      });
+      expect(events.at(-1)!.before).toMatchObject({
+        keywordRules: [{ tier: "COMPLEX", keywords: ["board"] }],
+      });
+    });
+
+    it("can't be pointed at a guardrails model on an edit", async () => {
+      const { deps, client } = harness([stored]);
+      await expect(
+        updateRouter(deps, SCOPE, ACTOR, "db-r", {
+          ...base,
+          tiers: { ...tiers, REASONING: "groq-judge" },
+        }),
+      ).rejects.toThrow(/used by the guardrails service/);
+      expect(client.updateModel).not.toHaveBeenCalled();
+    });
+  });
+
+  it("tests routing with the tuning being edited", async () => {
+    const { deps, client } = harness();
+    await testRouting(deps, {
+      ...base,
+      tierBoundaries: null,
+      keywordRules: [{ tier: "REASONING", keywords: ["أثبت"] }],
+      prompt: "أثبت أن",
+    });
+    expect(vi.mocked(client.testRouting).mock.calls[0]).toEqual([
+      {
+        classifier_type: "heuristic",
+        tiers,
+        keyword_tier_rules: [{ keywords: ["أثبت"], tier: "REASONING" }],
+      },
+      "groq-fast",
+      "أثبت أن",
+    ]);
   });
 });
 

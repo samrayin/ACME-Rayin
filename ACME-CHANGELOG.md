@@ -7591,7 +7591,7 @@ Updated: the Enforcement page's figures and router tests (the packs in force), i
 | **Change ID** | CHG-2026-156 · owner: Anees Ur Rahman · Tier 1 (reclassified by the owner on 2026-10-15, Reviewer-2 finding B3; first registered as Tier 2) |
 | **ADR** | None new. It answers the independent review of CHG-2026-155, conditions C1 and C3, and the Semgrep finding under C4. The ADR-0006 addendum draft is amended separately, outside this PR, for the review's C2. |
 | **Approval** | Pending. The owner reviews and merges, with no self-approval, and every gate green first. A fresh reviewer who did not build this change reads it before the merge. |
-| **Dates** | Dev: not yet released · Staging: not available · Prod: not yet |
+| **Dates** | Dev: released 2026-10-16 as console `acme-v4.38.0.56` (merge commit `ae4eb1d95`, digest `sha256:85c993fb…`), flag off; the switch-on is a separate, owner-gated run · Staging: not available · Prod: not yet |
 | **Impact** | None while `EYEON_TELEMETRY_INGEST_ENABLED` is off, which is the default and stays so until the owner's go. With the flag on, an app can no longer choose the instrumentation scope or assert GUARDRAIL or EVALUATOR, and a body over 5 MiB gets 413 whatever the engine's own limit is. |
 | **Schema change** | None |
 | **Rollback** | Revert this PR. Code and tests only, no data or schema. With the flag off nothing runs. |
@@ -7623,7 +7623,7 @@ Updated: the Enforcement page's figures and router tests (the packs in force), i
 | **Change ID** | CHG-2026-157 · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | None new. It answers Reviewer-2's review of CHG-2026-156: B1, N-A, N-C, N-D, and the comment part of N-B. The ADR-0006 addendum is still a draft outside the repository (the gap C4 and B3 recorded). Landing it is the owner's decision. |
 | **Approval** | Pending. The owner reviews and merges, with no self-approval. It is stacked on #425 (CHG-2026-156), which merges first. |
-| **Dates** | Dev: not yet released · Staging: not available · Prod: not yet |
+| **Dates** | Dev: released 2026-10-16 as console `acme-v4.38.0.56` (merge commit `ae4eb1d95`, digest `sha256:85c993fb…`), flag off; the switch-on is a separate, owner-gated run · Staging: not available · Prod: not yet |
 | **Impact** | None while `EYEON_TELEMETRY_INGEST_ENABLED` is off, which is the default; the switch stays off until #425 and this change are both merged and released. With the flag on: a plain body over 1 MiB gets 413 while it is read. A gzip body is decompressed only up to the lower of 1 MiB and 200 times its compressed size, and gets 413 when it passes that. A protobuf export with more than 5,000 spans gets 413: the decoder itself stops at the 5,001st span it decodes (v8 review B1), and the wire count refuses an honest flood earlier, before the decoder runs. One whose tags, lengths or wire types the wire count cannot read exactly as the decoder does gets 400 before the decoder runs. A JSON body up to 1 MiB is still parsed before its spans are counted (accepted by the owner for the pilot). A per-project extra under a prefix the engine interprets is ignored. |
 | **Schema change** | None |
 | **Rollback** | Revert this PR. Code and tests only, no data or schema. |
@@ -7694,3 +7694,82 @@ v8 review B1, measured the same way. Before is this PR's second commit; after is
 - **A gzip body is still decompressed** up to its limit before it is refused. Only the protobuf span count runs on the wire bytes before the decoder.
 - **Reviewer-3's non-blocking findings:** R3-F3 (some exact extra keys the engine reads, such as `model` and `events`, are not refused because only prefixes are) and R3-F4 (the residual test probes the rule maps, not kept extras or hard-coded fields) are due before real data. R3-F2 (a `Content-Encoding` of `x-gzip`, or a list such as `gzip, identity`, gets 415) is accepted by the owner as it is.
 - **Landing the ADR-0006 addendum in the repository**, which Tier 1 expects: the owner's decision.
+
+## 2026-10-16 — Smart Router: tuning that routes by complexity, guardrail models refused as targets, switches declared (CHG-2026-164)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-164 · owner: Anees Ur Rahman · Tier 1 |
+| **ADR** | [ADR-0010](acme-governance/adr/ADR-0010-gateway-model-management.md), addendum §13 (in this change). §5 stays as it is: heuristic only |
+| **Approval** | Pending. The owner reviews and merges; nobody approves their own change. The claim (#430) merges first |
+| **Dates** | Dev: not yet released · Staging: not available · Prod: not yet |
+| **Impact** | Client-visible to admins with `llmGatewayModels:CUD`, and only while `CAIRO_LITELLM_MODEL_MANAGEMENT_ENABLED` is on:<br>• the smart router form has a Tuning section;<br>• new routers start from the recommended tuning;<br>• guardrail models are no longer offered as targets, and the server refuses them.<br>Existing routers keep their config until someone edits them.<br>deploy/azure: no effect until someone runs `terraform apply`, which is not part of this change. After an apply, the two switches follow the private variables file instead of being dropped |
+| **Schema change** | None |
+| **Rollback** | Revert the commit and redeploy the previous console image. A router saved with tuning keeps that tuning in the gateway and still routes with it. The old image doesn't show the tuning, and editing the router there resets it to the gateway's defaults |
+| **Feature flag** | `CAIRO_LITELLM_MODEL_MANAGEMENT_ENABLED` (server-only; needs `CAIRO_LITELLM_MANAGEMENT_ENABLED`). Unchanged |
+
+**What:** the Smart Router check of 2026-10-16 found the feature deployed and its parts working. With the config the console sends, though, routing by complexity mostly did not happen. On the gateway's test routing:
+- 4 of 10 sample prompts landed on the expected tier;
+- none reached COMPLEX or REASONING;
+- every Arabic prompt and every business prompt went to SIMPLE.
+
+A tuned heuristic config (config B) scored 9 of 10. Its one miss sends a coding task one tier too high.
+
+- **Router tuning** (ADR-0010 §5, still heuristic only):
+  - **Inputs:** the router input, the tRPC schema and the form accept two optional settings:
+    - tier boundaries: simple/medium < medium/complex < complex/reasoning, each from 0 to 1;
+    - literal keyword rules: keywords plus one of the four tiers, with at most one rule per tier.
+  - **Allow-list:** the server builds the config field by field and passes it through an explicit allow-list before it is validated, saved or used in a routing test. `ROUTER_CONFIG_KEYS` holds `classifier_type`, `tiers`, `tier_boundaries` and `keyword_tier_rules`.
+    - `semantic_keyword_matching`, `embedding_model`, `classifier_llm_config` and `plugins` are never sent, whatever the request carries.
+    - An unknown tier key is dropped too, because the gateway would accept one.
+  - **Keyword checks:**
+    - keywords are trimmed;
+    - blanks are dropped, because a blank would match every prompt;
+    - repeats are dropped, ignoring case;
+    - each keyword must be 2 to 80 characters with no line breaks;
+    - a tier can have at most 50 keywords.
+  - **Recommended tuning (config B):** new routers start from these settings.
+    - Boundaries: 0.05, 0.15 and 0.30.
+    - REASONING keywords: six Arabic terms, plus "step by step" and "prove".
+    - COMPLEX keywords: eight Arabic terms and twelve English business and policy terms.
+  - **Defaults and edits:**
+    - The form pre-fills config B, and the server applies it when a create request leaves the tuning out.
+    - An edit that leaves the tuning out keeps the router's own.
+    - "Use gateway defaults" sends no tuning.
+  - **The list** shows each router's tuning, so the edit form opens with what is stored. A shape the console doesn't recognise reads as no tuning.
+  - **Shared code:** `utils/acmeRouterTuning.ts` holds the rules and defaults. The form and the server both use it, and it imports nothing.
+- **Guardrail models refused as router targets** (Gate C finding 4 of CHG-2026-056):
+  - `assertRouterTargets` refuses the protected names as a tier or as the default, on create, edit and test routing. The names are `groq-judge`, `groq-safeguard`, and the reserved `nvidia-nemotron` and `gemini-judge`.
+  - The form no longer offers them.
+- **Switches declared in deploy/azure** (Gate C finding 5), following the CHG-2026-145 pattern:
+  - `litellm_management_enabled` and `litellm_model_management_enabled` are booleans, false by default.
+  - They render `CAIRO_LITELLM_MANAGEMENT_ENABLED` and `CAIRO_LITELLM_MODEL_MANAGEMENT_ENABLED` into the console's environment, always as `"true"` or `"false"`.
+  - The README table lists them.
+  - `scripts/release/check-declared-settings.sh` compares both with the live Deployment.
+
+**Checks:**
+- **Unit tests:** `acmeLitellmModels.servertest.ts`, 75 of 75 pass: the 52 that existed before, plus 23 new. The run used dummy environment values.
+- **Mutation check:** undoing each fix makes tests fail:
+  - without the protected-target check, 5 fail;
+  - without the allow-list filter, 1 fails;
+  - with no recommended tuning on create, 1 fails;
+  - with an edit that ignores the stored tuning, 1 fails.
+- **Typecheck:** the web typecheck passes. Its only errors are the two tolerated ones in unmodified Enterprise files (CHG-2026-058).
+- **Lint and format:** ESLint (`--max-warnings 0`) and Prettier are clean on the changed TypeScript files.
+- **Recommended tuning:** the keyword lists are compared by script with config B as tested on 2026-10-16, and match byte for byte.
+- **Terraform and shell:** `terraform fmt -check` passes on the new blocks. The two older alignment lines in `main.tf`, recorded under CHG-2026-145, are unchanged. `bash -n` passes on the script.
+- **Not run:**
+  - `terraform validate` and `plan`, because the configuration still awaits its state reconciliation;
+  - the form in a browser, which needs the full console stack and the gateway;
+  - the gateway's test routing with the console's new request body, which comes after the release.
+
+**Not included:**
+- **Dev values for the two switches:** both must be true, as the console runs now. They go in the private variables file in the operations repository (`envs/dev/deploy-azure.tfvars`) before any plan; without them, a plan would switch both off.
+- **The release:** the console release waits until the #428 telemetry hotfix work is finished (one-actor rule) and the owner approves. It goes through `scripts/release/release.sh`.
+- **Live checks after the release:**
+  - the gateway's test routing with the console's own request body (expected: 9 of 10 on the 2026-10-16 prompts);
+  - the owner's 5-minute console check;
+  - the live router create, call and delete that the 2026-10-16 check could not run.
+- **Known limits of the heuristic:**
+  - With config B, a coding task still goes to REASONING (one tier too high: costlier, not weaker).
+  - A single-word Arabic keyword matches only as a whole word, so a form with a prefix (for example the conjunction و) does not match it. Phrases match anywhere.

@@ -55,13 +55,24 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/src/components/ui/dialog";
+import { Textarea } from "@/src/components/ui/textarea";
 import { api, type RouterOutputs } from "@/src/utils/api";
 import { showErrorToast, showSuccessToast } from "@/src/features/notifications";
+import {
+  checkKeywordRules,
+  checkTierBoundaries,
+  RECOMMENDED_KEYWORD_RULES,
+  RECOMMENDED_TIER_BOUNDARIES,
+  ROUTER_TIERS,
+  type KeywordTierRule,
+  type RouterTier,
+  type TierBoundaries,
+} from "@/src/features/acme-enhancements/utils/acmeRouterTuning";
 
 export type ModelRow = RouterOutputs["acmeLitellm"]["models"][number];
 
-const TIERS = ["SIMPLE", "MEDIUM", "COMPLEX", "REASONING"] as const;
-type Tier = (typeof TIERS)[number];
+const TIERS = ROUTER_TIERS;
+type Tier = RouterTier;
 
 const TIER_HELP: Record<Tier, string> = {
   SIMPLE: "Greetings and short factual questions",
@@ -332,6 +343,84 @@ function ModelDialog({
 // Smart router dialog (add, edit, test)
 // ---------------------------------------------------------------------------
 
+type BoundaryText = Record<keyof TierBoundaries, string>;
+
+const BOUNDARY_FIELDS: { key: keyof TierBoundaries; label: string }[] = [
+  { key: "simpleMedium", label: "Simple / medium" },
+  { key: "mediumComplex", label: "Medium / complex" },
+  { key: "complexReasoning", label: "Complex / reasoning" },
+];
+
+function boundaryText(b: TierBoundaries | null): BoundaryText {
+  return {
+    simpleMedium: b ? String(b.simpleMedium) : "",
+    mediumComplex: b ? String(b.mediumComplex) : "",
+    complexReasoning: b ? String(b.complexReasoning) : "",
+  };
+}
+
+function keywordText(rules: KeywordTierRule[]): Record<Tier, string> {
+  const out: Record<Tier, string> = {
+    SIMPLE: "",
+    MEDIUM: "",
+    COMPLEX: "",
+    REASONING: "",
+  };
+  for (const r of rules) out[r.tier] = r.keywords.join(", ");
+  return out;
+}
+
+/** The tuning to send, or what is wrong with it (CHG-2026-164). */
+function readTuning(
+  b: BoundaryText,
+  k: Record<Tier, string>,
+):
+  | {
+      ok: true;
+      tierBoundaries: TierBoundaries | null;
+      keywordRules: KeywordTierRule[];
+    }
+  | { ok: false; error: string } {
+  const filled = Object.values(b).filter((v) => v.trim() !== "").length;
+  let tierBoundaries: TierBoundaries | null = null;
+  if (filled === BOUNDARY_FIELDS.length) {
+    const checked = checkTierBoundaries({
+      simpleMedium: Number(b.simpleMedium),
+      mediumComplex: Number(b.mediumComplex),
+      complexReasoning: Number(b.complexReasoning),
+    });
+    if (!checked.ok) return checked;
+    tierBoundaries = checked.value;
+  } else if (filled > 0) {
+    return {
+      ok: false,
+      error:
+        "Fill in all three tier boundaries, or none for the gateway's defaults.",
+    };
+  }
+  // Commas (Latin or Arabic) or new lines separate keywords.
+  const rules = checkKeywordRules(
+    TIERS.map((tier) => ({ tier, keywords: k[tier].split(/[,،\n]/) })),
+  );
+  if (!rules.ok) return rules;
+  return { ok: true, tierBoundaries, keywordRules: rules.value };
+}
+
+// Read back through the form's own path, so the comparison sees the same
+// rule order and spelling as what the form would send.
+const RECOMMENDED_TUNING_JSON = (() => {
+  const t = readTuning(
+    boundaryText(RECOMMENDED_TIER_BOUNDARIES),
+    keywordText(RECOMMENDED_KEYWORD_RULES),
+  );
+  return t.ok
+    ? JSON.stringify({
+        tierBoundaries: t.tierBoundaries,
+        keywordRules: t.keywordRules,
+      })
+    : "";
+})();
+
 function RouterDialog({
   projectId,
   editing,
@@ -358,8 +447,34 @@ function RouterDialog({
   const [defaultModel, setDefaultModel] = useState(
     editing?.defaultModel ?? first,
   );
+  // A new router starts from the recommended tuning; an edit shows its own.
+  const [boundaries, setBoundaries] = useState<BoundaryText>(
+    boundaryText(
+      editing ? editing.tierBoundaries : RECOMMENDED_TIER_BOUNDARIES,
+    ),
+  );
+  const [keywords, setKeywords] = useState<Record<Tier, string>>(
+    keywordText(
+      editing ? (editing.keywordRules ?? []) : RECOMMENDED_KEYWORD_RULES,
+    ),
+  );
   const [prompt, setPrompt] = useState("");
   const [result, setResult] = useState<string | null>(null);
+
+  const tuning = readTuning(boundaries, keywords);
+  const tuningBody = tuning.ok
+    ? {
+        tierBoundaries: tuning.tierBoundaries,
+        keywordRules: tuning.keywordRules,
+      }
+    : null;
+  const tuningLabel = !tuningBody
+    ? "needs a fix"
+    : JSON.stringify(tuningBody) === RECOMMENDED_TUNING_JSON
+      ? "recommended"
+      : !tuningBody.tierBoundaries && tuningBody.keywordRules.length === 0
+        ? "gateway defaults"
+        : "custom";
 
   const onDone = {
     onSuccess: () => {
@@ -390,7 +505,9 @@ function RouterDialog({
       ? "Give the router a name."
       : [...Object.values(tiers), defaultModel].some((m) => m === "")
         ? "Choose a model for every tier and a default."
-        : null;
+        : !tuning.ok
+          ? tuning.error
+          : null;
 
   const modelSelect = (id: string, value: string, set: (v: string) => void) => (
     <Select value={value} onValueChange={set}>
@@ -452,6 +569,87 @@ function RouterDialog({
               Used when a request can&apos;t be scored.
             </p>
           </div>
+          <details className="border-border rounded-md border p-3">
+            <summary className="cursor-pointer text-sm">
+              Tuning
+              <span className="text-muted-foreground ml-2 text-xs font-normal">
+                {tuningLabel}
+              </span>
+            </summary>
+            <p className="text-muted-foreground mt-2 text-xs">
+              The gateway scores each request from about 0 to 1, still on the
+              spot. Lower boundaries send more requests to stronger tiers.
+              Keywords send a request straight to a tier when they appear in it,
+              matched as written (a single word only as a whole word); if
+              keywords for several tiers match, the highest tier wins. The
+              recommended settings were tested with English and Arabic prompts.
+            </p>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              {BOUNDARY_FIELDS.map(({ key, label }) => (
+                <div key={key}>
+                  <Label htmlFor={`router-boundary-${key}`} className="text-xs">
+                    {label}
+                  </Label>
+                  <Input
+                    id={`router-boundary-${key}`}
+                    className="mt-1"
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={boundaries[key]}
+                    onChange={(e) =>
+                      setBoundaries({ ...boundaries, [key]: e.target.value })
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+            <p className="text-muted-foreground mt-1 text-xs">
+              Leave all three empty for the gateway&apos;s defaults.
+            </p>
+            {TIERS.map((t) => (
+              <div key={t} className="mt-2">
+                <Label htmlFor={`router-keywords-${t}`} className="text-xs">
+                  Keywords for {t.charAt(0) + t.slice(1).toLowerCase()}
+                </Label>
+                <Textarea
+                  id={`router-keywords-${t}`}
+                  className="mt-1"
+                  dir="auto"
+                  rows={2}
+                  placeholder="Separate keywords with commas or new lines"
+                  value={keywords[t]}
+                  onChange={(e) =>
+                    setKeywords({ ...keywords, [t]: e.target.value })
+                  }
+                />
+              </div>
+            ))}
+            <div className="mt-2 flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setBoundaries(boundaryText(RECOMMENDED_TIER_BOUNDARIES));
+                  setKeywords(keywordText(RECOMMENDED_KEYWORD_RULES));
+                }}
+              >
+                Use recommended
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setBoundaries(boundaryText(null));
+                  setKeywords(keywordText([]));
+                }}
+              >
+                Use gateway defaults
+              </Button>
+            </div>
+          </details>
           <div className="border-border rounded-md border p-3">
             <Label htmlFor="router-test">Test routing</Label>
             <Input
@@ -467,11 +665,21 @@ function RouterDialog({
                 size="sm"
                 variant="outline"
                 disabled={
-                  test.isPending || prompt.trim() === "" || error !== null
+                  test.isPending ||
+                  prompt.trim() === "" ||
+                  error !== null ||
+                  !tuningBody
                 }
-                onClick={() =>
-                  test.mutate({ projectId, tiers, defaultModel, prompt })
-                }
+                onClick={() => {
+                  if (!tuningBody) return;
+                  test.mutate({
+                    projectId,
+                    tiers,
+                    defaultModel,
+                    ...tuningBody,
+                    prompt,
+                  });
+                }}
               >
                 {test.isPending ? "Testing…" : "Test"}
               </Button>
@@ -489,13 +697,15 @@ function RouterDialog({
             Cancel
           </Button>
           <Button
-            disabled={pending || error !== null}
+            disabled={pending || error !== null || !tuningBody}
             onClick={() => {
+              if (!tuningBody) return;
               const body = {
                 projectId,
                 modelName: name.trim(),
                 tiers,
                 defaultModel,
+                ...tuningBody,
               };
               if (editing) update.mutate({ ...body, modelId: editing.id });
               else create.mutate(body);
@@ -552,8 +762,9 @@ export function GatewayModelsCard({
 
   const manage = managementEnabled && canManageModels;
   const rows = models.data ?? [];
+  // Guardrail models can't be router targets (CHG-2026-164).
   const routable = rows
-    .filter((m) => m.kind === "model")
+    .filter((m) => m.kind === "model" && !m.protected)
     .map((m) => m.modelName)
     .sort();
 
