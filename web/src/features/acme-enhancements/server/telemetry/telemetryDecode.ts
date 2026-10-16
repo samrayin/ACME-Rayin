@@ -10,9 +10,13 @@ import { $root } from "@/src/pages/api/public/otel/otlp-proto/generated/root";
 import { MAX_SPANS_PER_BATCH } from "./telemetryAllowlist";
 import { MalformedTelemetryError } from "./telemetryFilter";
 
-const OTLP_REQUEST =
+// The generated types are looked up at CALL time, never captured at load (v9.1
+// re-check V2). They live on protobufjs's shared default root, and a second
+// evaluation of the generated code replaces `$root.opentelemetry`; the decoder
+// then calls the new types, so the cap must wrap the Span type current now.
+const otlpRequest = () =>
   $root.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
-const OTLP_SPAN = $root.opentelemetry.proto.trace.v1.Span;
+const otlpSpan = () => $root.opentelemetry.proto.trace.v1.Span;
 
 /** The decoder reached the span cap: the export is refused with 413. */
 export class TelemetryTooManySpansError extends Error {
@@ -128,17 +132,22 @@ export function countProtobufSpans(buf: Uint8Array, stopAt: number): number {
  * counting wrapper is installed for this one call and removed in `finally`.
  * The decode is synchronous: no other code runs while the wrapper is in place.
  */
-function decodeWithSpanCap(body: Buffer, maxSpans: number) {
-  const decodeSpan = OTLP_SPAN.decode;
+function decodeWithSpanCap(
+  request: ReturnType<typeof otlpRequest>,
+  body: Buffer,
+  maxSpans: number,
+) {
+  const span = otlpSpan();
+  const decodeSpan = span.decode;
   let spans = 0;
-  OTLP_SPAN.decode = function (this: unknown, ...args: unknown[]) {
+  span.decode = function (this: unknown, ...args: unknown[]) {
     if (++spans > maxSpans) throw new TelemetryTooManySpansError();
     return decodeSpan.apply(this, args);
   };
   try {
-    return OTLP_REQUEST.decode(body);
+    return request.decode(body);
   } finally {
-    OTLP_SPAN.decode = decodeSpan;
+    span.decode = decodeSpan;
   }
 }
 
@@ -155,11 +164,10 @@ export function decodeOtlpTraces(
 ): unknown {
   if (contentType.includes("application/x-protobuf")) {
     try {
-      const parsed = decodeWithSpanCap(body, maxSpans);
+      const request = otlpRequest();
+      const parsed = decodeWithSpanCap(request, body, maxSpans);
       // int64 as decimal strings, as the OTLP JSON encoding does.
-      return (
-        OTLP_REQUEST.toObject(parsed, { longs: String }).resourceSpans ?? []
-      );
+      return request.toObject(parsed, { longs: String }).resourceSpans ?? [];
     } catch (error) {
       if (error instanceof TelemetryTooManySpansError) throw error;
       throw new MalformedTelemetryError();
