@@ -161,8 +161,12 @@ if ((DRY_RUN)); then
   RUN_ID="(dry-run)"
   DIGEST="sha256:(dry-run)"
 else
-  RUN_ID=$(cd "$BUILD_DIR" && az "${build[@]}" . 2>&1 | sed -n 's/.*Queued a build with ID: \([A-Za-z0-9]*\).*/\1/p' | head -1)
-  [[ -n $RUN_ID ]] || { echo "Could not queue the ACR build." >&2; exit 1; }
+  # az's full output is kept and shown on failure: a pipe into sed swallowed it (2026-10-16: 45 min, then
+  # "Could not queue" with no reason).
+  AZ_OUT=$(mktemp "${TMPDIR:-/tmp}/acr-build-XXXXXX.log")
+  (cd "$BUILD_DIR" && az "${build[@]}" . > "$AZ_OUT" 2>&1); az_rc=$?
+  RUN_ID=$(sed -n 's/.*Queued a build with ID: \([A-Za-z0-9]*\).*/\1/p' "$AZ_OUT" | head -1)
+  [[ -n $RUN_ID ]] || { echo "Could not queue the ACR build (az exit $az_rc). az output follows ($AZ_OUT):" >&2; cat "$AZ_OUT" >&2; exit 1; }
   echo "ACR run $RUN_ID queued. Polling (az's own log streaming is unreliable on Windows)."
   while :; do
     status=$(az acr task show-run --registry "$REGISTRY" --run-id "$RUN_ID" --query status -o tsv)
