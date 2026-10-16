@@ -37,6 +37,15 @@ locals {
     CAIRO_ACME_AI_ENABLED                   = var.acme_ai_enabled
   }
 
+  # CHG-2026-164: the gateway management switches, rendered the same way.
+  # They were set only on the live web Deployment (Gate C finding 5 of
+  # CHG-2026-056), so an apply would have switched gateway management and the
+  # smart router off.
+  cairo_gateway_flags = {
+    CAIRO_LITELLM_MANAGEMENT_ENABLED       = var.litellm_management_enabled
+    CAIRO_LITELLM_MODEL_MANAGEMENT_ENABLED = var.litellm_model_management_enabled
+  }
+
   cairo_access_env = concat(
     [{ name = "CAIRO_GUARDRAIL_MODE_MAX", value = var.guardrail_mode_max }],
     length(var.sso_enforced_domains) > 0 ? [
@@ -51,6 +60,7 @@ locals {
       { name = "CAIRO_GATEWAY_TRACES_PROJECT_ID", value = var.gateway_traces_project_id },
     ] : [],
     [for name, on in local.cairo_eyeon_flags : { name = name, value = on ? "true" : "false" }],
+    [for name, on in local.cairo_gateway_flags : { name = name, value = on ? "true" : "false" }],
   )
 }
 
