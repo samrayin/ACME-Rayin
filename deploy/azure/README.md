@@ -65,13 +65,15 @@ terraform plan -var-file=<path to the operations repository>/envs/dev/deploy-azu
 | `eyeon_gateway_health_enabled` | `CAIRO_EYEON_GATEWAY_HEALTH_ENABLED` (CHG-2026-139) | `false` |
 | `eyeon_spend_enabled` | `CAIRO_EYEON_SPEND_ENABLED` (CHG-2026-143) | `false` |
 | `acme_ai_enabled` | `CAIRO_ACME_AI_ENABLED` (CHG-2026-141) | `false`: no ACME AI |
+| `litellm_management_enabled` | `CAIRO_LITELLM_MANAGEMENT_ENABLED`, console management of the gateway (CHG-2026-005) | `false`: the LLM Gateway pages are off |
+| `litellm_model_management_enabled` | `CAIRO_LITELLM_MODEL_MANAGEMENT_ENABLED`, gateway models and the smart router (CHG-2026-056) | `false`: the Models tab is read-only |
 
-The EYEON switches (CHG-2026-145) are always rendered, as `"true"` or
-`"false"`, so a plan shows each one.
+The EYEON switches (CHG-2026-145) and the gateway switches (CHG-2026-164) are
+always rendered, as `"true"` or `"false"`, so a plan shows each one.
 
 A plan without the file would therefore lower dev's ceiling to record, reopen
 password sign-in for users, leave no guardrail administrator, and switch every
-EYEON page off. Account linking (`AUTH_AZURE_AD_ALLOW_ACCOUNT_LINKING`) stays
+EYEON page, gateway management and the smart router off. Account linking (`AUTH_AZURE_AD_ALLOW_ACCOUNT_LINKING`) stays
 unset; there is no variable for it.
 
 To check that these values, and the gateway manifests, match the live

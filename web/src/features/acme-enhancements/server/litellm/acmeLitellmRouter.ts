@@ -79,6 +79,11 @@ import {
   updateRouter,
   type ModelsDeps,
 } from "./acmeLitellmModels";
+import {
+  MAX_KEYWORD_LENGTH,
+  MAX_KEYWORDS_PER_RULE,
+  ROUTER_TIERS,
+} from "../../utils/acmeRouterTuning";
 
 const limitsInput = {
   models: z.array(z.string().min(1).max(200)).max(100).default([]),
@@ -196,11 +201,39 @@ const tiersInput = z.object({
   REASONING: modelNameInput,
 });
 
+// CHG-2026-164: optional router tuning. Shape and bounds only here; the
+// ordering and the keyword rules are checked in acmeLitellmModels.ts. Left
+// out, a new router takes the recommended tuning and an edit keeps its own.
+const boundaryInput = z.number().min(0).max(1);
+const tuningInput = {
+  tierBoundaries: z
+    .object({
+      simpleMedium: boundaryInput,
+      mediumComplex: boundaryInput,
+      complexReasoning: boundaryInput,
+    })
+    .nullable()
+    .optional(),
+  keywordRules: z
+    .array(
+      z.object({
+        tier: z.enum(ROUTER_TIERS),
+        keywords: z
+          .array(z.string().max(MAX_KEYWORD_LENGTH))
+          .min(1)
+          .max(MAX_KEYWORDS_PER_RULE),
+      }),
+    )
+    .max(ROUTER_TIERS.length)
+    .optional(),
+};
+
 const routerInput = z.object({
   projectId: z.string(),
   modelName: modelNameInput,
   tiers: tiersInput,
   defaultModel: modelNameInput,
+  ...tuningInput,
 });
 
 function deps(): LitellmServiceDeps {
@@ -667,6 +700,7 @@ export const acmeLitellmRouter = createTRPCRouter({
         projectId: z.string(),
         tiers: tiersInput,
         defaultModel: modelNameInput,
+        ...tuningInput,
         prompt: z.string().min(1).max(4000),
       }),
     )
@@ -677,9 +711,16 @@ export const acmeLitellmRouter = createTRPCRouter({
         scope: "llmGatewayModels:CUD",
       });
       assertModelManagementEnabled();
-      const { tiers, defaultModel, prompt } = input;
+      const { tiers, defaultModel, tierBoundaries, keywordRules, prompt } =
+        input;
       return guarded("testRouting", () =>
-        testRouting(modelsDeps(), { tiers, defaultModel, prompt }),
+        testRouting(modelsDeps(), {
+          tiers,
+          defaultModel,
+          tierBoundaries,
+          keywordRules,
+          prompt,
+        }),
       );
     }),
 

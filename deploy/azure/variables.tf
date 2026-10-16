@@ -88,3 +88,21 @@ variable "acme_ai_enabled" {
   type        = bool
   default     = false
 }
+
+# The gateway management switches (CHG-2026-164), declared the way the EYEON
+# switches are. Each is a server-only console flag; false keeps the feature
+# off, which is also what a new deployment gets. Dev's values are in the
+# private variables file, so a plan without that file would switch dev's
+# gateway management and smart router off.
+
+variable "litellm_management_enabled" {
+  description = "Console management of the LiteLLM gateway: keys, teams, budgets and spend (CAIRO_LITELLM_MANAGEMENT_ENABLED, CHG-2026-005). It also needs the gateway's address and admin credential (LITELLM_BASE_URL, LITELLM_MASTER_KEY), which are not declared here."
+  type        = bool
+  default     = false
+}
+
+variable "litellm_model_management_enabled" {
+  description = "Adding, editing and removing gateway models, and the smart router, from the console (CAIRO_LITELLM_MODEL_MANAGEMENT_ENABLED, CHG-2026-056). Needs litellm_management_enabled."
+  type        = bool
+  default     = false
+}

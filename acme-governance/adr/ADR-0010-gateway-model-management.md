@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Change** | CHG-2026-056 · Tier 1 · owner: Anees Ur Rahman |
-| **Status** | **Accepted by the owner, 2026-09-23** (decisions in §12). The build is next (Gate B). No gateway configuration change or restart until Gate C, which is owner-gated |
+| **Status** | **Accepted by the owner, 2026-09-23** (decisions in §12). The build is next (Gate B). No gateway configuration change or restart until Gate C, which is owner-gated. Addendum §13 (CHG-2026-164, 2026-10-16, pending the owner's review): router tuning and targets |
 | **Related** | ADR-0003 (CAIRO as the LiteLLM control plane) · ADR-0005 / ADR-0005-A (guardrail hook and judge exclusion) · ADR-0007 (key limits edit UI) · Readiness Ledger P0-3 (no Key Vault integration), P0-4 (credential rotation) |
 
 ## 1. The problem
@@ -191,3 +191,12 @@ LiteLLM does not restrict `api_base`. An admin could point a "model" at an inter
 6. **Egress NetworkPolicy:** accept it as a follow-up change with its own ID?
 
 On acceptance, the build proceeds as CHG-2026-056 and goes through Gate B, then Gate C.
+
+## 13. Addendum, 2026-10-16: router tuning and targets (CHG-2026-164)
+
+The Smart Router check of 2026-10-16 found that the heuristic, as the console configured it, rarely left SIMPLE: 4 of 10 sample prompts landed on the expected tier, and no Arabic or business prompt went above SIMPLE. §5 stands: heuristic only, and nothing leaves the gateway to decide a route. This change adds the following.
+
+- **Allowed config keys.** The router config can carry only `classifier_type` (always `heuristic`), `tiers`, `tier_boundaries` and `keyword_tier_rules`. The console builds the config from checked fields, then drops every other key before it validates, saves or tests the config. In particular, `semantic_keyword_matching` and its `embedding_model` stay out: they would embed prompt text with another model, which is the reason §5 rejects the semantic router.
+- **Keyword rules are literal.** The gateway looks for each keyword in the prompt as written: a single word must match as a whole word, and a phrase can match anywhere. When rules for several tiers match, the highest tier wins. There is no outbound call, so the routing stays deterministic and can be explained to an auditor.
+- **Recommended tuning.** New routers start from the tuned config of the check, which scored 9 of 10 on the gateway's test routing: tier boundaries of 0.05, 0.15 and 0.30, plus Arabic and English reasoning and business keywords. Admins can change the tuning or go back to the gateway's defaults.
+- **Targets.** A guardrail model (the protected list, §7) cannot be a router tier or the router's default. Callers therefore cannot reach the judge through a router.

@@ -11,14 +11,26 @@
  *  - litellm_params are built here from validated fields only; nothing from
  *    the request is passed through.
  *  - Guardrail judge and safeguard models, and any model a router points at,
- *    can't be changed or removed from here.
+ *    can't be changed or removed from here. Guardrail models can't be router
+ *    targets either (CHG-2026-164).
  *  - A router is always heuristic: no prompt text leaves the gateway to
- *    decide a route (ADR-0010 §5).
+ *    decide a route (ADR-0010 §5). Its config carries only the keys in
+ *    ROUTER_CONFIG_KEYS (CHG-2026-164).
  */
 import {
   type LitellmDeployment,
   type LitellmDeploymentWrite,
 } from "./acmeLitellmClient";
+import {
+  checkKeywordRules,
+  checkTierBoundaries,
+  RECOMMENDED_KEYWORD_RULES,
+  RECOMMENDED_TIER_BOUNDARIES,
+  ROUTER_TIERS,
+  type KeywordTierRule,
+  type RouterTier,
+  type TierBoundaries,
+} from "../../utils/acmeRouterTuning";
 import {
   auditedMutation,
   type LitellmEventActor,
@@ -52,8 +64,20 @@ const PROTECTED_MODEL_NAMES = [
 ] as const;
 
 const ROUTER_MODEL = "auto_router/complexity_router";
-const ROUTER_TIERS = ["SIMPLE", "MEDIUM", "COMPLEX", "REASONING"] as const;
-export type RouterTier = (typeof ROUTER_TIERS)[number];
+export type { RouterTier };
+
+/**
+ * CHG-2026-164: the only keys a router config may carry. Everything else the
+ * gateway accepts stays out, in particular `classifier_llm_config`, `plugins`
+ * and `semantic_keyword_matching` with its `embedding_model`, each of which
+ * would send prompt text to another model (ADR-0010 §5).
+ */
+export const ROUTER_CONFIG_KEYS = [
+  "classifier_type",
+  "tiers",
+  "tier_boundaries",
+  "keyword_tier_rules",
+] as const;
 
 export type ModelsDeps = LitellmServiceDeps & {
   allowlist: readonly string[];
@@ -76,10 +100,17 @@ export type ModelInput = {
   credential: CredentialInput;
 };
 
+/**
+ * Tuning fields: left out on create (or in a routing test), they take the
+ * recommended tuning; left out on update, they keep the router's own. A null
+ * boundary set or an empty rule list means the gateway's defaults.
+ */
 export type RouterInput = {
   modelName: string;
   tiers: Record<RouterTier, string>;
   defaultModel: string;
+  tierBoundaries?: TierBoundaries | null;
+  keywordRules?: KeywordTierRule[];
 };
 
 export type ModelView = {
@@ -96,6 +127,10 @@ export type ModelView = {
   tpm: number | null;
   tiers: Partial<Record<RouterTier, string>> | null;
   defaultModel: string | null;
+  /** Routers only: null when the gateway's default boundaries apply. */
+  tierBoundaries: TierBoundaries | null;
+  /** Routers only (models: null). */
+  keywordRules: KeywordTierRule[] | null;
   protected: boolean;
   usedByRouters: string[];
 };
@@ -134,6 +169,41 @@ function tiersOf(d: LitellmDeployment): Partial<Record<RouterTier, string>> {
   return out;
 }
 
+/**
+ * The tuning a stored router carries, as the console understands it. Shapes
+ * it doesn't recognise read as "none" rather than failing the whole list.
+ */
+function tuningOf(d: LitellmDeployment): RouterTuning {
+  const cfg = d.litellm_params?.complexity_router_config;
+  const b = cfg?.tier_boundaries as Record<string, unknown> | null | undefined;
+  const num = (v: unknown) => (typeof v === "number" ? v : Number.NaN);
+  const boundaries =
+    b && typeof b === "object"
+      ? checkTierBoundaries({
+          simpleMedium: num(b.simple_medium),
+          mediumComplex: num(b.medium_complex),
+          complexReasoning: num(b.complex_reasoning),
+        })
+      : null;
+  const storedRules = cfg?.keyword_tier_rules;
+  const raw: unknown[] = Array.isArray(storedRules) ? storedRules : [];
+  const rules = raw.flatMap((r) => {
+    const rule = r as { keywords?: unknown; tier?: unknown } | null;
+    if (!rule || !Array.isArray(rule.keywords)) return [];
+    const keywords = rule.keywords.filter(
+      (k): k is string => typeof k === "string",
+    );
+    const checked = checkKeywordRules([
+      { tier: rule.tier as RouterTier, keywords },
+    ]);
+    return checked.ok ? checked.value : [];
+  });
+  return {
+    tierBoundaries: boundaries?.ok ? boundaries.value : null,
+    keywordRules: rules,
+  };
+}
+
 function isRouter(d: LitellmDeployment): boolean {
   return d.litellm_params?.model === ROUTER_MODEL;
 }
@@ -155,6 +225,7 @@ export function toModelViews(deployments: LitellmDeployment[]): ModelView[] {
   }
   return deployments.map((d) => {
     const router = isRouter(d);
+    const tuning = router ? tuningOf(d) : null;
     return {
       id: d.model_info?.id ?? "",
       modelName: d.model_name,
@@ -176,6 +247,8 @@ export function toModelViews(deployments: LitellmDeployment[]): ModelView[] {
       defaultModel: router
         ? (d.litellm_params?.complexity_router_default_model ?? null)
         : null,
+      tierBoundaries: tuning?.tierBoundaries ?? null,
+      keywordRules: tuning?.keywordRules ?? null,
       protected: (PROTECTED_MODEL_NAMES as readonly string[]).includes(
         d.model_name,
       ),
@@ -411,16 +484,100 @@ export async function deleteModel(
   );
 }
 
-/** ADR-0010 §5: always heuristic, never an LLM classifier or plugins. */
-export function buildRouterConfig(tiers: Record<RouterTier, string>) {
-  return { classifier_type: "heuristic", tiers: { ...tiers } };
+export type RouterTuning = {
+  tierBoundaries: TierBoundaries | null;
+  keywordRules: KeywordTierRule[];
+};
+
+const NO_TUNING: RouterTuning = { tierBoundaries: null, keywordRules: [] };
+const RECOMMENDED_TUNING: RouterTuning = {
+  tierBoundaries: RECOMMENDED_TIER_BOUNDARIES,
+  keywordRules: RECOMMENDED_KEYWORD_RULES,
+};
+
+/** Checks the tuning; fields the input leaves out come from `fallback`. */
+function resolveTuning(
+  input: Pick<RouterInput, "tierBoundaries" | "keywordRules">,
+  fallback: RouterTuning,
+): RouterTuning {
+  const boundaries =
+    input.tierBoundaries === undefined
+      ? fallback.tierBoundaries
+      : input.tierBoundaries;
+  let tierBoundaries: TierBoundaries | null = null;
+  if (boundaries) {
+    const checked = checkTierBoundaries(boundaries);
+    if (!checked.ok) throw new EndpointRejectedError(checked.error);
+    tierBoundaries = checked.value;
+  }
+  const rules = checkKeywordRules(input.keywordRules ?? fallback.keywordRules);
+  if (!rules.ok) throw new EndpointRejectedError(rules.error);
+  return { tierBoundaries, keywordRules: rules.value };
 }
 
-function assertRouterTargets(input: RouterInput, all: LitellmDeployment[]) {
+/** Keeps only ROUTER_CONFIG_KEYS and refuses any classifier but heuristic. */
+export function allowListedRouterConfig(
+  config: Record<string, unknown>,
+): Record<string, unknown> {
+  if (config.classifier_type !== "heuristic") {
+    throw new EndpointRejectedError(
+      "Routers use the heuristic classifier only.",
+    );
+  }
+  return Object.fromEntries(
+    Object.entries(config).filter(([key]) =>
+      (ROUTER_CONFIG_KEYS as readonly string[]).includes(key),
+    ),
+  );
+}
+
+/**
+ * ADR-0010 §5: always heuristic, never an LLM classifier, semantic keyword
+ * matching or plugins. Built field by field from checked values, so nothing
+ * from the request reaches the gateway as it came in.
+ */
+export function buildRouterConfig(
+  tiers: Record<RouterTier, string>,
+  tuning: RouterTuning = NO_TUNING,
+): Record<string, unknown> {
+  const config: Record<string, unknown> = {
+    classifier_type: "heuristic",
+    tiers: Object.fromEntries(ROUTER_TIERS.map((t) => [t, tiers[t]])),
+  };
+  if (tuning.tierBoundaries) {
+    config.tier_boundaries = {
+      simple_medium: tuning.tierBoundaries.simpleMedium,
+      medium_complex: tuning.tierBoundaries.mediumComplex,
+      complex_reasoning: tuning.tierBoundaries.complexReasoning,
+    };
+  }
+  if (tuning.keywordRules.length > 0) {
+    config.keyword_tier_rules = tuning.keywordRules.map((r) => ({
+      keywords: [...r.keywords],
+      tier: r.tier,
+    }));
+  }
+  return allowListedRouterConfig(config);
+}
+
+function assertRouterTargets(
+  input: Pick<RouterInput, "tiers" | "defaultModel">,
+  all: LitellmDeployment[],
+) {
   const models = new Set(
     all.filter((d) => !isRouter(d)).map((d) => d.model_name),
   );
-  for (const target of [...Object.values(input.tiers), input.defaultModel]) {
+  const targets = [
+    ...ROUTER_TIERS.map((t) => input.tiers[t]),
+    input.defaultModel,
+  ];
+  for (const target of targets) {
+    // Gate C finding 4: callers could reach a guardrail model through a router.
+    if ((PROTECTED_MODEL_NAMES as readonly string[]).includes(target)) {
+      throw new EndpointRejectedError(
+        `"${target}" is used by the guardrails service and can't be a router target.`,
+      );
+    }
     if (!models.has(target)) {
       throw new EndpointRejectedError(
         `"${target}" is not a model on the gateway (routers can only point at models, not other routers).`,
@@ -429,8 +586,12 @@ function assertRouterTargets(input: RouterInput, all: LitellmDeployment[]) {
   }
 }
 
-async function validatedRouterConfig(deps: ModelsDeps, input: RouterInput) {
-  const config = buildRouterConfig(input.tiers);
+async function validatedRouterConfig(
+  deps: ModelsDeps,
+  input: RouterInput,
+  tuning: RouterTuning,
+) {
+  const config = buildRouterConfig(input.tiers, tuning);
   const verdict = await deps.client.validateComplexityRouterConfig(config);
   if (!verdict.valid) {
     throw new EndpointRejectedError(
@@ -438,6 +599,16 @@ async function validatedRouterConfig(deps: ModelsDeps, input: RouterInput) {
     );
   }
   return config;
+}
+
+function routerRecord(input: RouterInput, tuning: RouterTuning) {
+  return {
+    tiers: input.tiers,
+    defaultModel: input.defaultModel,
+    classifier: "heuristic",
+    tierBoundaries: tuning.tierBoundaries,
+    keywordRules: tuning.keywordRules,
+  };
 }
 
 export async function createRouter(
@@ -449,12 +620,9 @@ export async function createRouter(
   const all = await deps.client.deployments();
   assertNewName(input.modelName, all);
   assertRouterTargets(input, all);
-  const config = await validatedRouterConfig(deps, input);
-  const record = {
-    tiers: input.tiers,
-    defaultModel: input.defaultModel,
-    classifier: "heuristic",
-  };
+  const tuning = resolveTuning(input, RECOMMENDED_TUNING);
+  const config = await validatedRouterConfig(deps, input, tuning);
+  const record = routerRecord(input, tuning);
   return auditedMutation(
     {
       action: "router.create",
@@ -501,12 +669,9 @@ export async function updateRouter(
     assertNewName(input.modelName, all, modelId);
   }
   assertRouterTargets(input, all);
-  const config = await validatedRouterConfig(deps, input);
-  const record = {
-    tiers: input.tiers,
-    defaultModel: input.defaultModel,
-    classifier: "heuristic",
-  };
+  const tuning = resolveTuning(input, tuningOf(target));
+  const config = await validatedRouterConfig(deps, input, tuning);
+  const record = routerRecord(input, tuning);
   return auditedMutation(
     {
       action: "router.update",
@@ -542,9 +707,10 @@ export async function testRouting(
   input: Omit<RouterInput, "modelName"> & { prompt: string },
 ) {
   const all = await deps.client.deployments();
-  assertRouterTargets({ ...input, modelName: "_" }, all);
+  assertRouterTargets(input, all);
+  const tuning = resolveTuning(input, RECOMMENDED_TUNING);
   const res = await deps.client.testRouting(
-    buildRouterConfig(input.tiers),
+    buildRouterConfig(input.tiers, tuning),
     input.defaultModel,
     input.prompt,
   );
