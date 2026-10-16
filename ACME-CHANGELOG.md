@@ -7591,7 +7591,7 @@ Updated: the Enforcement page's figures and router tests (the packs in force), i
 | **Change ID** | CHG-2026-156 · owner: Anees Ur Rahman · Tier 1 (reclassified by the owner on 2026-10-15, Reviewer-2 finding B3; first registered as Tier 2) |
 | **ADR** | None new. It answers the independent review of CHG-2026-155, conditions C1 and C3, and the Semgrep finding under C4. The ADR-0006 addendum draft is amended separately, outside this PR, for the review's C2. |
 | **Approval** | Pending. The owner reviews and merges, with no self-approval, and every gate green first. A fresh reviewer who did not build this change reads it before the merge. |
-| **Dates** | Dev: not yet released · Staging: not available · Prod: not yet |
+| **Dates** | Dev: released 2026-10-16 as console `acme-v4.38.0.56` (merge commit `ae4eb1d95`, digest `sha256:85c993fb…`), flag off; the switch-on is a separate, owner-gated run · Staging: not available · Prod: not yet |
 | **Impact** | None while `EYEON_TELEMETRY_INGEST_ENABLED` is off, which is the default and stays so until the owner's go. With the flag on, an app can no longer choose the instrumentation scope or assert GUARDRAIL or EVALUATOR, and a body over 5 MiB gets 413 whatever the engine's own limit is. |
 | **Schema change** | None |
 | **Rollback** | Revert this PR. Code and tests only, no data or schema. With the flag off nothing runs. |
@@ -7623,7 +7623,7 @@ Updated: the Enforcement page's figures and router tests (the packs in force), i
 | **Change ID** | CHG-2026-157 · owner: Anees Ur Rahman · Tier 1 |
 | **ADR** | None new. It answers Reviewer-2's review of CHG-2026-156: B1, N-A, N-C, N-D, and the comment part of N-B. The ADR-0006 addendum is still a draft outside the repository (the gap C4 and B3 recorded). Landing it is the owner's decision. |
 | **Approval** | Pending. The owner reviews and merges, with no self-approval. It is stacked on #425 (CHG-2026-156), which merges first. |
-| **Dates** | Dev: not yet released · Staging: not available · Prod: not yet |
+| **Dates** | Dev: released 2026-10-16 as console `acme-v4.38.0.56` (merge commit `ae4eb1d95`, digest `sha256:85c993fb…`), flag off; the switch-on is a separate, owner-gated run · Staging: not available · Prod: not yet |
 | **Impact** | None while `EYEON_TELEMETRY_INGEST_ENABLED` is off, which is the default; the switch stays off until #425 and this change are both merged and released. With the flag on: a plain body over 1 MiB gets 413 while it is read. A gzip body is decompressed only up to the lower of 1 MiB and 200 times its compressed size, and gets 413 when it passes that. A protobuf export with more than 5,000 spans gets 413: the decoder itself stops at the 5,001st span it decodes (v8 review B1), and the wire count refuses an honest flood earlier, before the decoder runs. One whose tags, lengths or wire types the wire count cannot read exactly as the decoder does gets 400 before the decoder runs. A JSON body up to 1 MiB is still parsed before its spans are counted (accepted by the owner for the pilot). A per-project extra under a prefix the engine interprets is ignored. |
 | **Schema change** | None |
 | **Rollback** | Revert this PR. Code and tests only, no data or schema. |
