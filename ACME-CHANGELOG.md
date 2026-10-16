@@ -7588,7 +7588,7 @@ Updated: the Enforcement page's figures and router tests (the packs in force), i
 
 | | |
 |---|---|
-| **Change ID** | CHG-2026-156 · owner: Anees Ur Rahman · Tier 2 |
+| **Change ID** | CHG-2026-156 · owner: Anees Ur Rahman · Tier 1 (reclassified by the owner on 2026-10-15, Reviewer-2 finding B3; first registered as Tier 2) |
 | **ADR** | None new. It answers the independent review of CHG-2026-155, conditions C1 and C3, and the Semgrep finding under C4. The ADR-0006 addendum draft is amended separately, outside this PR, for the review's C2. |
 | **Approval** | Pending. The owner reviews and merges, with no self-approval, and every gate green first. A fresh reviewer who did not build this change reads it before the merge. |
 | **Dates** | Dev: not yet released · Staging: not available · Prod: not yet |
@@ -7615,3 +7615,82 @@ Updated: the Enforcement page's figures and router tests (the packs in force), i
 **Second commit, CI only:** the upstream test `public-api-auth-parity > covers every public route` fails on `main` because it walks `pages/api/public/` and finds ACME's three routes (`guardrails-events`, `guardrails-settings`, `litellm-request-logs`), which its tables do not list. Its matrix runs with fail-fast, so the other `tests-web` legs are then cancelled. The three routes are added to the test's exclusion list, each with a comment saying how it is covered. Sweeping the two guardrails routes would change the test's main-captured snapshot, which needs a database run to regenerate; that is a follow-up.
 
 **Not included:** the review's C2 (names and labels that fit their shape carry free ASCII). It is accepted in writing for the synthetic-only dev pilot, and it blocks real data. The ten non-blocking findings are logged outside this PR.
+
+## 2026-10-15 — EYEON telemetry ingest: a request's work is bounded before decode, extras the engine reads are refused, the runtime wiring is tested (CHG-2026-157)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-157 · owner: Anees Ur Rahman · Tier 1 |
+| **ADR** | None new. It answers Reviewer-2's review of CHG-2026-156: B1, N-A, N-C, N-D, and the comment part of N-B. The ADR-0006 addendum is still a draft outside the repository (the gap C4 and B3 recorded). Landing it is the owner's decision. |
+| **Approval** | Pending. The owner reviews and merges, with no self-approval. It is stacked on #425 (CHG-2026-156), which merges first. |
+| **Dates** | Dev: not yet released · Staging: not available · Prod: not yet |
+| **Impact** | None while `EYEON_TELEMETRY_INGEST_ENABLED` is off, which is the default; the switch stays off until #425 and this change are both merged and released. With the flag on: a plain body over 1 MiB gets 413 while it is read. A gzip body is decompressed only up to the lower of 1 MiB and 200 times its compressed size, and gets 413 when it passes that. A protobuf export with more than 5,000 spans gets 413: the decoder itself stops at the 5,001st span it decodes (v8 review B1), and the wire count refuses an honest flood earlier, before the decoder runs. One whose tags, lengths or wire types the wire count cannot read exactly as the decoder does gets 400 before the decoder runs. A JSON body up to 1 MiB is still parsed before its spans are counted (accepted by the owner for the pilot). A per-project extra under a prefix the engine interprets is ignored. |
+| **Schema change** | None |
+| **Rollback** | Revert this PR. Code and tests only, no data or schema. |
+| **Feature flag** | `EYEON_TELEMETRY_INGEST_ENABLED` (server-only, default off), unchanged |
+
+**What:**
+- **B1. The work is bounded, not only the bytes.** Before, the 5 MiB byte cap was the only limit applied before decoding: Reviewer-2's 5 KB gzip body held 2.6 million empty protobuf spans and was fully decoded on the console's event loop (about 0.5 to 1 s and about 560 MB of heap) before the span cap answered 413.
+  - What reaches the decoder (the gunzipped body, or a plain body) is capped at **1 MiB** (`DEFAULT_MAX_DECODED_BYTES`). The environment can only lower it.
+  - A gzip body may expand at most **200 times** (`MAX_GZIP_EXPANSION_RATIO`, with a 64 KiB floor).
+  - A **protobuf** export's spans are **counted on the wire** (`countProtobufSpans`, which walks `resource_spans`, `scope_spans` and `spans` without building objects) and refused over 5,000 before the protobuf decoder runs.
+  - **R3-F1 (Reviewer-3), fixed in a second commit.** The first version of the count read tags 35 bits wide, where the decoder (protobufjs `Reader.uint32()`) reads 32. A tag written in 5 bytes with a bit above 32 read as a field the count skipped, so Reviewer-3's 998,012-byte body of 499,000 spans was decoded in full before the span cap answered 413. The count now reads tags and lengths only in canonical form (at most 5 bytes, below 2^32, no overlong encoding), and refuses a field the decoder knows (all length-delimited at these levels) carried with another wire type, because the decoder reads it as length-delimited whatever its wire type says. Either gets 400 before the protobuf decoder runs.
+  - **v8 review B1, fixed in a third commit: the cap is counted inside the decoder.** protobufjs does not hold a nested message to its parent's length. A resource or a span that overruns its own end makes the decoder carry on inside bytes the wire count skipped as an unknown field, so the wire count could see 1 or 0 spans where the decoder decoded 499,001. `decodeOtlpTraces` now counts every Span the decoder decodes and throws `TelemetryTooManySpansError` (413) at the 5,001st, so no count can disagree with what is decoded. The wire count stays, as a fast first refusal for honest floods; it is no longer the bound.
+  - **v9.1 re-check V2, fixed in a fourth commit: the cap holds when the generated code is loaded twice.** The cap wrapped the Span type captured once, at load. A second evaluation of the generated protobuf code in the same process replaces the shared root's types, so the cap wrapped a type the decoder no longer called, and the 998,018-byte overrun was decoded in full (499,001 spans). The types are now looked up at each call.
+  - JSON is bounded by the 1 MiB ceiling and is parsed before its spans are counted, as before.
+- **N-A. Extras.** A per-project extra under a key prefix the engine interprets (`ai.`, `gen_ai.`, `llm.`, `openinference.`, `operation.`, `genkit`, `lk.`, `logfire.`, `flue.`, `gcp.`, `input.`, `output.`, `traceloop.`, `mlflow.`, `openrouter`, `session.`, `tag.`, `tags`, `model_config`, `tool_`) is refused. Before, an extra `ai.telemetry.metadata.attributes` replaced every `eyeon.*` label in the engine's events record.
+- **N-D. Runtime wiring test.** It asserts that `getTelemetryRuntime()` uses the 5 MiB body limit, the 1 MiB decoded ceiling and `decodeOtlpTraces`. Before, the runtime could pass the engine's 512 MiB or a JSON-only decoder and every test stayed green.
+- **N-C. One residual list.** `telemetryResidual.servertest.ts` derives the fields that keep shape-fitting text (21) by probing every allowlisted key, and pins them. A new text-carrying field fails until it is added on purpose. It also checks that an Arabic marker with Arabic-Indic digits is dropped from all 21.
+- **N-B. Comment.** The route-exclusion comment for `guardrails-events` in `public-api-auth-parity.servertest.ts` no longer implies coverage: any project key can write there today. That is a blocker before real data, fixed in its own change.
+- `ALLOWLIST_VERSION` becomes `2026-10-15.1`. In the CHG-2026-156 entry above, the tier is corrected to Tier 1, as the owner reclassified it.
+
+**Measured** on a Windows dev machine, Node 24, through `handleTelemetryRequest` with the real gunzip and the real decoder; median of 7 runs, heap growth measured with GC exposed:
+
+| Body | Before (CHG-2026-156) | After |
+|---|---|---|
+| Reviewer-2's protobuf, 5,142 B gzip, 2,621,432 empty spans | 413 after 493 ms (max 968), +558 MB heap, fully decoded | **413 after 3.0 ms, +0.1 MB, not decoded** |
+| The JSON equivalent, 5,168 B gzip | 413 after 161 ms, +107 MB | **413 after 3.6 ms, +0.1 MB, not decoded** |
+| Plain protobuf, 1 MiB, 524,280 empty spans | 413 after 31 ms (max 87), +127 MB | **413 after 0.6 ms, +0.0 MB, not decoded** |
+| Plain JSON, 1 MiB, 349,000 empty spans | 413 after 12.8 ms, +21 MB | 413 after 15.5 ms, +21 MB (parsed: the 1 MiB ceiling is its bound) |
+| A realistic 512-span metadata batch (protobuf gzip, JSON gzip, JSON plain) | 200 in 5.6 to 7.7 ms, about 4 MB | 200 in 5.9 to 7.9 ms, about 4 MB |
+
+R3-F1, measured the same way. Before is this PR's first commit; after is the second.
+
+| Body (plain protobuf) | Before R3-F1 | After R3-F1 |
+|---|---|---|
+| Reviewer-3's body: 998,012 B, overlong `resource_spans` tag, 499,000 empty spans | 413 after 51.5 ms (max 149.5), +122 MB, fully decoded | **400 after 0.1 ms, +0.0 MB, not decoded** |
+| Overlong `scope_spans` tag, 499,000 empty spans | 413 after 52.4 ms, +122 MB, fully decoded | **400 after 0.1 ms, +0.0 MB, not decoded** |
+| Overlong tag on every span, 166,000 empty spans | 413 after 51.1 ms, +42 MB, fully decoded | **400 after 0.1 ms, +0.0 MB, not decoded** |
+| Control: the same 499,000 spans with canonical tags | 413 after 0.6 ms, +0.1 MB, not decoded | 413 after 0.3 ms, +0.1 MB, not decoded |
+
+v8 review B1, measured the same way. Before is this PR's second commit; after is the third.
+
+| Body (plain protobuf, 998,018 B) | Before | After |
+|---|---|---|
+| Span overrun: a span's attribute key swallows the header of an unknown field holding 499,000 empty spans | wire count 1; 413 after 41.1 ms (max 126.4), +122 MB, 499,001 spans decoded | **413 after 1.4 ms, +1.1 MB, 5,000 spans decoded** |
+| Resource overrun: the resource's attribute key swallows the header of an unknown field holding 499,000 empty spans | wire count 0; 413 after 36.5 ms (max 90.5), +122 MB, 499,000 spans decoded | **413 after 1.8 ms, +1.3 MB, 5,000 spans decoded** |
+
+**Tests** (the telemetry suite is now 248, was 202; 231 after the first commit, 242 after the second, 247 after the third):
+- **Regression:** Reviewer-2's 5 KB body and the JSON equivalent each get 413 in under 150 ms with under 64 MiB of heap growth, and are never decoded. A plain 1 MiB protobuf flood is refused by the wire count. A plain body over the ceiling is read only up to it. A gzip body over the expansion limit gets 413.
+- **R3-F1 regression:** Reviewer-3's 998,012-byte body, and the same flood with an overlong tag on `scope_spans` or on every span, each get 413 or 400 in under 150 ms with under 64 MiB of heap growth, and are never decoded.
+- **v8 review B1 regression:** the Critic's two 18-byte proofs (the wire count sees 1 and 0 spans, the decoder decodes 4 and 3, and the cap counts what is decoded), and the same shapes at 998,018 bytes, which each get 413 after at most 5,000 decoded spans, in under 150 ms with under 64 MiB of heap growth.
+- **v9.1 V2 regression** (its own file, `telemetryDecodeReload.servertest.ts`): after a second evaluation of the generated code, the 998,018-byte span overrun is still refused, with at most 5,000 spans decoded.
+- **No false positives:** realistic 512-span batches pass in all four encodings, exactly 5,000 spans pass, and exactly 5,000 spans behind an overrun are still decoded.
+- **Wire walker** (the fast first refusal): on these bodies it matches the decoder across several resources and scopes, skips unknown fields of every wire type, reads canonical multi-byte tags up to the highest field number as the decoder does, and refuses truncated or malformed wire data, overlong tags and lengths, tags and lengths over 32 bits, and a known field carried with another wire type (Reviewer-3's small proof among them).
+- **Each fix is caught when undone:**
+  - the first version of the wire count (35-bit tags) fails 8 of the 11 R3-F1 tests;
+  - removing the cap inside the decoder fails the 4 v8 review B1 tests and the V2 double-load test;
+  - capturing the Span type once at load again fails the V2 double-load test (499,001 spans decoded);
+  - removing the wire count fails 1 test;
+  - removing the expansion limit fails 2;
+  - not applying the decoded ceiling fails 1;
+  - allowing interpreted extras again fails 2, one of them through the real engine processor;
+  - the runtime passing 512 MiB fails 1;
+  - the runtime using a JSON-only decoder fails 1.
+
+**Not included:**
+- **N-B itself** (dedicated key kind for guardrail evidence): a blocker before real data, in its own change.
+- **Plain JSON up to 1 MiB is still parsed** before its spans are counted (about 13 to 16 ms and 21 MB). The owner accepted this for the pilot. A lower JSON cap, or a streaming parse, is due before real data.
+- **A gzip body is still decompressed** up to its limit before it is refused. Only the protobuf span count runs on the wire bytes before the decoder.
+- **Reviewer-3's non-blocking findings:** R3-F3 (some exact extra keys the engine reads, such as `model` and `events`, are not refused because only prefixes are) and R3-F4 (the residual test probes the rule maps, not kept extras or hard-coded fields) are due before real data. R3-F2 (a `Content-Encoding` of `x-gzip`, or a list such as `gzip, identity`, gets 415) is accepted by the owner as it is.
+- **Landing the ADR-0006 addendum in the repository**, which Tier 1 expects: the owner's decision.

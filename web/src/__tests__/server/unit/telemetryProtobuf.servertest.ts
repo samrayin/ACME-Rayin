@@ -112,6 +112,7 @@ function deps(handoffs: Buffer[]): TelemetryDeps {
     }),
     contentModesGateOpen: false,
     maxBodyBytes: 1024 * 1024,
+    maxDecodedBytes: 1024 * 1024,
     rateLimit: () => ({ allowed: true, retryAfterSec: 0 }),
     decode: decodeOtlpTraces,
     handoff: async (input) => {

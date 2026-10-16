@@ -71,7 +71,7 @@ beforeEach(() => {
   mocks.queueAdd.mockResolvedValue({ id: "job-synthetic" });
 });
 
-function deps(): TelemetryDeps {
+function deps(extras: string[] = []): TelemetryDeps {
   const limiter = createKeyedRateLimiter(600, 60_000);
   return {
     now: () => 1_790_000_000_000,
@@ -87,13 +87,14 @@ function deps(): TelemetryDeps {
       enabled: true,
       contentMode: "metadata",
       userIdMode: "hash",
-      attributeAllowlistExtra: [],
+      attributeAllowlistExtra: extras,
       retentionDays: null,
       version: 1,
       userHashSalt: SALT,
     }),
     contentModesGateOpen: false,
     maxBodyBytes: 1024 * 1024,
+    maxDecodedBytes: 1024 * 1024,
     rateLimit: (k, n) => limiter.check(k, n),
     decode: (body) => JSON.parse(body.toString("utf8")).resourceSpans,
     // The REAL engine entry point, called exactly as telemetryRuntime does.
@@ -113,7 +114,7 @@ function deps(): TelemetryDeps {
   };
 }
 
-async function send(payload: unknown) {
+async function send(payload: unknown, extras: string[] = []) {
   const raw = Buffer.from(JSON.stringify(payload));
   return handleTelemetryRequest(
     {
@@ -125,7 +126,7 @@ async function send(payload: unknown) {
       readBody: async () => raw,
       gunzip: async (b) => b,
     },
-    deps(),
+    deps(extras),
   );
 }
 
@@ -297,6 +298,44 @@ describe("the reviewer's C1 probes, through the real OtelIngestionProcessor", ()
       }).processToEvent(uploaded),
     };
   }
+
+  it("a per-project extra the engine interprets cannot strip the labels (Reviewer-2 N-A, R2-P3)", async () => {
+    // The engine lifts ai.telemetry.metadata.<k> into the event's top-level
+    // metadata after the stamped attributes. Configured as an extra, it
+    // replaced metadata.attributes and every eyeon.* label went with it.
+    await send(
+      {
+        resourceSpans: resourceSpans(
+          [
+            span({
+              attributes: [
+                ...keptSpanAttributes(),
+                s("ai.telemetry.metadata.attributes", "overwritten by the app"),
+              ],
+            }),
+          ],
+          [s("service.name", "pilot-chat")],
+        ),
+      },
+      ["ai.telemetry.metadata.attributes"],
+    );
+    const { uploaded, events } = await engineEvents();
+    expect(JSON.stringify(uploaded)).not.toContain("overwritten by the app");
+    expect(events).toHaveLength(1);
+    const meta = JSON.stringify(events[0].metadata);
+    expect(meta).not.toContain("overwritten by the app");
+    for (const label of [
+      "eyeon.source",
+      "eyeon.trust",
+      "eyeon.application",
+      "eyeon.key_lineage",
+      "eyeon.allowlist_version",
+    ]) {
+      expect(meta, `label missing from the engine record: ${label}`).toContain(
+        label,
+      );
+    }
+  });
 
   it.each(["langfuse-sdk", "langfuse-sdk-python", "livekit-agents"])(
     "an app scope named %j does not strip the server's labels",

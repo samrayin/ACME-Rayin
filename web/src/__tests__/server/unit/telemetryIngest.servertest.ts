@@ -83,6 +83,7 @@ type Setup = {
   policies?: PolicyRow[];
   ratePerMinute?: number;
   maxBodyBytes?: number;
+  maxDecodedBytes?: number;
   handoff?: (input: HandoffInput) => Promise<HandoffResult>;
   loadPolicyThrows?: boolean;
   lookupThrows?: boolean;
@@ -116,6 +117,7 @@ function harness(setup: Setup = {}) {
     },
     contentModesGateOpen: setup.gateOpen ?? false,
     maxBodyBytes: setup.maxBodyBytes ?? 1024 * 1024,
+    maxDecodedBytes: setup.maxDecodedBytes ?? setup.maxBodyBytes ?? 1024 * 1024,
     rateLimit: (k, n) => limiter.check(k, n),
     decode: (body) => {
       let parsed: unknown;

@@ -33,6 +33,7 @@ import { decodeOtlpTraces } from "./telemetryDecode";
 import {
   contentModesGateEnabled,
   telemetryMaxBodyBytes,
+  telemetryMaxDecodedBytes,
   telemetryRatePerKeyPerMin,
   telemetryReaderDatabaseUrl,
   telemetryWriterDatabaseUrl,
@@ -204,6 +205,9 @@ export function getTelemetryRuntime(): TelemetryRuntime {
     onWriteError: (errorName) =>
       logger.warn("telemetry ingest: counters write failed", { errorName }),
   });
+  const maxBodyBytes = telemetryMaxBodyBytes(
+    env.LANGFUSE_OTEL_INGESTION_MAX_BODY_BYTES,
+  );
 
   runtime = {
     deps: {
@@ -211,9 +215,8 @@ export function getTelemetryRuntime(): TelemetryRuntime {
       authenticate: (headers) => authenticator.authenticate(headers),
       loadPolicy: (projectId) => policies.get(projectId),
       contentModesGateOpen: contentModesGateEnabled(),
-      maxBodyBytes: telemetryMaxBodyBytes(
-        env.LANGFUSE_OTEL_INGESTION_MAX_BODY_BYTES,
-      ),
+      maxBodyBytes,
+      maxDecodedBytes: telemetryMaxDecodedBytes(maxBodyBytes),
       rateLimit: (keyId, nowMs) => limiter.check(keyId, nowMs),
       decode: decodeOtlpTraces,
       handoff: async (input) => {

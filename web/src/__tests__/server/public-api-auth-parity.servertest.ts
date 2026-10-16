@@ -151,7 +151,11 @@ const denylistPrefixes = [
   // needs a database run to regenerate; until then they are left out, and:
   "litellm-request-logs", // own bearer secret; covered by acmeLitellmRequestLogIngest.servertest.ts
   "guardrails-settings", // createAuthedProjectAPIRoute plus a sync-project gate; covered by guardrailsSettingsApi.servertest.ts
-  "guardrails-events", // createAuthedProjectAPIRoute (the wrapper the project routes above pin); no route test of its own yet
+  // guardrails-events is NOT covered: any valid project-scoped key pair can
+  // write here today (legacy mode checks no action; in enforce mode a project
+  // key holds guardrailsEvents:create). No route test pins it. Reviewer-2 N-B,
+  // a blocker before real data (CHG-2026-157 corrects this comment).
+  "guardrails-events",
 ];
 
 type ApiKeyKind = "org" | "project" | "agent" | "admin";

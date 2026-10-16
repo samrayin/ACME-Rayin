@@ -29,6 +29,7 @@ import {
   EXCEPTION_TYPE_KEY,
   EXCEPTION_TYPE_PATTERN,
   EXTRA_KEY_PATTERN,
+  EXTRA_REFUSED_PREFIXES,
   EXTRA_VALUE_RULE,
   MAX_ATTRIBUTES_SCANNED_PER_SPAN,
   MAX_EVENTS_SCANNED_PER_SPAN,
@@ -301,6 +302,8 @@ function buildExtras(extra: readonly string[]): ReadonlySet<string> {
     if (out.size >= MAX_EXTRA_KEYS) break;
     if (typeof key !== "string" || !EXTRA_KEY_PATTERN.test(key)) continue;
     if (RESERVED_PREFIXES.some((p) => key.startsWith(p))) continue;
+    // Keys the engine interprets could overwrite the stamped labels (N-A).
+    if (EXTRA_REFUSED_PREFIXES.some((p) => key.startsWith(p))) continue;
     if (COST_KEYS.has(key) || CONTENT_KEY_HINT.test(key)) continue;
     if (SPAN_ATTRIBUTE_RULES.has(key) || RESOURCE_ATTRIBUTE_RULES.has(key)) {
       continue;
