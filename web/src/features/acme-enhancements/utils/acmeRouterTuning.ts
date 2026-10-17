@@ -62,7 +62,9 @@ export const RECOMMENDED_KEYWORD_RULES: KeywordTierRule[] = [
     keywords: [
       "قارن",
       "توصية",
-      "أوصِ",
+      // Written without the kasra: Arabic prompts rarely carry diacritics,
+      // and a keyword with one never matches a prompt typed without it.
+      "أوص",
       "مخاطر",
       "مجلس الإدارة",
       "لخص",
