@@ -500,6 +500,14 @@ describe("smart router tuning and targets (CHG-2026-164)", () => {
     );
   });
 
+  it("recommends no keyword with Arabic diacritics, which would almost never match", () => {
+    const diacritics = /[\u064B-\u065F\u0670]/;
+    const marked = RECOMMENDED_KEYWORD_RULES.flatMap((r) => r.keywords).filter(
+      (k) => diacritics.test(k),
+    );
+    expect(marked).toEqual([]);
+  });
+
   it("sends the admin's boundaries and literal keyword rules", async () => {
     const { deps, client, events } = harness();
     await createRouter(deps, SCOPE, ACTOR, {

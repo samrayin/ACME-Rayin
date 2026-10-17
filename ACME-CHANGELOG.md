@@ -7775,3 +7775,10 @@ A tuned heuristic config (config B) scored 9 of 10. Its one miss sends a coding 
   - A single-word Arabic keyword matches only as a whole word, so a form with a prefix (for example the conjunction و) does not match it. Phrases match anywhere.
 
 **Follow-up (2026-10-17):** `MIN_KEYWORD_LENGTH` in `utils/acmeRouterTuning.ts` is no longer exported, because nothing outside the file uses it (knip). The fix reached this change's branch after #433 merged, so it lands in its own small PR. No behaviour change.
+
+**Follow-up (2026-10-17), Arabic keyword:** the recommended COMPLEX keyword "أوصِ" carried a kasra (U+0650). Arabic prompts are almost always typed without diacritics, so as a whole-word keyword it practically never matched. It is now "أوص". Found by the independent round-2 verifier.
+- **Gateway test routing** (read-only):
+  - "أوص بأفضل نهج لإدارة السيولة في البنك" went to SIMPLE with the old keyword and goes to COMPLEX with the new one;
+  - a simple Arabic control prompt stays SIMPLE.
+- **New unit test:** no recommended keyword may carry Arabic diacritics. It fails with the old keyword.
+- The rule counts are unchanged (8 REASONING, 20 COMPLEX).
