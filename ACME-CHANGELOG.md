@@ -6225,6 +6225,16 @@ EE-2 (the edited file still inside images `.1`–`.9` in ACR), EE-4 (the public-
 window), CMP-14 and CMP-16 (licence notices and SBOM). Those are legal and
 historical questions, not build questions.
 
+**Added 2026-10-06, the stub surface** (`acme-governance/ee-strip/stub-surface-from-mit-call-sites.md`):
+the brief for the clean-room author, listing every Enterprise module path MIT code
+imports, the names imported and the call sites. It is generated from MIT call sites
+only — no Enterprise file was opened — so reading it does not disqualify an author
+under EE-15. It says what must exist and nothing about what any of it does.
+It also pins the scope: **59** production files import an Enterprise path (web 53,
+worker 6) across **50** module paths, plus **23** test files. That confirms the
+study's "58 import sites" as the production count and identifies the test files as
+the separate cost the ADR lists.
+
 **One action it surfaces for now, independent of the strip:** the Enterprise
 data-retention queue runs nightly without a licence. It defaults on, no override
 is committed anywhere, and it has queued 0 projects (EE-5). Switching it off is
