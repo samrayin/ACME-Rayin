@@ -1,7 +1,17 @@
 # CAIRO — Vision Tracker
 **Purpose:** single source of truth for "are we there yet," updated at every stage. Not a changelog — a status board. The changelog and ledger remain the detailed record; this file answers one question fast: what's done, what's next, what's blocking.
 
-**Last updated:** 2026-09-26. **The dev console carries the CAIRO name in its address and on two upstream screens.** Console `acme-v4.38.0.18`, worker `worker-acme-v4.38.0.3`, both TRACED.
+**Last updated:** 2026-10-08. **The product is EYEON in the UI, and the prototype's pages are going live one by one.** Console `acme-v4.38.0.48`, worker `worker-acme-v4.38.0.6`, both TRACED (checked 19:59 UTC).
+- **On in dev (re-checked 19:59 UTC):** every EYEON page except ACME AI.
+  - Overview and Guardrail decisions.
+  - Gateway health and Spend, switched on 15:02 UTC.
+  - EYEON Home, the navigation rail, and Enforcement and policy, switched on 17:44 UTC on the owner's yes.
+- **ACME AI is off:** switched on at 17:44 UTC, then off again at 19:06 UTC on the owner's choice, because its gateway settings are not provisioned.
+- **Released in `.48`:** the Gateway health hero as the prototype's clickable route map (CHG-2026-139 follow-up, #394).
+- **Open:** an unexplained rollback of the console at 2026-10-08 13:03 UTC, which undid a flag change. The owner is tracing it.
+- **Detail:** the 2026-10-06 to 08 section under "Active work right now".
+
+**Earlier status (2026-09-26):** the dev console carried the CAIRO name in its address and on two upstream screens. Console `acme-v4.38.0.18`, worker `worker-acme-v4.38.0.3`, both TRACED.
 - **Sidebar and theme (CHG-2026-073, CHG-2026-074):** live in `acme-v4.38.0.18` since 13:35Z.
   - **AI Controls:** a section holding Guardrails, LLM Gateway and Assurance.
   - **Security > Logs:** one page with tabs for the audit log, guardrail events, and the gateway change record and requests, moved out of their old pages.
@@ -165,6 +175,36 @@ because this session did not do them.
 | **CHG-2026-114** | CAIRO-owned observability for Claude Code: a fork of `langfuse/Claude-Observability-Plugin` (MIT) rebranded so the integration reads as CAIRO rather than a separate Langfuse offering | 🟢 **Delivered and verified end to end 2026-10-05.** Private repo `samrayin/cairo-observability`, v1.2.1, installed and enabled; Claude Code sessions export to CAIRO and appear in the console. Three defects in the fork were found and fixed during install — the marketplace manifest still carried the upstream name (which made the fork **uninstallable**), the config message named option names the plugin does not declare, and the identity diagnostic could not fire after the rename. Hook timeout raised 60 s → 300 s; state file bounded by a TTL |
 | **CHG-2026-116** | Guardrail event labels show the mode: a block verdict reads "Blocked" only when the gateway was enforcing, "Would block" otherwise | 🟢 **Merged (#328) 2026-10-05** |
 | **CHG-2026-117** | `scripts/agents/sync-agent-shims.mjs` could not run on Windows, **and the recorded one-line fix for that is destructive**: with the path corrected the script reaches `symlinkSync`, which Windows refuses *after* `rmSync` has deleted the shim, leaving `AGENTS.md` gone | 🟢 **Merged (#329) 2026-10-05.** Reproduced in an isolated worktree before fixing. Does **not** address the CI "shims are stale" complaint, which compares against real symlinks and so cannot be verified from Windows |
+
+### 2026-10-06 to 08: EYEON
+
+**How these rows were checked.**
+- **Releases:** each change was matched to the first console release tag that contains its merge commit.
+- **Flags:** each page's flag was read from the live console Deployment on 2026-10-08.
+- **"On screen":** that rests on the owner's own check, which is pending for every EYEON page.
+- **Scope:** the change-ID register and `ACME-CHANGELOG.md` hold the detail.
+
+| Change | What | Status |
+|---|---|---|
+| **CHG-2026-121** | The product is named EYEON in the UI | 🟢 Merged (#336, #344), released `.34` and `.36` |
+| **CHG-2026-122, -125, -126** | The Applications page: a scorecard per connected application, one screen per application, each request's trace id | 🟢 Merged (#340, #346, #352, #354), released `.35` to `.40`. No flag |
+| **CHG-2026-124, -127** | The customer's logo beside EYEON; bright accents in dark mode | 🟢 Merged (#345, #356, #359, #351), released `.37` to `.41` |
+| **CHG-2026-129** | The dev console moves to its EYEON web address | 🟢 Live: it is the sign-in address. The two older addresses still serve (detail in the private ops records) |
+| **CHG-2026-130, -131** (ADR-0026) | The prototype's dark palette and the shell restyle | 🟢 Released `.42` and `.43`. No flag |
+| **CHG-2026-132** (ADR-0027) | The EYEON overview and the shared EYEON UI kit | 🟢 Released `.43`, **on** in dev |
+| **CHG-2026-133, -137** | Guardrail decisions: the dashboard, its second slice, and the chart fix (#388) | 🟢 Released `.44`, `.45` and `.47`, **on** in dev |
+| **CHG-2026-134, -141** | ACME AI removed from the top bar (the user menu took its place), then kept behind `CAIRO_ACME_AI_ENABLED` | 🟡 Released `.45` and `.46`. ACME AI is **off**: on from 17:44 UTC, off again at 19:06 UTC because its gateway settings are not provisioned |
+| **CHG-2026-135** | The navigation rail | 🟢 Released `.45`, **on** since 2026-10-08 17:44 UTC |
+| **CHG-2026-136** (ADR-0028) | EYEON Home: the overview as Home, arranged per person; role landings | 🟢 Released `.45`, **on** since 2026-10-08 17:44 UTC |
+| **CHG-2026-138** | Enforcement and policy, plus a follow-up (no pod names; who and why of mode changes) | 🟢 Released `.45` and `.46`, **on** since 2026-10-08 17:44 UTC |
+| **CHG-2026-139** | Gateway health: which models answer now, and what is failing | 🟢 Released `.45`, **on** since 2026-10-08 15:02 UTC. A first switch-on at 12:56 UTC was rolled back at 13:03 UTC by an actor not yet identified. 🟢 **Released `.48`:** the hero as the prototype's clickable route map (#394; owner, 2026-10-08) |
+| **CHG-2026-142** | The resizable sidebar | 🟢 Released `.46`. No flag |
+| **CHG-2026-143** | Spend: cost and usage of the gateway, by model, application, team and key, against each key's budget | 🟢 Released `.46`, **on** since 2026-10-08 15:02 UTC |
+
+**Gaps this window leaves open:**
+- **Flags in code:** no EYEON flag is declared in `deploy/azure`. A Helm upgrade or `terraform apply` would switch the pages off.
+- **Worker:** last released 2026-10-06. Three shared-schema migrations have shipped with the console since then; whether the worker needs a rebuild has not been checked.
+- **Upstream sync:** the EYEON work adds conflict-list edits for the sync (CHG-2026-100).
 
 ---
 
