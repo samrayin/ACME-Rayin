@@ -99,6 +99,7 @@ export * from "./redis/acmePromptReviewQueue";
 export * from "./redis/acmeLitellmReconcileQueue";
 export * from "./redis/acmeGuardrailsBackfillQueue";
 export * from "./acme/acmeGuardrailsPullBackfill";
+export * from "./acme/acmeGuardrailGatewayRefusals";
 export * from "./redis/cloudSpendAlertQueue";
 export * from "./redis/cloudFreeTierUsageThresholdQueue";
 export * from "./redis/getQueue";

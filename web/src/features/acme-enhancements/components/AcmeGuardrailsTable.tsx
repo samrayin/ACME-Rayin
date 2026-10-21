@@ -284,10 +284,18 @@ function AcmeGuardrailEventDetail({
                 </span>
               </DetailRow>
               <DetailRow label="Captured via">
-                {(detail.data.source ??
-                  (detail.data.eventId ? "push" : "pull")) === "push"
-                  ? "Audit push"
-                  : "Dashboard backfill (metadata only)"}
+                {(() => {
+                  const via =
+                    detail.data.source ??
+                    (detail.data.eventId ? "push" : "pull");
+                  // CHG-2026-169: a refusal the gateway made while no
+                  // verdict could be had, recorded from its spend log.
+                  if (via === "gateway")
+                    return "Gateway refusal record (guardrail check unavailable)";
+                  return via === "push"
+                    ? "Audit push"
+                    : "Dashboard backfill (metadata only)";
+                })()}
               </DetailRow>
               <div className="pt-3">
                 <Button

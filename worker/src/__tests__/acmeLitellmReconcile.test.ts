@@ -325,3 +325,71 @@ describe("helpers", () => {
     expect(row).toMatchObject({ cacheHit: false, source: "RECONCILE" });
   });
 });
+
+// CHG-2026-169 (ADR-0033): the reconcile pass hands every readable row to the
+// gateway-refusal audit step, contains its failures, and never copies the
+// refusal message into the mirror.
+describe("gateway refusal audit step (CHG-2026-169)", () => {
+  const refused = (id: string) =>
+    spendRow(id, {
+      status: "failure",
+      metadata: {
+        litellm_call_id: `call-${id}`,
+        user_api_key_alias: "cairo-bot",
+        status: "failure",
+        error_information: {
+          error_class: "CairoGuardrailBlocked",
+          error_message: "Blocked by cairo-guardrail (guard_unavailable).",
+        },
+      },
+    });
+
+  it("receives EVERY readable row, including rows the push already mirrored", async () => {
+    const { deps } = setup([[spendRow("r1"), refused("r2")]], {
+      mirror: [
+        { requestId: "r1", litellmCallId: "call-r1" },
+        { requestId: "r2", litellmCallId: "call-r2" },
+      ],
+    });
+    const seen: string[] = [];
+    deps.recordGatewayRefusals = async (rows) => {
+      seen.push(...rows.map((r) => r.request_id));
+      return 1;
+    };
+    const out = await reconcileOnce(deps);
+    expect(seen).toEqual(["r1", "r2"]);
+    expect(out.gatewayRefusalEvents).toBe(1);
+    expect(out.gapCount).toBe(0);
+    expect(out.status).toBe("success");
+  });
+
+  it("a failing audit write marks the run PARTIAL, redacted, and the mirror still inserts", async () => {
+    const { deps, inserted, runs } = setup([[refused("r3")]]);
+    deps.recordGatewayRefusals = async () => {
+      throw new Error("db down for key sk-abcdef123456");
+    };
+    const out = await reconcileOnce(deps);
+    expect(inserted.map((r) => r.requestId)).toEqual(["r3"]);
+    expect(out.status).toBe("partial");
+    expect(String(runs[0].errorMessage)).toContain(
+      "guardrail refusal audit events could not be written",
+    );
+    expect(String(runs[0].errorMessage)).not.toContain("sk-abcdef123456");
+  });
+
+  it("without the step, behaviour is unchanged and nothing is counted", async () => {
+    const { deps } = setup([[refused("r4")]]);
+    const out = await reconcileOnce(deps);
+    expect(out.gatewayRefusalEvents).toBe(0);
+    expect(out.status).toBe("success");
+  });
+
+  it("the mirror row keeps the error class but never the refusal message", async () => {
+    const { deps, inserted } = setup([[refused("r5")]]);
+    await reconcileOnce(deps);
+    expect(inserted[0].errorClass).toBe("CairoGuardrailBlocked");
+    expect(JSON.stringify(inserted[0])).not.toContain(
+      "Blocked by cairo-guardrail",
+    );
+  });
+});

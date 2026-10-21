@@ -964,9 +964,15 @@ enum AcmeGuardrailEventAction {
 }
 
 // Which capture path wrote an AcmeGuardrailEvent row -- see the model.
+// GATEWAY (CHG-2026-169, ADR-0033): reconstructed by the worker from the
+// gateway's own durable spend log, for an input the gateway refused in
+// enforce mode because no verdict could be had (the guardrails service was
+// unreachable, its answer unreadable, or its settings unusable). Nothing
+// pushed such a row before: the service that pushes events was the one down.
 enum AcmeGuardrailEventSource {
-  PUSH @map("push")
-  PULL @map("pull")
+  PUSH    @map("push")
+  PULL    @map("pull")
+  GATEWAY @map("gateway")
 }
 
 // Durable copy of guardrail decisions surfaced by the separate

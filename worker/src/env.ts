@@ -354,10 +354,17 @@ const EnvSchema = z.object({
   // nothing until an operator turns it on. It needs all three values below;
   // the project id has no safe default because buffer events carry no
   // project of their own (see the handler).
-  CAIRO_GUARDRAIL_BACKFILL_ENABLED: z
+  CAIRO_GUARDRAIL_BACKFILL_ENABLED: z.enum(["true", "false"]).default("false"),
+  CAIRO_GUARDRAIL_BACKFILL_PROJECT_ID: z.string().optional(),
+  // CHG-2026-169 (ADR-0033): during the LiteLLM reconcile pass, write a
+  // guardrail audit event for each input the gateway refused in enforce mode
+  // because no verdict could be had (rayin-guardrails unreachable, its answer
+  // unreadable, its settings unusable). Default off, like the backfill above;
+  // it files the events under CAIRO_GUARDRAIL_BACKFILL_PROJECT_ID, the project
+  // rayin-guardrails pushes to, and does nothing without it.
+  CAIRO_GUARDRAIL_REFUSAL_AUDIT_ENABLED: z
     .enum(["true", "false"])
     .default("false"),
-  CAIRO_GUARDRAIL_BACKFILL_PROJECT_ID: z.string().optional(),
   RAYIN_GUARDRAILS_URL: z.string().optional(),
   RAYIN_GUARDRAILS_CONFIG_SECRET: z.string().optional(),
   LITELLM_BASE_URL: z.string().optional(),

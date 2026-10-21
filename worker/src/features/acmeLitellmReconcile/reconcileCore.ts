@@ -58,7 +58,11 @@ const spendLogRowSchema = z.object({
       user_api_key_alias: nstr,
       user_api_key_team_id: nstr,
       requester_ip_address: nstr,
-      error_information: z.object({ error_class: nstr }).nullish(),
+      // error_message (CHG-2026-169): the gateway-authored refusal text, read
+      // only by acmeGuardrailGatewayRefusals; never copied into the mirror.
+      error_information: z
+        .object({ error_class: nstr, error_message: nstr })
+        .nullish(),
     })
     .nullish(),
 });
@@ -158,6 +162,14 @@ export type ReconcileDeps = {
     run: Prisma.AcmeLitellmReconcileRunCreateManyInput,
   ) => Promise<void>;
   redact: (text: string) => string;
+  /**
+   * CHG-2026-169 (ADR-0033). Called with EVERY readable row of each page, not
+   * only the rows missing from the mirror: a refusal must be audited even when
+   * its request-log row arrived by push. Writes guardrail events for no-verdict
+   * input refusals and returns how many were new. Optional: absent, nothing
+   * changes. Idempotent by event id, so the overlapping windows are harmless.
+   */
+  recordGatewayRefusals?: (rows: SpendLogRow[]) => Promise<number>;
 };
 
 export type ReconcileOutcome = {
@@ -166,6 +178,8 @@ export type ReconcileOutcome = {
   gapCount: number;
   inserted: number;
   unreadableRows: number;
+  /** New guardrail audit events written for gateway refusals (CHG-2026-169). */
+  gatewayRefusalEvents: number;
   windowStart: Date;
   windowEnd: Date;
 };
@@ -184,6 +198,8 @@ export async function reconcileOnce(
   let gapCount = 0;
   let inserted = 0;
   let unreadableRows = 0;
+  let gatewayRefusalEvents = 0;
+  let gatewayRefusalError: string | null = null;
   let status: ReconcileOutcome["status"] = "success";
   let errorMessage: string | null = null;
 
@@ -204,6 +220,18 @@ export async function reconcileOnce(
         else unreadableRows += 1;
       }
       rowsChecked += parsedPage.data.length;
+
+      // CHG-2026-169: contained, so a failure to write the audit events never
+      // stops the request-log mirror; it marks the run partial instead.
+      if (rows.length > 0 && deps.recordGatewayRefusals) {
+        try {
+          gatewayRefusalEvents += await deps.recordGatewayRefusals(rows);
+        } catch (e) {
+          gatewayRefusalError ??= deps
+            .redact(e instanceof Error ? e.message : String(e))
+            .slice(0, 200);
+        }
+      }
 
       if (rows.length > 0) {
         const callIds = rows
@@ -255,6 +283,9 @@ export async function reconcileOnce(
     } else if (unreadableRows > 0) {
       status = "partial";
       errorMessage = `${unreadableRows} spend-log row(s) could not be read and were not mirrored`;
+    } else if (gatewayRefusalError !== null) {
+      status = "partial";
+      errorMessage = `guardrail refusal audit events could not be written: ${gatewayRefusalError}`;
     }
   } catch (e) {
     status = "failure";
@@ -282,6 +313,7 @@ export async function reconcileOnce(
     gapCount,
     inserted,
     unreadableRows,
+    gatewayRefusalEvents,
     windowStart,
     windowEnd,
   };
