@@ -307,6 +307,9 @@ function toEventRow(
 
 function sourceLabel(source: AcmeGuardrailEventSource | null) {
   if (source === null) return null;
+  // GATEWAY (CHG-2026-169): reconstructed from the gateway's spend log for a
+  // refusal made while no verdict could be had; never shown as a pull.
+  if (source === "GATEWAY") return "gateway";
   return source === "PUSH" ? "push" : "pull";
 }
 

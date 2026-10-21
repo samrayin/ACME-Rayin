@@ -7775,3 +7775,33 @@ A tuned heuristic config (config B) scored 9 of 10. Its one miss sends a coding 
   - A single-word Arabic keyword matches only as a whole word, so a form with a prefix (for example the conjunction و) does not match it. Phrases match anywhere.
 
 **Follow-up (2026-10-17):** `MIN_KEYWORD_LENGTH` in `utils/acmeRouterTuning.ts` is no longer exported, because nothing outside the file uses it (knip). The fix reached this change's branch after #433 merged, so it lands in its own small PR. No behaviour change.
+
+## 2026-10-21 — A refusal made while no guardrail verdict could be had is audited from the gateway's spend log (CHG-2026-169)
+
+| | |
+|---|---|
+| **Change ID** | CHG-2026-169 · owner: Anees Ur Rahman · Tier 1 |
+| **ADR** | [ADR-0033](acme-governance/adr/ADR-0033-guardrail-refusal-audit-from-gateway.md) (in this change). Boundary with [ADR-0009](acme-governance/adr/ADR-0009-guardrail-health-events.md), which stays Proposed and follows on its own timeline (owner decision 2026-10-21) |
+| **Approval** | Pending. The owner reviews and merges; nobody approves their own change. The claim (#438) merged first |
+| **Dates** | Dev: not yet released · Staging: not available; isolated migration and rollback rehearsal performed (2026-10-21) · Prod: not yet |
+| **Impact** | Audit evidence only. With the flag on, each input the gateway refused in enforce mode because rayin-guardrails was unreachable, its answer unreadable or its settings unusable gains one `acme_guardrail_events` row (`UNAVAILABLE`, source `gateway`), within one reconcile interval. No change to the gateway, the request path, the refusal, its status code or its timing. The event detail shows "Gateway refusal record (guardrail check unavailable)" |
+| **Schema change** | Migration `20261021030000_acme_guardrail_event_source_gateway`: enum `AcmeGuardrailEventSource` gains `gateway` (additive). No backfill script: the reconcile window picks up recent refusals |
+| **Rollback** | [plan](acme-governance/rollback/20261021030000_acme_guardrail_event_source_gateway/ROLLBACK.md) — rehearsed 2026-10-21 (up, down, up, refusal case, idempotent re-run) · data lost: none (`down.sql` refuses once a `gateway` row exists; forward-fix then) |
+| **Feature flag** | `CAIRO_GUARDRAIL_REFUSAL_AUDIT_ENABLED` (worker), default `false`; needs `CAIRO_GUARDRAIL_BACKFILL_PROJECT_ID` |
+
+**What:**
+- `packages/shared/src/server/acme/acmeGuardrailGatewayRefusals.ts` (new): a pure selector. A spend-log row qualifies only if its status is `failure`, its error class is `CairoGuardrailBlocked` and its message is exactly `Blocked by cairo-guardrail (guard_unavailable|guard_unreadable|settings_unusable).`. `judge_unavailable` is excluded (rayin-guardrails records it). Output: one row per refusal, `direction INPUT`, `eventId gateway-refusal:<LiteLLM call id>`, `traceId` = the call id, `gatewayMode enforce`.
+- `worker/src/features/acmeLitellmReconcile/reconcileCore.ts`: reads `error_information.error_message`; hands every readable row of each page (not only the mirror's gaps) to an optional audit step; a failure there marks the run `partial` and never stops the mirror. The mirror still never stores the message.
+- `worker/src/features/acmeLitellmReconcile/handleAcmeLitellmReconcileJob.ts`, `worker/src/env.ts`: the flag; writes with `createMany` + `skipDuplicates`, like the CHG-2026-098 backfill.
+- `web/src/features/acme-enhancements/server/acmeGuardrailsRouter.ts`, `components/AcmeGuardrailsTable.tsx`: the source is shown as `gateway`, no longer mislabelled `pull`.
+- Schema, migration, rollback (`down.sql`, `ROLLBACK.md`, rehearsal log), ADR-0033, tests (`acmeGuardrailGatewayRefusals.servertest.ts`, four new cases in `acmeLitellmReconcile.test.ts`).
+
+**Why this approach:** found on the EYEON on-prem recovery rehearsal (2026-10-21): in enforce mode, with rayin-guardrails stopped, the gateway refused correctly (HTTP 503 `guard_unavailable`), but no guardrail event was written, because the service that writes them was the one down. The spend log keeps the refusal durably, with the gateway's own error class and message, and the final `raise CairoGuardrailBlocked` in the hook is reached only for an input check, so the direction is known without touching the hook. `spend_logs_metadata` was considered and rejected: it is null on every stored row in LiteLLM 1.100.1 (checked the same day).
+
+**Deployment status:** source-only. Not released.
+
+**Known-incomplete:**
+- A no-verdict **output** withhold (guardrails failing between the input and the output check of one request) is not reconstructed (ADR-0033 §2).
+- Lag: one reconcile interval (5 min) plus the 2-minute settle time.
+- A LiteLLM upgrade that changes `error_information` would silently stop the audit; the §1a audit of a digest bump should cover it.
+- ADR-0009 (health table for every outcome, both modes) is not built; this change does not close it.

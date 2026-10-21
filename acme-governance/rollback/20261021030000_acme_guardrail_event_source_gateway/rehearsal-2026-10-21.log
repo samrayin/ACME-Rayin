@@ -1,0 +1,52 @@
+# CHG-2026-169 rehearsal — 20261021030000_acme_guardrail_event_source_gateway
+# 2026-10-21T03:11:54Z on WSL Docker 29.1.3, image postgres:15 (c961aa287d86), container chg169-rehearsal-pg, --network none
+# Staging: not available; isolated migration and rollback rehearsal performed.
+
+[03:11:56Z] start throwaway Postgres (bootstrap superuser pgboot)
+[03:12:20Z] model the Azure shape: postgres = NOSUPERUSER CREATEDB CREATEROLE, owns database langfuse
+  postgres is superuser: f
+[03:12:21Z] load the schema of the restored test database (schema only, no owner, no grants) + _prisma_migrations rows
+  tables: 90  migrations: 455  owner of the enum: postgres
+  baseline:
+  enum: {push,pull}  | migration row: 0  | events: 0
+
+[03:12:31Z] UP 1: migration.sql in one transaction (as Prisma does), as postgres, then the _prisma_migrations row
+ALTER TYPE
+  rc=0
+  enum: {push,pull,gateway}  | migration row: 1  | events: 0
+
+[03:12:33Z] DOWN 1: down.sql (no gateway rows)
+BEGIN
+LOCK TABLE
+DO
+ALTER TYPE
+CREATE TYPE
+ALTER TABLE
+DROP TYPE
+DELETE 1
+COMMIT
+  rc=0
+  enum: {push,pull}  | migration row: 0  | events: 0
+
+[03:12:35Z] UP 2
+ALTER TYPE
+  rc=0
+  enum: {push,pull,gateway}  | migration row: 1  | events: 0
+
+[03:12:37Z] REFUSAL CASE: one synthetic event with source gateway, then down.sql must refuse and change nothing
+  inserted 1 gateway row
+  BEGIN
+  LOCK TABLE
+  psql:<stdin>:27: ERROR:  Guardrail events with source gateway exist; the value cannot be removed without deleting audit rows. Forward-fix instead.
+  down rc (expect non-zero)=3
+  enum: {push,pull,gateway}  | migration row: 1  | events: 1
+
+[03:12:39Z] IDEMPOTENT UP: migration.sql again (ADD VALUE IF NOT EXISTS)
+ALTER TYPE
+  rc=0
+  enum: {push,pull,gateway}  | migration row: 1  | events: 1
+
+[03:12:40Z] stop the throwaway container (left stopped, not removed; on the cleanup list)
+GUARD: BLOCKED  docker stop chg169-rehearsal-pg   (direct container stop/remove (only compose -p eyeon-rt may do that))
+
+guard: 48 calls, 1 blocked

@@ -7,9 +7,9 @@
  */
 import { PrismaClient } from "@prisma/client";
 import { prisma } from "@langfuse/shared/src/db";
-import { logger } from "@langfuse/shared/src/server";
+import { logger, selectGatewayRefusalRows } from "@langfuse/shared/src/server";
 import { env } from "../../env";
-import { reconcileOnce, type KeyOwner } from "./reconcileCore";
+import { parseUtc, reconcileOnce, type KeyOwner } from "./reconcileCore";
 
 let writerClient: PrismaClient | null = null;
 
@@ -51,7 +51,44 @@ export async function handleAcmeLitellmReconcileJob() {
   }
   const writer = getWriterClient();
 
+  // CHG-2026-169 (ADR-0033). Written like the guardrail backfill job
+  // (CHG-2026-098): createMany + skipDuplicates on the event id, through the
+  // same connection that job uses. Off unless both settings are present.
+  const refusalAuditProjectId =
+    env.CAIRO_GUARDRAIL_REFUSAL_AUDIT_ENABLED === "true"
+      ? env.CAIRO_GUARDRAIL_BACKFILL_PROJECT_ID
+      : undefined;
+  if (
+    env.CAIRO_GUARDRAIL_REFUSAL_AUDIT_ENABLED === "true" &&
+    !refusalAuditProjectId
+  ) {
+    logger.warn(
+      "[AcmeLitellmReconcileJob] CAIRO_GUARDRAIL_REFUSAL_AUDIT_ENABLED is on but CAIRO_GUARDRAIL_BACKFILL_PROJECT_ID is not set; refusal audit events are not written",
+    );
+  }
+  const recordGatewayRefusals = refusalAuditProjectId
+    ? async (rows: Parameters<typeof selectGatewayRefusalRows>[0]) => {
+        const selected = selectGatewayRefusalRows(
+          rows,
+          refusalAuditProjectId,
+          parseUtc,
+        );
+        if (selected.skipped > 0) {
+          logger.warn(
+            `[AcmeLitellmReconcileJob] ${selected.skipped} gateway refusal(s) had no call id or time and were not audited`,
+          );
+        }
+        if (selected.rows.length === 0) return 0;
+        const written = await prisma.acmeGuardrailEvent.createMany({
+          data: selected.rows,
+          skipDuplicates: true,
+        });
+        return written.count;
+      }
+    : undefined;
+
   const outcome = await reconcileOnce({
+    recordGatewayRefusals,
     now: () => new Date(),
     redact,
     lastSuccessfulWindowEnd: async () => {
@@ -133,6 +170,7 @@ export async function handleAcmeLitellmReconcileJob() {
     gapCount: outcome.gapCount,
     inserted: outcome.inserted,
     unreadableRows: outcome.unreadableRows,
+    gatewayRefusalEvents: outcome.gatewayRefusalEvents,
   };
   if (outcome.status === "success" && outcome.gapCount === 0) {
     logger.info("[AcmeLitellmReconcileJob] finished", summary);
