@@ -1,7 +1,13 @@
 # CAIRO — Vision Tracker
 **Purpose:** single source of truth for "are we there yet," updated at every stage. Not a changelog — a status board. The changelog and ledger remain the detailed record; this file answers one question fast: what's done, what's next, what's blocking.
 
-**Last updated:** 2026-09-26. **The dev console carries the CAIRO name in its address and on two upstream screens.** Console `acme-v4.38.0.18`, worker `worker-acme-v4.38.0.3`, both TRACED.
+**Update 2026-10-05 (re-checked live; this block is newer than the dated entries below):**
+- **Running in dev:** console `acme-v4.38.0.32` (CHG-2026-101, audit log view masks content for the content-free roles) and worker `worker-acme-v4.38.0.5` (CHG-2026-098 backfill, switched off), both TRACED by `verify-deployed.sh`. Guardrails `v0.5.1`. The gateway config registers the guardrail hook `pre_call` and `post_call` (CHG-2026-102, answers are checked), `default_on: true`. No mode or ceiling variable is set on the gateway, guardrails, console or worker, so the system is still record only.
+- **Merged since 2026-10-03:** answer checking at the gateway (CHG-2026-102); judge and `cairo-chat` model on paid OpenRouter capacity (CHG-2026-103/104); clean refusal for a refused prompt and 503 when the guardrail could not check (CHG-2026-111/112); lint and knip CI gates fixed (CHG-2026-113).
+- **Claimed, not built:** password sign-in audit and lockout (CHG-2026-105/106, owner precondition for any customer deployment); banking and sector-pack guardrail policy (CHG-2026-107/109); dev sign-in (CHG-2026-108); `release.sh` silent exit (CHG-2026-110).
+- **Open decisions:** upstream sync to Langfuse v4.50.x (CHG-2026-100) waits on the PD-0002 freeze, CI and target answers. Nothing is deployed for a customer.
+
+**Last updated (earlier entries below):** 2026-09-26. **The dev console carries the CAIRO name in its address and on two upstream screens.** Console `acme-v4.38.0.18`, worker `worker-acme-v4.38.0.3`, both TRACED.
 - **Sidebar and theme (CHG-2026-073, CHG-2026-074):** live in `acme-v4.38.0.18` since 13:35Z.
   - **AI Controls:** a section holding Guardrails, LLM Gateway and Assurance.
   - **Security > Logs:** one page with tabs for the audit log, guardrail events, and the gateway change record and requests, moved out of their old pages.
