@@ -58,6 +58,7 @@ import { eyeonGuardrailDecisionsRouter } from "@/src/features/acme-enhancements/
 import { eyeonEnforcementRouter } from "@/src/features/acme-enhancements/server/eyeonEnforcementRouter";
 import { eyeonGatewayHealthRouter } from "@/src/features/acme-enhancements/server/eyeonGatewayHealthRouter";
 import { eyeonSpendRouter } from "@/src/features/acme-enhancements/server/eyeonSpendRouter";
+import { eyeonUsageDrilldownRouter } from "@/src/features/acme-enhancements/server/eyeonUsageDrilldownRouter";
 import { eyeonShellRouter } from "@/src/features/acme-enhancements/server/eyeonShellRouter";
 import { tableRouter } from "@/src/features/table/server/tableRouter";
 import { batchActionRouter } from "@/src/features/batch-actions/server/batchActionRouter";
@@ -152,6 +153,7 @@ export const appRouter = createTRPCRouter({
   eyeonGatewayHealth: eyeonGatewayHealthRouter,
   // ACME (CHG-2026-143, ADR-0027): the EYEON Cost and usage (Spend) page.
   eyeonSpend: eyeonSpendRouter,
+  eyeonUsageDrilldown: eyeonUsageDrilldownRouter,
   // ACME (CHG-2026-135, ADR-0026 §12.2): the EYEON shell's switches.
   eyeonShell: eyeonShellRouter,
   table: tableRouter,
