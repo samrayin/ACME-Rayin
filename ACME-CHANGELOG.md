@@ -7775,3 +7775,18 @@ A tuned heuristic config (config B) scored 9 of 10. Its one miss sends a coding 
   - A single-word Arabic keyword matches only as a whole word, so a form with a prefix (for example the conjunction و) does not match it. Phrases match anywhere.
 
 **Follow-up (2026-10-17):** `MIN_KEYWORD_LENGTH` in `utils/acmeRouterTuning.ts` is no longer exported, because nothing outside the file uses it (knip). The fix reached this change's branch after #433 merged, so it lands in its own small PR. No behaviour change.
+
+## 2026-10-25 — EYEON Usage drill-down: application, then user, then prompt type (change ID to be claimed)
+
+**What:** a new EYEON page, "Usage", behind `CAIRO_EYEON_USAGE_ENABLED` (default off, declared in `deploy/azure` as `eyeon_usage_enabled`). Requested by the application owners and management as a drill-down report.
+- **Level 1, applications:** calls, tokens, cost and flagged prompts per application (every generation of its gateway key summed). Click a row.
+- **Level 2, users:** the people using that application, with calls, tokens, cost and flagged prompts. Click a row.
+- **Level 3, prompt types:** what the guardrails found in that person's prompts, by type (jailbreak or misuse, personal data, harmful content, sector rules and so on), blocked and redacted separately, with the clean and no-verdict counts.
+
+**How it works:** `eyeonUsageDrilldown` router (`status`, `applications`, `users`, `promptTypes`), shaping in `server/eyeonUsageDrilldown.ts`, page `EyeonUsageDrilldownPage`. Cost comes from the request-log mirror (`acme_litellm_request_logs`, by `key_alias` and `end_user`); flags come from `acme_guardrail_events` (by `agent_id` and `user_id`, prompts only). The type is the Applications scorecard's mapping of the policy label. Bound parameters only; row counts capped in the database.
+
+**Privacy and access:** the page names people, so it needs both `llmGatewaySpend:read` and `evidence:read`, and it is not on the Business Analyst or Security Analyst allow-lists. Prompt text, redacted text, findings and encrypted content are never selected. The user id is the one the caller reported and is not verified against the sign-in (the same limit as the guardrail events).
+
+**Known limits:** cost and flags join on the user id both records carry; if a caller sends it to one and not the other, the user shows with a cost but no flags, or the reverse. Cost lags the gateway by the mirror's up to 7 minutes. Calls with no user id are grouped as "(user not reported)".
+
+**Not included:** no release, no switch-on, no change to the live cluster. Tests: `eyeonUsageDrilldown.servertest.ts` covers the shaping; no router test against a database yet.

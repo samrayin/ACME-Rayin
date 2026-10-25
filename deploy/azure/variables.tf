@@ -106,3 +106,9 @@ variable "litellm_model_management_enabled" {
   type        = bool
   default     = false
 }
+
+variable "eyeon_usage_enabled" {
+  description = "The EYEON Usage drill-down page: application, then user, then prompt type (CAIRO_EYEON_USAGE_ENABLED)."
+  type        = bool
+  default     = false
+}

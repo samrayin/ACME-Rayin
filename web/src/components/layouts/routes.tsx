@@ -46,6 +46,7 @@ import { EyeonGuardrailDecisionsNavItem } from "@/src/components/nav/eyeon-guard
 import { EyeonEnforcementNavItem } from "@/src/components/nav/eyeon-enforcement-nav-item";
 import { EyeonGatewayHealthNavItem } from "@/src/components/nav/eyeon-gateway-health-nav-item";
 import { EyeonSpendNavItem } from "@/src/components/nav/eyeon-spend-nav-item";
+import { EyeonUsageNavItem } from "@/src/components/nav/eyeon-usage-nav-item";
 import { type ProductModule } from "@/src/ee/features/ui-customization/productModuleSchema";
 
 export enum RouteSection {
@@ -230,6 +231,17 @@ export const ROUTES: Route[] = [
     section: RouteSection.Main,
     group: RouteGroup.GovernanceControls,
     menuNode: <EyeonSpendNavItem />,
+  },
+  {
+    // ACME (ADR-0027): the EYEON Usage drill-down, application then user then
+    // prompt type. Gated on CAIRO_EYEON_USAGE_ENABLED. It names people, so it
+    // needs both the Spend read scope and the evidence read scope.
+    title: "Usage",
+    pathname: `/project/[projectId]/acme-enhancements/usage`,
+    projectRbacScopes: ["llmGatewaySpend:read", "evidence:read"],
+    section: RouteSection.Main,
+    group: RouteGroup.GovernanceControls,
+    menuNode: <EyeonUsageNavItem />,
   },
   {
     // ACME (CHG-2026-122, ADR-0023): one scorecard per connected application
