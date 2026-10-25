@@ -1067,6 +1067,16 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
         self.output_timeout_s = float(
             os.environ.get("CAIRO_GUARDRAIL_OUTPUT_TIMEOUT_S", "4")
         )
+        # Large requests take longer, because rayin-guardrails inspects them in
+        # windows (one judge call each) instead of refusing them for size. The
+        # base bound above is for an ordinary prompt; each further 10,000
+        # characters adds this many seconds, up to the ceiling, so a long
+        # conversation is checked rather than timed out. A text of 10,000
+        # characters or fewer keeps exactly the timeout it had.
+        self.timeout_per_10k_chars_s = float(
+            os.environ.get("CAIRO_GUARDRAIL_TIMEOUT_PER_10K_CHARS_S", "1")
+        )
+        self.timeout_max_s = float(os.environ.get("CAIRO_GUARDRAIL_TIMEOUT_MAX_S", "60"))
         # Read once at construction. Absent means every call 401s, so it is
         # treated as unavailable rather than attempted -- see _post_guard.
         self.guard_secret = os.environ.get(GUARD_SECRET_ENV, "").strip()
@@ -1398,6 +1408,12 @@ class CairoGuardrail(_Base):  # type: ignore[misc,valid-type]
         timeout_s = (
             self.output_timeout_s if payload.get("direction") == "output" else self.timeout_s
         )
+        text_chars = len(payload.get("text") or "")
+        if text_chars > 10_000:
+            timeout_s = min(
+                max(timeout_s, self.timeout_max_s),
+                timeout_s + self.timeout_per_10k_chars_s * (text_chars // 10_000),
+            )
         try:
             async with httpx.AsyncClient(timeout=timeout_s) as client:
                 response = await client.post(
