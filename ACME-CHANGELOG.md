@@ -7775,3 +7775,11 @@ A tuned heuristic config (config B) scored 9 of 10. Its one miss sends a coding 
   - A single-word Arabic keyword matches only as a whole word, so a form with a prefix (for example the conjunction و) does not match it. Phrases match anywhere.
 
 **Follow-up (2026-10-17):** `MIN_KEYWORD_LENGTH` in `utils/acmeRouterTuning.ts` is no longer exported, because nothing outside the file uses it (knip). The fix reached this change's branch after #433 merged, so it lands in its own small PR. No behaviour change.
+
+## 2026-10-25 — Gateway hook: the guardrails timeout grows with the size of the request (change ID to be claimed)
+
+**What:** `cairo_guardrail_hook.py` adds 1 second (`CAIRO_GUARDRAIL_TIMEOUT_PER_10K_CHARS_S`) to its call timeout for every 10,000 characters beyond the first 10,000, up to 60 seconds (`CAIRO_GUARDRAIL_TIMEOUT_MAX_S`). A text of 10,000 characters or fewer keeps the 2-second (input) and 4-second (answer) bounds it had.
+
+**Why:** rayin-guardrails now inspects large requests in windows instead of refusing them (rayin-guardrails, branch `feat/chunked-inspection`). That takes seconds for a long conversation, and a flat 2-second timeout would turn every such request into `guard_unavailable`, which enforce mode refuses.
+
+**Not included:** no release, no setting changed on the live gateway. Ships with the guardrails change; neither helps alone.
