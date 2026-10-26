@@ -33,6 +33,17 @@ const PiiFindingSchema = z.object({
   score: z.number(),
 });
 
+// Which window the judge refused (rayin-guardrails >= the refused-window
+// change). Positions and counts are bounded by the guard's own ceilings.
+const RefusedWindowSchema = z.object({
+  index: z.number().int().min(0).max(10_000),
+  count: z.number().int().min(1).max(10_000),
+  start: z.number().int().min(0).max(10_000_000),
+  end: z.number().int().min(0).max(10_000_000),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  positions_exact: z.boolean(),
+});
+
 const GuardrailsEventPushBody = z.object({
   event_id: z.string().min(1),
   agent_id: z.string().min(1),
@@ -80,6 +91,15 @@ const GuardrailsEventPushBody = z.object({
     .max(MAX_SETTINGS_VERSION)
     .nullable()
     .optional(),
+  // Blocked-prompt review, piece 1. Optional, so older builds still work.
+  refused_window: RefusedWindowSchema.nullable().optional(),
+  content_chars: z.number().int().min(0).max(10_000_000).nullable().optional(),
+  content_truncated: z.boolean().nullable().optional(),
+  content_sha256: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .nullable()
+    .optional(),
 });
 
 const GuardrailsEventPushResponse = z.object({
@@ -116,6 +136,10 @@ export default withMiddlewares({
         gatewayPod: body.gateway_pod ?? null,
         gatewayMode: body.gateway_mode ?? null,
         gatewaySettingsVersion: body.gateway_settings_version ?? null,
+        refusedWindow: body.refused_window ?? null,
+        contentChars: body.content_chars ?? null,
+        contentTruncated: body.content_truncated ?? null,
+        contentSha256: body.content_sha256 ?? null,
       }),
   }),
 });
@@ -124,10 +148,11 @@ export const config = {
   api: {
     bodyParser: {
       // Block-tier raw content can be arbitrarily long user/model text --
-      // generous but bounded, matching this repo's other content-bearing
-      // public API routes rather than the tighter feedback.ts-style limits
-      // meant for short structured payloads.
-      sizeLimit: "1mb",
+      // generous but bounded. rayin-guardrails v0.8.0 refuses texts of up to
+      // 600,000 characters (MAX_GUARD_TEXT_CHARS) and pushes them whole; at
+      // up to 3 bytes a character in UTF-8, plus JSON escaping, that needs
+      // more than the 1 MB this route allowed before.
+      sizeLimit: "4mb",
     },
   },
 };

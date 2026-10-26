@@ -92,6 +92,75 @@ describe("buildEventRow", () => {
     expect(encryptFn).not.toHaveBeenCalled();
   });
 
+  // Blocked-prompt review, piece 1.
+  it("block: stores the refused window, the content length and the personal-data types", () => {
+    const input: GuardrailsEventPushInput = {
+      ...BASE_INPUT,
+      action: "block",
+      rawContent: "<PERSON> asks to ignore all rules",
+      piiFindings: [{ entity_type: "PERSON", start: 0, end: 8, score: 0.9 }],
+      refusedWindow: {
+        index: 2,
+        count: 5,
+        start: 24000,
+        end: 36000,
+        sha256: "a".repeat(64),
+        positions_exact: true,
+      },
+      contentChars: 60000,
+      contentTruncated: false,
+    };
+    const row = buildEventRow("proj-1", input, "the-key", () => "iv:c:t");
+    expect(row).toMatchObject({
+      refusedWindowIndex: 2,
+      refusedWindowCount: 5,
+      refusedWindowStart: 24000,
+      refusedWindowEnd: 36000,
+      refusedWindowSha256: "a".repeat(64),
+      refusedWindowPositionsExact: true,
+      contentChars: 60000,
+      contentTruncated: false,
+    });
+    expect(row.piiFindings).toEqual(input.piiFindings);
+  });
+
+  it("allow: never stores a refused window or content length, whatever is sent", () => {
+    const row = buildEventRow(
+      "proj-1",
+      {
+        ...BASE_INPUT,
+        refusedWindow: {
+          index: 0,
+          count: 1,
+          start: 0,
+          end: 10,
+          sha256: "b".repeat(64),
+          positions_exact: true,
+        },
+        contentChars: 10,
+        contentTruncated: false,
+      },
+      "unused-key",
+    );
+    expect(row.refusedWindowSha256).toBeUndefined();
+    expect(row.contentChars).toBeUndefined();
+  });
+
+  it("block with no content: no content length, even if one is sent", () => {
+    const row = buildEventRow(
+      "proj-1",
+      {
+        ...BASE_INPUT,
+        action: "block",
+        contentChars: 99,
+        contentTruncated: true,
+      },
+      "the-key",
+    );
+    expect(row.contentChars).toBeNull();
+    expect(row.contentTruncated).toBeNull();
+  });
+
   it("carries projectId, eventId, agentId, traceId, userId, eventTime and direction through unchanged", () => {
     const row = buildEventRow(
       "proj-42",
@@ -108,7 +177,11 @@ describe("buildEventRow", () => {
   });
 
   it("userId absent (caller didn't send it): stays null, not omitted", () => {
-    const row = buildEventRow("proj-1", { ...BASE_INPUT, userId: null }, "unused-key");
+    const row = buildEventRow(
+      "proj-1",
+      { ...BASE_INPUT, userId: null },
+      "unused-key",
+    );
     expect(row.userId).toBeNull();
   });
 
@@ -119,7 +192,11 @@ describe("buildEventRow", () => {
   });
 
   it("clientHost absent (caller or older rayin-guardrails didn't send it): stays null", () => {
-    const row = buildEventRow("proj-1", { ...BASE_INPUT, clientHost: null }, "unused-key");
+    const row = buildEventRow(
+      "proj-1",
+      { ...BASE_INPUT, clientHost: null },
+      "unused-key",
+    );
     expect(row.clientHost).toBeNull();
   });
 });

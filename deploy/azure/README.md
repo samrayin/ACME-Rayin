@@ -64,6 +64,7 @@ terraform plan -var-file=<path to the operations repository>/envs/dev/deploy-azu
 | `eyeon_rail_enabled` | `CAIRO_EYEON_RAIL_ENABLED` (CHG-2026-135) | `false`: the classic sidebar |
 | `eyeon_gateway_health_enabled` | `CAIRO_EYEON_GATEWAY_HEALTH_ENABLED` (CHG-2026-139) | `false` |
 | `eyeon_spend_enabled` | `CAIRO_EYEON_SPEND_ENABLED` (CHG-2026-143) | `false` |
+| `guardrail_content_reveal_enabled` | `CAIRO_GUARDRAIL_CONTENT_REVEAL_ENABLED` | `false` |
 | `acme_ai_enabled` | `CAIRO_ACME_AI_ENABLED` (CHG-2026-141) | `false`: no ACME AI |
 | `litellm_management_enabled` | `CAIRO_LITELLM_MANAGEMENT_ENABLED`, console management of the gateway (CHG-2026-005) | `false`: the LLM Gateway pages are off |
 | `litellm_model_management_enabled` | `CAIRO_LITELLM_MODEL_MANAGEMENT_ENABLED`, gateway models and the smart router (CHG-2026-056) | `false`: the Models tab is read-only |

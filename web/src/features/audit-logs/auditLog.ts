@@ -56,6 +56,9 @@ type AuditableResource =
   | "acmeProjectAccess"
   // ACME (ADR-0013): exports of the guardrail event history.
   | "acmeGuardrailEvents"
+  // ACME (blocked-prompt review): one event's stored content read by a
+  // person, with the reason (never the content).
+  | "acmeGuardrailEvent"
   // ACME (ADR-0005-B part a): versions of the CAIRO-held guardrail settings.
   | "acmeGuardrailSettings"
   // ACME (ADR-0025): uploads and removals of an organization's own logo.

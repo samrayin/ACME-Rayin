@@ -34,6 +34,7 @@ locals {
     CAIRO_EYEON_RAIL_ENABLED                = var.eyeon_rail_enabled
     CAIRO_EYEON_GATEWAY_HEALTH_ENABLED      = var.eyeon_gateway_health_enabled
     CAIRO_EYEON_SPEND_ENABLED               = var.eyeon_spend_enabled
+    CAIRO_GUARDRAIL_CONTENT_REVEAL_ENABLED  = var.guardrail_content_reveal_enabled
     CAIRO_ACME_AI_ENABLED                   = var.acme_ai_enabled
   }
 

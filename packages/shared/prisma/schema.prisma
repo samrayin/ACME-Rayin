@@ -1039,6 +1039,21 @@ model AcmeGuardrailEvent {
   gatewayMode            String? @map("gateway_mode")
   gatewaySettingsVersion Int?    @map("gateway_settings_version")
 
+  // Blocked-prompt review, piece 1: which window the judge refused (by
+  // position in the text the rails saw, and its SHA-256; no text), and how
+  // much content is stored. Null on rows from before, and on verdicts that
+  // are not a rail refusal.
+  refusedWindowIndex          Int?     @map("refused_window_index")
+  refusedWindowCount          Int?     @map("refused_window_count")
+  refusedWindowStart          Int?     @map("refused_window_start")
+  refusedWindowEnd            Int?     @map("refused_window_end")
+  refusedWindowSha256         String?  @map("refused_window_sha256")
+  refusedWindowPositionsExact Boolean? @map("refused_window_positions_exact")
+  contentChars                Int?     @map("content_chars")
+  contentTruncated            Boolean? @map("content_truncated")
+  // For a stored head only: the SHA-256 of the whole text, not stored.
+  contentSha256               String?  @map("content_sha256")
+
   // Dedup key: pre-dates eventId (rayin-guardrails' ring buffer originally
   // had no event id of its own). Kept in place until the eventId backfill
   // is complete and every consumer emits it, then dropped in a follow-up

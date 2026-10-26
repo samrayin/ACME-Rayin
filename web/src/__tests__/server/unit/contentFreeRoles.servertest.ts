@@ -6,6 +6,7 @@ import {
   CONTENT_FREE_ROLES,
   isAllowedForRole,
   isContentFreeRole,
+  AUDITED_CONTENT_MUTATIONS,
   throwIfSecurityRoleBlocked,
 } from "@/src/features/rbac/server/securityRoleAllowList";
 
@@ -70,6 +71,7 @@ describe("content-free roles: scope sets (ADR-0011 §4)", () => {
         "project:read",
         "projectAuditLogs:read",
         "projectGuardrails:read",
+        "guardrailContent:read",
         "projectMembers:read",
         "prompts:read",
       ].sort(),
@@ -89,6 +91,18 @@ describe("content-free roles: scope sets (ADR-0011 §4)", () => {
       scopes(r).includes("promptApprovals:approve"),
     );
     expect(holders.sort()).toEqual([Role.ADMIN, Role.OWNER].sort());
+  });
+
+  it("reading blocked content is Owner, Admin, Security Analyst and Auditor", () => {
+    const holders = Object.values(Role).filter((r) =>
+      scopes(r).includes("guardrailContent:read"),
+    );
+    expect(holders.sort()).toEqual(
+      [Role.ADMIN, Role.AUDITOR, Role.OWNER, Role.SECURITY].sort(),
+    );
+    expect([...AUDITED_CONTENT_MUTATIONS]).toEqual([
+      "acmeGuardrails.revealBlockedContent",
+    ]);
   });
 
   it("read-only evidence is Owner, Admin and Auditor", () => {
@@ -132,7 +146,9 @@ describe("content-free roles: server allow-lists (ADR-0011 §4)", () => {
       const problems = allowedProceduresFor(role).flatMap((path) => {
         const proc = procedures[path];
         if (!proc) return [`${path}: does not exist`];
-        if (proc._def.type !== "query")
+        // The one named exception: an audited content read (owner,
+        // 2026-10-26). Anything else that is not a query is a failure.
+        if (proc._def.type !== "query" && !AUDITED_CONTENT_MUTATIONS.has(path))
           return [`${path}: is a ${proc._def.type}`];
         return [];
       });

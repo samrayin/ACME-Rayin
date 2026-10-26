@@ -65,6 +65,20 @@ export type GuardrailsEventPushInput = {
   gatewayPod?: string | null;
   gatewayMode?: "record" | "enforce" | null;
   gatewaySettingsVersion?: number | null;
+  // Blocked-prompt review, piece 1: which window the judge refused, and how
+  // much of the content is stored. Optional, like the fields above.
+  refusedWindow?: {
+    index: number;
+    count: number;
+    start: number;
+    end: number;
+    sha256: string;
+    positions_exact: boolean;
+  } | null;
+  contentChars?: number | null;
+  contentTruncated?: boolean | null;
+  // For a stored head only: the SHA-256 of the whole text.
+  contentSha256?: string | null;
   eventTime: string;
   direction: "input" | "output";
   action: "allow" | "redact" | "block" | "unavailable";
@@ -132,6 +146,26 @@ export function buildEventRow(
     gatewayPod: input.gatewayPod ?? null,
     gatewayMode: input.gatewayMode ?? null,
     gatewaySettingsVersion: input.gatewaySettingsVersion ?? null,
+    // Only a block has a refused window or stored content to describe.
+    ...(input.action === "block"
+      ? {
+          refusedWindowIndex: input.refusedWindow?.index ?? null,
+          refusedWindowCount: input.refusedWindow?.count ?? null,
+          refusedWindowStart: input.refusedWindow?.start ?? null,
+          refusedWindowEnd: input.refusedWindow?.end ?? null,
+          refusedWindowSha256: input.refusedWindow?.sha256 ?? null,
+          refusedWindowPositionsExact:
+            input.refusedWindow?.positions_exact ?? null,
+          contentChars:
+            input.rawContent !== null ? (input.contentChars ?? null) : null,
+          contentTruncated:
+            input.rawContent !== null ? (input.contentTruncated ?? null) : null,
+          contentSha256:
+            input.rawContent !== null && input.contentTruncated === true
+              ? (input.contentSha256 ?? null)
+              : null,
+        }
+      : {}),
     source: "PUSH",
     eventTime: new Date(input.eventTime),
     direction: input.direction === "input" ? "INPUT" : "OUTPUT",
@@ -139,7 +173,8 @@ export function buildEventRow(
     action: PUSHED_ACTION_TO_DB[input.action],
     redactedText: input.action === "redact" ? input.redactedText : null,
     piiFindings:
-      input.action === "redact" && input.piiFindings
+      (input.action === "redact" || input.action === "block") &&
+      input.piiFindings
         ? (input.piiFindings as unknown as Prisma.InputJsonValue)
         : undefined,
     rawContentEncrypted,

@@ -57,6 +57,7 @@ import { cn } from "@/src/utils/tailwind";
 import { useReadPath } from "@/src/features/events/hooks/useReadPath";
 import { type QueryType, type ViewVersion } from "@langfuse/shared/query";
 import { AcmeGuardrailsEnforcement } from "@/src/features/acme-enhancements/components/AcmeGuardrailsEnforcement";
+import { RevealBlockedContent } from "@/src/features/acme-enhancements/components/AcmeRevealBlockedContent";
 // ACME (CHG-2026-151): the Policies card's sector policy packs.
 import { AcmeGuardrailSectorPacks } from "@/src/features/acme-enhancements/components/AcmeGuardrailSectorPacks";
 import {
@@ -127,7 +128,8 @@ function formatDateTime(iso: string) {
 // Detail panel for one guardrail decision -- CAIRO roadmap Phase 1,
 // "clickable jailbreak detail view". Who (user), from where (machine), when,
 // what was decided, plus a link through to the trace. Blocked content stays
-// encrypted: this panel only says whether it exists (reveal is Phase 2).
+// encrypted: this panel says whether it exists, and offers "Show blocked
+// content" to the roles that may read it (guardrailContent:read, audited).
 function AcmeGuardrailEventDetail({
   projectId,
   eventRowId,
@@ -223,14 +225,40 @@ function AcmeGuardrailEventDetail({
                   }
                 >
                   {detail.data.hasEncryptedContent ? (
-                    <span className="text-muted-foreground">
-                      Stored encrypted. Not shown here.
-                    </span>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-muted-foreground">
+                        Stored encrypted
+                        {detail.data.contentChars !== null
+                          ? `, ${detail.data.contentChars.toLocaleString()} characters`
+                          : ""}
+                        {detail.data.contentTruncated
+                          ? " (only the first part was kept)"
+                          : ""}
+                        .
+                      </span>
+                      {detail.data.canRevealContent && eventRowId ? (
+                        <RevealBlockedContent
+                          key={eventRowId}
+                          projectId={projectId}
+                          eventRowId={eventRowId}
+                        />
+                      ) : null}
+                    </div>
                   ) : (
                     notRecorded
                   )}
                 </DetailRow>
               )}
+              {detail.data.action === "block" && detail.data.refusedWindow ? (
+                <DetailRow label="Refused part">
+                  Part {detail.data.refusedWindow.index + 1} of{" "}
+                  {detail.data.refusedWindow.count}
+                  {detail.data.refusedWindow.start !== null &&
+                  detail.data.refusedWindow.end !== null
+                    ? `, characters ${detail.data.refusedWindow.start.toLocaleString()} to ${detail.data.refusedWindow.end.toLocaleString()}`
+                    : ""}
+                </DetailRow>
+              ) : null}
               {detail.data.gatewayRequest ? (
                 <DetailRow label="Gateway request">
                   <div className="flex flex-col gap-0.5 text-xs">

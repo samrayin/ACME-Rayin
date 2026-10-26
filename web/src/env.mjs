@@ -229,6 +229,14 @@ export const env = createEnv({
       .enum(["true", "false"])
       .optional()
       .default("false"),
+    // ACME addition (blocked-prompt review): reading a blocked prompt's
+    // stored content from the guardrail event detail. SERVER-ONLY. Default
+    // off: acmeGuardrails.revealBlockedContent refuses, and the detail shows
+    // only that content is stored.
+    CAIRO_GUARDRAIL_CONTENT_REVEAL_ENABLED: z
+      .enum(["true", "false"])
+      .optional()
+      .default("false"),
     // ACME addition (CHG-2026-135, ADR-0026 §12.2): the EYEON navigation
     // rail. SERVER-ONLY, no NEXT_PUBLIC_ form; the console asks
     // eyeonShell.railStatus. Default off: the sidebar is unchanged.
@@ -1001,6 +1009,8 @@ export const env = createEnv({
     CAIRO_EYEON_GATEWAY_HEALTH_ENABLED:
       process.env.CAIRO_EYEON_GATEWAY_HEALTH_ENABLED,
     CAIRO_EYEON_SPEND_ENABLED: process.env.CAIRO_EYEON_SPEND_ENABLED,
+    CAIRO_GUARDRAIL_CONTENT_REVEAL_ENABLED:
+      process.env.CAIRO_GUARDRAIL_CONTENT_REVEAL_ENABLED,
     CAIRO_EYEON_RAIL_ENABLED: process.env.CAIRO_EYEON_RAIL_ENABLED,
     SEED_SECRET_KEY: process.env.SEED_SECRET_KEY,
     NEXT_PUBLIC_DEMO_PROJECT_ID: process.env.NEXT_PUBLIC_DEMO_PROJECT_ID,
