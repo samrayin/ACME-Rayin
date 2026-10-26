@@ -109,6 +109,7 @@ for flag in \
   eyeon_rail_enabled:CAIRO_EYEON_RAIL_ENABLED \
   eyeon_gateway_health_enabled:CAIRO_EYEON_GATEWAY_HEALTH_ENABLED \
   eyeon_spend_enabled:CAIRO_EYEON_SPEND_ENABLED \
+  guardrail_content_reveal_enabled:CAIRO_GUARDRAIL_CONTENT_REVEAL_ENABLED \
   acme_ai_enabled:CAIRO_ACME_AI_ENABLED \
   litellm_management_enabled:CAIRO_LITELLM_MANAGEMENT_ENABLED \
   litellm_model_management_enabled:CAIRO_LITELLM_MODEL_MANAGEMENT_ENABLED; do

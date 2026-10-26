@@ -78,6 +78,11 @@ export const projectScopes = [
   // same sensitivity level as audit logs -- these events reveal what
   // content was flagged or blocked, not just that something happened.
   "projectGuardrails:read",
+  // ACME (blocked-prompt review, owner decision 2026-10-26): read the stored
+  // content of a blocked prompt, one event at a time, with a reason, each
+  // reading audit-logged (acmeGuardrails.revealBlockedContent). Owner, Admin,
+  // Security Analyst and Auditor.
+  "guardrailContent:read",
   // ACME addition (ADR-0003, CHG-2026-005): CAIRO management of the LiteLLM
   // gateway. read = see this project's gateway keys (never key material),
   // teams, model catalogue and spend. CUD = create, change, rotate and
@@ -215,6 +220,7 @@ export const projectRoleAccessRights: Record<Role, ProjectScope[]> = {
     "promptExperiments:read",
     "projectAuditLogs:read",
     "projectGuardrails:read",
+    "guardrailContent:read",
     "projectAiAssistant:use",
     "dashboards:read",
     "dashboards:CUD",
@@ -282,6 +288,7 @@ export const projectRoleAccessRights: Record<Role, ProjectScope[]> = {
     "promptExperiments:read",
     "projectAuditLogs:read",
     "projectGuardrails:read",
+    "guardrailContent:read",
     "projectAiAssistant:use",
     "dashboards:read",
     "dashboards:CUD",
@@ -371,6 +378,7 @@ export const projectRoleAccessRights: Record<Role, ProjectScope[]> = {
   SECURITY: [
     "project:read",
     "projectGuardrails:read",
+    "guardrailContent:read",
     "projectAuditLogs:read",
     // The gateway's append-only record only -- not llmGateway:read, so no
     // keys, budgets or spend (ADR-0003 §3.3).
@@ -388,11 +396,14 @@ export const projectRoleAccessRights: Record<Role, ProjectScope[]> = {
   // ACME (ADR-0011): Auditor. Evidence, read-only: audit logs, guardrail
   // events, the gateway record, configuration, prompt approval history. No
   // trace/session/prompt-response content; enforced server-side by the
-  // AUDITOR allow-list in securityRoleAllowList.ts.
+  // AUDITOR allow-list in securityRoleAllowList.ts. One exception (owner,
+  // 2026-10-26): a blocked prompt's stored content, one event at a time,
+  // with a reason, audit-logged (guardrailContent:read).
   AUDITOR: [
     "project:read",
     "projectAuditLogs:read",
     "projectGuardrails:read",
+    "guardrailContent:read",
     "llmGatewayLogs:read",
     "evidence:read",
     "projectMembers:read",

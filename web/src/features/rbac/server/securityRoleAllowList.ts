@@ -21,7 +21,20 @@
 import { Role } from "@langfuse/shared/src/db";
 import { TRPCError } from "@trpc/server";
 
+/**
+ * The only mutations a content-free role may call (an exception to ADR-0011
+ * section 4's "read-only procedures only", owner decision 2026-10-26). Each is
+ * a mutation because it writes the audit log before it returns anything, and
+ * because its input (a reason) must not travel in a URL. Reading a blocked
+ * prompt's stored content, one event at a time, with a reason; it also needs
+ * guardrailContent:read, which the Security Analyst and the Auditor hold.
+ */
+export const AUDITED_CONTENT_MUTATIONS: ReadonlySet<string> = new Set([
+  "acmeGuardrails.revealBlockedContent",
+]);
+
 const SECURITY_ROLE_ALLOWED_PROCEDURES: ReadonlySet<string> = new Set([
+  ...AUDITED_CONTENT_MUTATIONS,
   // Guardrail events and policies. updateConfig stays blocked: it isn't
   // here. Since ADR-0005-B part a this list is its only role gate, so
   // getConfig reads it too before offering the Policies card's editing

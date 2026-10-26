@@ -83,6 +83,12 @@ variable "eyeon_spend_enabled" {
   default     = false
 }
 
+variable "guardrail_content_reveal_enabled" {
+  description = "Reading a blocked prompt's stored content from the guardrail event detail, audited (CAIRO_GUARDRAIL_CONTENT_REVEAL_ENABLED)."
+  type        = bool
+  default     = false
+}
+
 variable "acme_ai_enabled" {
   description = "ACME AI, the in-console assistant (CAIRO_ACME_AI_ENABLED, CHG-2026-141). It also needs its model settings (RAYIN_CHAT_LLM_*), which are not declared here."
   type        = bool

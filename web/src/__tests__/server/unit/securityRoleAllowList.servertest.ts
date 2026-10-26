@@ -122,13 +122,16 @@ describe("Security Analyst allow-list", () => {
 });
 
 describe("Security Analyst scopes", () => {
-  it("has exactly guardrail read, audit log read, gateway log read and project read", () => {
+  it("has exactly guardrail read, blocked content read, audit log read, gateway log read and project read", () => {
     // llmGatewayLogs:read added by ADR-0003 (CHG-2026-005): the append-only
     // record of LiteLLM gateway changes lives in its own table, so it is not
     // visible through projectAuditLogs:read. Logs only -- NOT llmGateway:read
     // (keys, budgets, spend), which the next test pins.
+    // guardrailContent:read (owner, 2026-10-26): the stored content of a
+    // blocked prompt, one event at a time, with a reason, audit-logged.
     expect([...projectRoleAccessRights.SECURITY].sort()).toEqual(
       [
+        "guardrailContent:read",
         "llmGatewayLogs:read",
         "project:read",
         "projectAuditLogs:read",

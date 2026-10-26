@@ -39,6 +39,7 @@ import { z } from "zod";
 import {
   createTRPCRouter,
   protectedProjectProcedure,
+  protectedProjectProcedureWithoutTracing,
 } from "@/src/server/api/trpc";
 import {
   hasProjectAccess,
@@ -69,6 +70,15 @@ import {
   TEST_TRAFFIC_AGENT_PREFIXES,
 } from "@/src/features/acme-enhancements/server/acmeGuardrailsHistory";
 import { auditLog } from "@/src/features/audit-logs/auditLog";
+import { decrypt } from "@langfuse/shared/encryption";
+import {
+  isProjectMember,
+  REVEAL_MAX_AGE_DAYS,
+  RevealLimiter,
+  RevealReasonSchema,
+  revealContent,
+  tooOldToReveal,
+} from "@/src/features/acme-enhancements/server/acmeGuardrailContentReveal";
 import { gatewayModeFromDb } from "@/src/features/acme-enhancements/utils/guardrailVerdictLabel";
 import { mayCallProjectProcedure } from "@/src/features/rbac/server/securityRoleAllowList";
 import {
@@ -308,6 +318,13 @@ function toEventRow(
 function sourceLabel(source: AcmeGuardrailEventSource | null) {
   if (source === null) return null;
   return source === "PUSH" ? "push" : "pull";
+}
+
+// Per console pod; see RevealLimiter.
+const revealLimiter = new RevealLimiter();
+
+function contentRevealEnabled(): boolean {
+  return env.CAIRO_GUARDRAIL_CONTENT_REVEAL_ENABLED === "true";
 }
 
 export const acmeGuardrailsRouter = createTRPCRouter({
@@ -587,6 +604,36 @@ export const acmeGuardrailsRouter = createTRPCRouter({
         redactedText: event.redactedText,
         piiFindings: event.piiFindings,
         hasEncryptedContent: event.rawContentEncrypted !== null,
+        // Blocked-prompt review, piece 1: where the refusal was, and how much
+        // is stored. Positions and lengths only, never text.
+        refusedWindow:
+          event.refusedWindowIndex !== null && event.refusedWindowCount !== null
+            ? {
+                index: event.refusedWindowIndex,
+                count: event.refusedWindowCount,
+                start: event.refusedWindowStart,
+                end: event.refusedWindowEnd,
+                positionsExact: event.refusedWindowPositionsExact,
+              }
+            : null,
+        contentChars: event.contentChars,
+        contentTruncated: event.contentTruncated,
+        // Piece 2: whether this person may read the stored content here.
+        canRevealContent:
+          event.rawContentEncrypted !== null &&
+          contentRevealEnabled() &&
+          !tooOldToReveal(event.eventTime, Date.now()) &&
+          isProjectMember(ctx.session, input.projectId) &&
+          hasProjectAccess({
+            session: ctx.session,
+            projectId: input.projectId,
+            scope: "guardrailContent:read",
+          }) &&
+          mayCallProjectProcedure({
+            projectRole: ctx.session.projectRole,
+            procedurePath: "acmeGuardrails.revealBlockedContent",
+            isInstanceAdmin: ctx.session.user?.admin === true,
+          }),
         gatewayRequest: gatewayRequest
           ? {
               ...gatewayRequest,
@@ -595,6 +642,138 @@ export const acmeGuardrailsRouter = createTRPCRouter({
             }
           : null,
       };
+    }),
+
+  // Blocked-prompt review, piece 2 (owner decision 2026-10-26): read one
+  // blocked event's stored content. Untraced (SF-2026-048: a traced
+  // procedure records its input and result in trace spans). A mutation,
+  // because it writes the audit log before it returns anything and its note
+  // must not travel in a URL; the one mutation on the content-free roles'
+  // allow-lists (AUDITED_CONTENT_MUTATIONS). The order of the checks is in
+  // acmeGuardrailContentReveal.ts. The content is returned once and never
+  // logged.
+  revealBlockedContent: protectedProjectProcedureWithoutTracing
+    .input(
+      z.object({
+        projectId: z.string(),
+        id: z.string(),
+        reason: RevealReasonSchema,
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (!contentRevealEnabled()) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message:
+            "Reading blocked content is switched off on this deployment.",
+        });
+      }
+      throwIfNoProjectAccess({
+        session: ctx.session,
+        projectId: input.projectId,
+        scope: "guardrailContent:read",
+      });
+      if (!isProjectMember(ctx.session, input.projectId)) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message:
+            "Only a member of this project can read its blocked content.",
+        });
+      }
+      const key = env.GUARDRAILS_ENCRYPTION_KEY;
+      if (!key) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "The guardrail content key is not configured.",
+        });
+      }
+      const now = Date.now();
+      if (!revealLimiter.tryTake(ctx.session.user.id, input.projectId, now)) {
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message:
+            "The limit for reading blocked content has been reached. Try again later.",
+        });
+      }
+
+      const event = await prisma.acmeGuardrailEvent.findFirst({
+        where: { id: input.id, projectId: input.projectId },
+        select: {
+          id: true,
+          eventId: true,
+          eventTime: true,
+          action: true,
+          source: true,
+          rawContentEncrypted: true,
+          contentChars: true,
+          contentTruncated: true,
+          refusedWindowIndex: true,
+          refusedWindowCount: true,
+          refusedWindowStart: true,
+          refusedWindowEnd: true,
+          refusedWindowPositionsExact: true,
+        },
+      });
+      if (!event) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Guardrail event not found.",
+        });
+      }
+      if (
+        event.action !== AcmeGuardrailEventAction.BLOCK ||
+        event.rawContentEncrypted === null
+      ) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "This event has no stored content.",
+        });
+      }
+      if (tooOldToReveal(event.eventTime, now)) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: `Content older than ${REVEAL_MAX_AGE_DAYS} days is not shown.`,
+        });
+      }
+
+      // Audit first: a reading that cannot be recorded is not served. The
+      // record holds the purpose, the note and which event, never the
+      // content.
+      await auditLog({
+        session: ctx.session,
+        resourceType: "acmeGuardrailEvent",
+        resourceId: event.id,
+        action: "revealContent",
+        after: {
+          eventId: event.eventId,
+          purpose: input.reason.purpose,
+          note: input.reason.note,
+          contentChars: event.contentChars,
+        },
+      });
+      // One line for the SIEM: who, which event, which purpose. No content,
+      // no note.
+      logger.info("[guardrails] Blocked content revealed", {
+        userId: ctx.session.user.id,
+        projectId: input.projectId,
+        projectRole: ctx.session.projectRole,
+        eventRowId: event.id,
+        purpose: input.reason.purpose,
+      });
+
+      try {
+        return revealContent(event, key, decrypt);
+      } catch (error) {
+        // Never log the content or the ciphertext; the event is enough.
+        logger.error("[guardrails] Could not decrypt blocked content", {
+          eventRowId: event.id,
+          error: error instanceof Error ? error.message : "unknown",
+        });
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "The stored content could not be read.",
+        });
+      }
     }),
 
   // ADR-0005-B part a (CHG-2026-089): the guardrail settings live in CAIRO

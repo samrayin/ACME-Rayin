@@ -7783,3 +7783,20 @@ A tuned heuristic config (config B) scored 9 of 10. Its one miss sends a coding 
 **Why:** rayin-guardrails now inspects large requests in windows instead of refusing them (rayin-guardrails, branch `feat/chunked-inspection`). That takes seconds for a long conversation, and a flat 2-second timeout would turn every such request into `guard_unavailable`, which enforce mode refuses.
 
 **Not included:** no release, no setting changed on the live gateway. Ships with the guardrails change; neither helps alone.
+
+## 2026-10-26 — Blocked-prompt review: events record the refused part; authorised roles can read a blocked prompt (change IDs claimed in #446 and #447, pending merge)
+
+**Why:** the owner's plan of 2026-10-26: a reviewer must be able to see a blocked prompt, see which part was refused, and (later pieces) release a false positive. Owner decisions: Owner, Admin, Security Analyst and Auditor may read; one reviewer may release; allowlist entries last 45 days; no second judge call for an explanation; the air-gapped appliance gets this in its next bundle.
+
+**Piece 1 (events record the refused part):**
+- Migration `20261026120000_acme_guardrail_event_refused_window`: nullable columns for the refused window (index, count, start, end, SHA-256, whether the positions are exact), the stored content's length, whether it was cut, and for a cut head the SHA-256 of the whole text. No new grants (table-level INSERT covers them).
+- The push endpoint accepts these fields (optional, so older rayin-guardrails builds still work) and stores them for blocks only. A block now also keeps its personal-data types (`pii_findings`), as a redaction did.
+- The push endpoint's body limit rises from 1 MB to 4 MB. rayin-guardrails v0.8.0 (live in dev since 2026-10-25) refuses texts of up to 600,000 characters and pushes them whole; above roughly 170,000 Arabic characters (ASCII-escaped JSON) the push was refused and the content lost (security review SF-2026-054).
+
+**Piece 2 (reading a blocked prompt):**
+- New scope `guardrailContent:read` for Owner, Admin, Security Analyst and Auditor.
+- `acmeGuardrails.revealBlockedContent`, behind `CAIRO_GUARDRAIL_CONTENT_REVEAL_ENABLED` (default off; declared in `deploy/azure` as `guardrail_content_reveal_enabled`). In this order: untraced procedure (SF-2026-048: a traced procedure exports its input and result to trace spans); flag; scope; a real project member (an instance administrator who is not a member is refused); limits of 20 an hour and 100 a day per person and 200 a day per project (in memory, per pod); the event by project and id, a block with content, no older than 30 days; the audit record (purpose, note, event; never the content), written first; one log line with no content and no note; then decrypt and return once.
+- The one mutation on the content-free roles' allow-lists, named in `AUDITED_CONTENT_MUTATIONS`; the allow-list test permits exactly that one. This amends ADR-0011 §4 ("read-only procedures only") and its statement that the Security Analyst and Auditor never read content: owner decision of 2026-10-26, to be recorded in ADR-0034 (claim #448).
+- The event detail shows the content's length, whether it was cut, and the refused part; "Show blocked content" asks for a purpose and a note of 20 to 500 characters, shows the text as a plain text node with control and bidirectional characters made visible, highlights the refused part, says how the event arrived (push or pull), and forgets the text when the detail closes (mutation reset, `gcTime: 0`).
+
+**Not included, and why:** see the PR. In short: the security review's versioned ciphertext with a key ID and row binding (SF-2026-053), a shared rate limiter, `Cache-Control: no-store`, a test that no span carries the text, storing only the refused window and the newest message (SF-2026-052), and two owner actions (SF-2026-006 ingress, G-13 writer credential) come before the flag is switched on with real users. No release, no switch-on.
