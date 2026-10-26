@@ -214,6 +214,7 @@ Status values: `Claimed` (allocated, work not merged) · `Merged` · `Abandoned`
 | ADR-0030 | CHG-2026-147 | EYEON Home as a command centre: what an executive and a security lead see first, composed from the EYEON pages' own queries under each role's existing access; supersedes ADR-0028's "the overview as Home" and its arrangement format, keeps its landings and per-person storage | Written and merged (#406); Proposed until the owner accepts it |
 | ADR-0031 | CHG-2026-151 | Guardrail sector packs as a setting, per deployment and per department (gateway team): where the selection is stored and audited, how the guardrails service builds the answer policy for a pack set, how the hook carries the team, and what always applies whatever the packs | Claimed |
 | ADR-0033 | CHG-2026-169 | Durable audit of no-verdict guardrail refusals | Claimed |
+| ADR-0034 | CHG-2026-171 | Reviewing, releasing and allowlisting blocked prompts: who may read blocked content, the release and allowlist model | Claimed |
 
 The rows above for CHG-2026-001 to -003 and ADR-0000 to -0002 were reconstructed
 on 2026-09-19 from `main` and every branch on the remote; they were not claimed
